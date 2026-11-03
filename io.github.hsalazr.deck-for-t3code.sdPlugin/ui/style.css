@@ -1,0 +1,19 @@
+:root { color-scheme: dark; }
+body { margin: 0; padding: 8px 12px 16px; font: 12px -apple-system, "Segoe UI", sans-serif; color: #d8d8d8; background: #2d2d2d; }
+h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: #9a9a9a; margin: 16px 0 6px; font-weight: 600; }
+.row { display: grid; grid-template-columns: 96px 1fr; align-items: center; gap: 8px; margin: 6px 0; }
+.row > label { color: #b8b8b8; text-align: right; }
+select, textarea, input[type=number], input[type=text] { width: 100%; box-sizing: border-box; background: #3d3d3d; color: #eee; border: 1px solid #4a4a4a; border-radius: 3px; padding: 4px 6px; font: inherit; }
+input[type=checkbox] { margin: 0; }
+.check { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+.note { color: #b8b8b8; margin: 2px 0 4px; }
+.hint { color: #9a9a9a; line-height: 1.45; margin: 4px 0 0 104px; }
+.hint.wide { margin-left: 0; }
+code { font: 11px ui-monospace, Menlo, monospace; color: #cfcfcf; }
+.status-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; margin: 0 0 4px; border-radius: 4px; background: #363636; color: #d8d8d8; }
+.status-row .dot { width: 8px; height: 8px; border-radius: 50%; background: #8a8a8a; flex: none; }
+.status-row.ok .dot { background: #3dd68c; }
+.status-row.bad .dot { background: #f5a524; }
+.result.ok { color: #3dd68c; } .result.bad { color: #f0524f; }
+button { background: #3d3d3d; color: #eee; border: 1px solid #555; border-radius: 3px; padding: 3px 10px; font: inherit; cursor: pointer; }
+button:disabled { opacity: .6; cursor: default; }

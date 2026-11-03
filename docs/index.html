@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Deck for T3 Code: your agents on a Stream Deck</title>
+  <meta name="description" content="A Stream Deck plugin for T3 Code. Every thread on a key: working, needs you, done. macOS only. Free and open source. Not affiliated with T3 Tools Inc.">
+  <meta name="theme-color" content="#000000">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/icon-256.png">
+  <link rel="stylesheet" href="assets/style.css">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Deck for T3 Code">
+  <meta property="og:description" content="Every T3 Code thread on a Stream Deck key. See who's working, who needs you, who's done.">
+  <meta property="og:image" content="https://hsalazr.github.io/deck-for-t3code/assets/og.png">
+  <meta property="og:url" content="https://hsalazr.github.io/deck-for-t3code/">
+  <meta name="twitter:card" content="summary_large_image">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="assets/icon-256.png" alt="" width="28" height="28"><span>Deck for T3 Code</span></a>
+    <nav class="nav" aria-label="Main">
+      <a href="#keys">Keys</a>
+      <a href="#how">How it works</a>
+      <a href="#install">Install</a>
+      <a href="#faq">FAQ</a>
+      <a class="gh" href="https://github.com/hsalazr/deck-for-t3code">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <div class="hero wrap" id="top">
+    <span class="pill">macOS · Stream Deck 7.1+ · free and open source</span>
+    <h1>Your agents, <em>on a key.</em></h1>
+    <p class="sub">Deck for T3 Code puts every T3 Code thread on your Stream Deck. See who's working, who needs you, who's done. Glance. Tap. Move on.</p>
+    <div class="cta">
+      <a class="btn primary" href="#">Get it on the Stream Deck Marketplace</a>
+      <a class="btn" href="https://github.com/hsalazr/deck-for-t3code">View on GitHub</a>
+    </div>
+    <p class="cta-note">Needs T3 Code installed on the same Mac.</p>
+    <figure class="hero-shot">
+      <img src="assets/hero.png" width="2688" height="1408" alt="A Stream Deck XL with 32 keys. The first is an overview tile, then two usage tiles, then 24 thread keys: amber for threads that need you, green for finished ones, blue spinners for agents at work, white spinners for threads waiting on CI, and one dashed key paused by a usage limit. Five keys are left empty. Example data.">
+      <figcaption class="hero-caption">A Stream Deck XL running the plugin. Example data.</figcaption>
+    </figure>
+  </div>
+
+  <section id="why" aria-labelledby="why-h">
+    <div class="wrap">
+      <div class="grid three">
+        <div class="card"><h3 id="why-h">One glance</h3><p>The Overview key counts threads that need you, are working, or are done. The whole tile blinks when something's stuck, and a tap opens a full page of threads.</p></div>
+        <div class="card"><h3>Subagents folded in</h3><p>Subagents don't take keys. They fold into their main thread, and a waiting subagent still makes that key flash.</p></div>
+        <div class="card"><h3>Tap, hold, done</h3><p>Tap a key to open the thread in T3 Code. Hold it for half a second and let go to get a page just for that thread: quick messages, compact, snooze, settle, stop.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="keys" aria-labelledby="keys-h">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">What the keys mean</p>
+        <h2 id="keys-h">Colour says it before you read it.</h2>
+        <p>Every state that needs you carries a glyph as well as a colour, and only those blink. Everything else stays calm.</p>
+      </div>
+      <div class="grid keys">
+        <article class="card key-card"><img src="assets/keys/needs-you.png" width="288" height="288" alt="A solid amber key with an exclamation mark, titled Add retry to checkout flow"><div><h3>Needs you</h3><p>Amber, blinking, with a <strong>!</strong>. The agent (or one of its subagents) is waiting on you: an approval, a question, a secret or a link.</p></div></article>
+        <article class="card key-card"><img src="assets/keys/failed.png" width="288" height="288" alt="A solid red key with a cross, titled Cache build artifacts in CI"><div><h3>Failed</h3><p>Red, blinking, with a <strong>✕</strong>. The latest run failed and you haven't opened the thread yet.</p></div></article>
+        <article class="card key-card"><img src="assets/keys/done.png" width="288" height="288" alt="A solid green key with a check mark, titled Fix flaky login test"><div><h3>Done</h3><p>Solid green, with a <strong>✓</strong>. A run finished while the plugin was watching and you haven't opened the thread. It never blinks.</p></div></article>
+        <article class="card key-card"><img src="assets/keys/working.png" width="288" height="288" alt="A dark key titled Paginate the orders endpoint with a blue spinner in the corner, the project name acme-api, 23 percent, and a thin context bar along the bottom"><div><h3>Working</h3><p>Blue spinner in the corner. The agent, or one of its subagents, is running.</p></div></article>
+        <article class="card key-card"><img src="assets/keys/subagents.png" width="288" height="288" alt="A dark key with a blue spinner and a blue badge showing 2 subagents"><div><h3>Subagents</h3><p>The badge counts the subagents (and background tasks) working inside that thread. They never take a key of their own.</p></div></article>
+        <article class="card key-card"><img src="assets/keys/background.png" width="288" height="288" alt="A dark key with a white spinner and a chip reading PR #42 CI"><div><h3>Waiting on something</h3><p>White spinner. The turn ended, but background work is still running: subagents, commands, monitors, or a pull request's CI. The chip says what.</p></div></article>
+        <article class="card key-card"><img src="assets/keys/limit.png" width="288" height="288" alt="A dimmed key with a dashed border and a panel reading USAGE LIMIT, back in 2h 10m"><div><h3>Usage limit</h3><p>Dashed and dim. A usage limit paused the thread, and the key counts down to when it resumes.</p></div></article>
+        <article class="card key-card"><img src="assets/keys/idle.png" width="288" height="288" alt="A plain dark key titled Document the release process, with a thin context bar"><div><h3>Idle</h3><p>Nothing happening. Shown for as long as you pick in settings (8 hours by default), then it leaves the deck.</p></div></article>
+        <article class="card key-card"><img src="assets/keys/overview.png" width="288" height="288" alt="An amber Overview key: T3 CODE, 2 need you, 12 working, 2 done, and +3 in the corner"><div><h3>Overview</h3><p>Counts what needs you, what's working and what's done. <strong>+N</strong> is threads that don't fit on this deck's Thread keys. The tile takes the colour of the most urgent state. Tap it for the T3 Threads page; hold it to clear every done and failed highlight.</p></div></article>
+        <article class="card key-card"><img src="assets/keys/back-more.png" width="288" height="288" alt="A Back key with an amber chevron and the text +4 more"><div><h3>Back</h3><p>Top-left of the T3 Threads page. Tap to return to your previous profile. The chevron turns amber while something needs you, and it says <strong>+N more</strong> when threads don't fit.</p></div></article>
+      </div>
+      <p class="note">A thin bar along the bottom shows how full the thread's context window is: grey, amber from 70%, red from 85%. Done and failed highlights clear when you open the thread, from the key or from T3 Code itself; having it open while the run finishes doesn't count. If T3 Code isn't reachable, the first Thread key says why (<em>Install T3 Code</em>, <em>Open T3 Code</em>, <em>T3 CLI missing</em>, <em>Sign-in failed</em>, <em>Signed out</em> or <em>T3 error</em>) and the rest go blank rather than show stale state.</p>
+    </div>
+  </section>
+
+  <section id="actions" aria-labelledby="actions-h">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">Thread Actions page</p>
+        <h2 id="actions-h">Hold a key. Steer the thread.</h2>
+        <p>Hold a thread key for half a second until it says "Release for actions", then let go. You get a page just for that thread: Back, the thread and Open at the top-left, your quick messages, and the risky stuff on the bottom row, apart from the rest. Stop sits alone in the corner, solid red.</p>
+      </div>
+      <figure class="shot" style="margin-top:0">
+        <img src="assets/thread-actions.png" width="2688" height="1408" alt="The Thread Actions page on a Stream Deck XL: Back, the thread, and Open in the top-left, thirteen quick-message keys such as 'continue' and 'run the tests and report', and a bottom row with Compact, two Snooze keys, Settle, and a red Stop key in the corner." loading="lazy">
+      </figure>
+      <div class="grid three" style="margin-top:24px">
+        <div class="card"><h3>Quick messages</h3><p>Your own lines, like "continue" or "run the tests and report": up to 21 on a Stream Deck XL. Hold one and it's sent as if you'd typed it in T3 Code. Write <code>Label | full text</code> for a short label on the key.</p></div>
+        <div class="card"><h3>Compact and snooze</h3><p>Snooze the thread for an hour or until 9:00 tomorrow with a tap. A snoozed thread leaves your keys, so you land back on the T3 Threads page. Compact sends <code>/compact</code>.</p></div>
+        <div class="card"><h3>Hold to confirm</h3><p>Compact, Settle, Stop and quick messages fire after a 0.8-second hold. A tap only shows a hint ("Hold to confirm") and a progress bar fills while you hold.</p></div>
+      </div>
+      <p class="note">Thread Actions send commands to T3 Code, so they're off until you turn on <strong>Enable thread actions</strong>, and they use a separate token that's only minted while that's on. <a href="#how">More on tokens</a>.</p>
+      <div class="section-head" style="margin-top:56px;margin-bottom:24px">
+        <h3 style="font-size:24px">Other decks</h3>
+        <p>The same page is bundled for the 15-key Stream Deck (including MK.2), the Neo and the Mini, trimmed to fit. Other models, such as the Stream Deck +, have no bundled pages: Thread, Overview and Usage keys still work, Overview jumps to the most urgent thread, and a long press on a Thread key clears its highlight.</p>
+      </div>
+      <div class="deck-shots">
+        <figure><img src="assets/thread-actions-sd.png" width="1728" height="1088" alt="The Thread Actions page on a 15-key Stream Deck: Back, the thread and Open, seven quick messages, and a bottom row of Compact, two Snooze keys, Settle and a red Stop." loading="lazy"><figcaption><strong>Stream Deck, 15 keys:</strong> 7 quick messages</figcaption></figure>
+        <figure><img src="assets/thread-actions-neo.png" width="1408" height="768" alt="The Thread Actions page on a Stream Deck Neo: Back, the thread, two quick messages, then Snooze, Compact, Settle and a red Stop." loading="lazy"><figcaption><strong>Stream Deck Neo:</strong> 2 quick messages</figcaption></figure>
+        <figure><img src="assets/thread-actions-mini.png" width="1088" height="768" alt="The Thread Actions page on a Stream Deck Mini: Back, the thread, Snooze, Compact, Settle and a red Stop." loading="lazy"><figcaption><strong>Stream Deck Mini:</strong> no quick messages</figcaption></figure>
+      </div>
+    </div>
+  </section>
+
+  <section id="usage" aria-labelledby="usage-h">
+    <div class="wrap">
+      <div class="split">
+        <div>
+          <p class="eyebrow">Usage tile</p>
+          <h2 id="usage-h">Pace your limits.</h2>
+          <p>Pick any usage limit T3 Code reports: weekly, per model, 5-hour. The tile shows percent used and a white tick at even pace, the share of the window that has passed.</p>
+          <ul class="checks">
+            <li><strong>Bar:</strong> <span>percent, how far ahead or under pace you are (within 3 points is on pace), and time to reset.</span></li>
+            <li><strong>Ring:</strong> <span>one segment per day for weekly limits, per hour for the 5-hour one. Fills clockwise from the top.</span></li>
+            <li><strong>Colour is pace:</strong> <span>green under, blue on pace, amber ahead, red when you're far ahead (15+ points on the ring) or at 90%.</span></li>
+            <li><strong>Tap</strong> <span>to refresh. Otherwise it updates every 5 minutes, and only while a Usage key is on your deck.</span></li>
+          </ul>
+        </div>
+        <div class="usage-keys">
+          <figure><img src="assets/keys/usage-bar.png" width="288" height="288" alt="Usage tile, bar style: Weekly 64 percent, an amber bar with a white tick, 12 percent ahead, resets in 3d 8h" loading="lazy"><figcaption>Bar: 12% ahead</figcaption></figure>
+          <figure><img src="assets/keys/usage-ring-5h.png" width="288" height="288" alt="Usage tile, ring style: 5-hour limit at 31 percent, five segments, a green fill, and a white tick at even pace" loading="lazy"><figcaption>Ring: 5-hour</figcaption></figure>
+          <figure><img src="assets/keys/usage-ring.png" width="288" height="288" alt="Usage tile, ring style: weekly limit at 38 percent, seven day segments filling green" loading="lazy"><figcaption>Ring: weekly</figcaption></figure>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how" aria-labelledby="how-h">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">How it works</p>
+        <h2 id="how-h">It only talks to T3 Code. On your Mac.</h2>
+        <p>No cloud, no account, no telemetry. The plugin keeps a live stream open to the T3 Code app on your machine, reads the thread list when something changes (and every 30 seconds to be sure), and draws the keys. That's all.</p>
+      </div>
+      <div class="flow" role="img" aria-label="Diagram: T3 Code on your Mac sends thread data over localhost to the Deck for T3 Code plugin, which draws keys on your Stream Deck.">
+        <div class="card node"><h3>T3 Code</h3><p>Running on your Mac</p></div>
+        <div class="link" aria-hidden="true"><span>localhost</span><svg viewBox="0 0 56 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7h50M45 2l7 5-7 5"/></svg></div>
+        <div class="card node me"><h3>Deck for T3 Code</h3><p>Up to three local tokens</p></div>
+        <div class="link" aria-hidden="true"><span>keys</span><svg viewBox="0 0 56 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7h50M45 2l7 5-7 5"/></svg></div>
+        <div class="card node"><h3>Stream Deck</h3><p>Status on every key</p></div>
+      </div>
+      <div class="grid three tokens">
+        <div class="card">
+          <h3>Threads token</h3>
+          <p>Lists your threads so the keys can show them.</p>
+          <div class="scope"><code>orchestration:read</code></div>
+          <p class="life">Read-only. Lasts 30 days and is renewed once less than half is left.</p>
+        </div>
+        <div class="card">
+          <h3>Live and usage token</h3>
+          <p>Live status, context size, and usage limits.</p>
+          <div class="scope"><code>orchestration:read</code></div>
+          <p class="life">Read-only. Lasts 30 days and is renewed once less than half is left.</p>
+        </div>
+        <div class="card">
+          <h3>Actions token</h3>
+          <p>Only for the Thread Actions keys: send, snooze, settle, stop.</p>
+          <div class="scope"><code>orchestration:read</code><code>orchestration:operate</code></div>
+          <p class="life">Off by default. Minted only while you've enabled thread actions, and revoked when you turn them off. Lasts 24 hours.</p>
+          <span class="tag">Opt-in</span>
+        </div>
+      </div>
+      <div class="card promises">
+        <ul class="checks" style="margin-top:0">
+          <li>Tokens are made with your local <code>t3</code> CLI and stored in <code>~/Library/Application Support/io.github.hsalazr.deck-for-t3code/</code>, readable only by you. In <code>t3 auth session list</code> they're labelled <em>Stream Deck (Deck for T3 Code…)</em>.</li>
+          <li>Revoke them with <strong>Sign out / revoke tokens</strong> in the plugin's settings (press <strong>Sign in again</strong> to resume), or with <code>t3 auth session revoke &lt;id&gt;</code>. A revoke that can't happen right away is retried every time the plugin starts.</li>
+          <li>Tokens are only ever sent to <code>127.0.0.1</code>, <code>localhost</code> or <code>::1</code>. The <code>t3</code> CLI only runs if it's a regular file you (or root) own and nobody else can write to. Logs are scrubbed of anything that looks like a token.</li>
+          <li>No analytics. No crash reports. No network calls except to T3 Code on your own machine.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="install" aria-labelledby="install-h">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">Install</p>
+        <h2 id="install-h">Two minutes, tops.</h2>
+      </div>
+      <ol class="steps">
+        <li><div><h3>Get the basics</h3><p>A Mac on macOS 13 or later, the Stream Deck app 7.1 or later, and T3 Code installed and running.</p></div></li>
+        <li><div><h3>Install the plugin</h3><p>Get it from the Stream Deck Marketplace (link coming soon), or grab the <code>.streamDeckPlugin</code> file from <a href="https://github.com/hsalazr/deck-for-t3code/releases">GitHub Releases</a> and double-click it.</p></div></li>
+        <li><div><h3>Drag keys onto your deck</h3><p>Find <strong>Deck for T3 Code</strong> in the actions list. Add an <strong>Overview</strong> key, a few <strong>Thread</strong> keys, and a <strong>Usage</strong> key if you like. Threads fill the Thread keys in reading order.</p></div></li>
+        <li><div><h3>That's it</h3><p>There's nothing to pair. On first run the plugin asks your local <code>t3</code> CLI for its own read-only tokens. To use Thread Actions, tick <strong>Enable thread actions</strong> in any key's settings.</p></div></li>
+        <li><div><h3>Or build it yourself</h3><p>Free to fork. You'll need Node 24.</p>
+<pre><code>git clone https://github.com/hsalazr/deck-for-t3code.git
+cd deck-for-t3code
+npm ci
+npm run build
+npx streamdeck link *.sdPlugin</code></pre></div></li>
+      </ol>
+      <div class="reqs" aria-label="Requirements"><span>macOS 13+</span><span>Stream Deck app 7.1+</span><span>T3 Code installed and running</span></div>
+    </div>
+  </section>
+
+  <section id="faq" aria-labelledby="faq-h">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">FAQ</p>
+        <h2 id="faq-h">Good questions.</h2>
+      </div>
+      <div class="faq">
+        <details><summary>Does it work on Windows or Linux?</summary><div><p>Not yet. It's macOS only (13 or later). T3 Code and the plugin have to run on the same Mac.</p></div></details>
+        <details><summary>Do I need T3 Code?</summary><div><p>Yes. This plugin is a window onto T3 Code. It does nothing without it, so install it and keep it running. The plugin isn't made by T3 and isn't a replacement for the app.</p></div></details>
+        <details><summary>Which Stream Decks work?</summary><div><p>Any Stream Deck with keys shows Thread, Overview and Usage keys. The full-deck T3 Threads page and the Thread Actions page are bundled for the <strong>Stream Deck XL</strong>, the 15-key <strong>Stream Deck</strong> (including MK.2), the <strong>Neo</strong> and the <strong>Mini</strong>; the Thread Actions page has room for 21, 7, 2 and 0 quick messages on those. Other models, such as the <strong>Stream Deck +</strong>, have no bundled pages: Overview jumps to the most urgent thread, and a long press on a Thread key clears its highlight. The dials and touch strip aren't used.</p></div></details>
+        <details><summary>What does it see, and what leaves my Mac?</summary><div><p>It reads thread titles, project names, run status, the names of background tasks (like "PR #42 CI"), context size, and usage limits from T3 Code, to draw the keys. It keeps them in memory only. Nothing leaves your Mac. There's no server, no account, and no telemetry. The only network traffic is to T3 Code on your own machine, and the plugin refuses to send a token anywhere else.</p></div></details>
+        <details><summary>Can it do things to my threads?</summary><div><p>Only if you turn on <strong>Enable thread actions</strong> and use the Thread Actions page. Until then, every token is read-only. Actions use a separate token that's minted on first use, lasts 24 hours, and is revoked when you turn the setting off. Compact, Settle, Stop and quick messages also need a 0.8-second hold, so a stray tap does nothing.</p></div></details>
+        <details><summary>How do I remove access?</summary><div><p>Press <strong>Sign out / revoke tokens</strong> in the plugin's settings (click twice to confirm), or run <code>t3 auth session list</code> and <code>t3 auth session revoke &lt;id&gt;</code>. Do this <em>before</em> you uninstall: removing the plugin from Stream Deck doesn't revoke its tokens, which otherwise stay valid until they expire.</p></div></details>
+        <details><summary>How fast does it update, and does it hammer T3 Code?</summary><div><p>A live stream from T3 Code pushes changes, so keys update within a moment. The thread list is re-read when something changes (no more often than your "Refresh every" setting, 2 seconds by default) and reconciled every 30 seconds. Usage limits are checked every 5 minutes, and only while a Usage key is on your deck. Context size is read only for threads that are on a key: when they first appear, when a run ends, and at most every 2 minutes while one works.</p></div></details>
+        <details><summary>Why did a key say "Sign-in failed" or "T3 CLI missing"?</summary><div><p>The plugin couldn't get a token. Check that T3 Code is running, that <code>~/.t3/bin/t3</code> exists, is yours, and isn't writable by others (<code>chmod go-w</code> fixes that), and that you haven't signed out in the plugin's settings (the key says <em>Signed out</em>; press <strong>Sign in again</strong>). If your T3 data lives elsewhere, set <strong>T3 home</strong> to its absolute path.</p></div></details>
+        <details><summary>Is it affiliated with T3 Code?</summary><div><p>No. Not affiliated with or endorsed by T3 Tools Inc. T3 Code is a trademark of its respective owner. This is an independent, community project, and it doesn't use T3's logo or artwork. The key pictures on this page are drawn by the plugin itself, with made-up example data.</p></div></details>
+        <details><summary>Can I fork it? Sell it?</summary><div><p>Fork away. It's GPL-3.0-or-later, so you get the same freedoms back. Free to use and fork. Please don't sell it as a product. That's a request, not a licence term.</p></div></details>
+      </div>
+    </div>
+  </section>
+
+  <section id="support" aria-labelledby="support-h">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">Support</p>
+        <h2 id="support-h">Free forever. Tips welcome.</h2>
+        <p>If it saves you a few context switches, a small tip keeps it maintained. Bug reports and stars help just as much.</p>
+      </div>
+      <div class="grid support">
+        <div class="card"><h3>GitHub Sponsors</h3><p>The easiest way to chip in, monthly or one-off.</p><a class="btn primary" href="https://github.com/sponsors/hsalazr">Sponsor on GitHub</a></div>
+        <div class="card"><h3>Liberapay</h3><p>Recurring donations. Liberapay itself takes no cut.</p><a class="btn" href="https://liberapay.com/hsalazr">Donate on Liberapay</a></div>
+      </div>
+      <p class="note">Found a bug or want a feature? <a href="https://github.com/hsalazr/deck-for-t3code/issues">Open an issue</a>.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <div>
+      <a class="brand" href="#top"><img src="assets/icon-256.png" alt="" width="28" height="28"><span>Deck for T3 Code</span></a>
+      <p>Licensed GPL-3.0-or-later. Free to use and fork. Please don't sell it as a product.</p>
+      <p class="disclaimer">Not affiliated with or endorsed by T3 Tools Inc. T3 Code is a trademark of its respective owner. Stream Deck is a trademark of its respective owner, and this project isn't affiliated with or endorsed by Elgato or Corsair.</p>
+    </div>
+    <nav aria-label="Footer">
+      <ul>
+        <li><a href="https://github.com/hsalazr/deck-for-t3code">GitHub</a></li>
+        <li><a href="https://github.com/hsalazr/deck-for-t3code/releases">Releases</a></li>
+        <li><a href="https://github.com/hsalazr/deck-for-t3code/blob/main/LICENSE">License (GPL-3.0-or-later)</a></li>
+        <li><a href="https://github.com/hsalazr/deck-for-t3code/blob/main/SECURITY.md">Security</a></li>
+        <li><a href="https://github.com/sponsors/hsalazr">GitHub Sponsors</a></li>
+        <li><a href="https://liberapay.com/hsalazr">Liberapay</a></li>
+      </ul>
+    </nav>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>T3 Usage</title><link rel="stylesheet" href="style.css"></head>
+<body>
+  <h3>This key</h3>
+  <div class="row"><label>Limit</label><select id="metric" disabled><option>Loading…</option></select></div>
+  <div class="row"><label>Style</label><select id="style"><option value="bar">Bar, pace and reset time</option><option value="ring">Ring (one segment per day or hour)</option></select></div>
+  <div class="hint">The bar fills with usage. The white tick marks even pace: how much of the window has passed. <b>Ahead</b> means you're using it faster than time passes, <b>under</b> means you have headroom. Press the key to refresh.</div>
+  <div id="globals"></div>
+  <script src="common.js"></script>
+  <script>
+    const select = document.getElementById("metric");
+    const style = document.getElementById("style");
+    let metrics = [];
+    function render() {
+      const saved = PI.settings.metric;
+      select.innerHTML = "";
+      if (metrics.length === 0) { select.append(new Option("No usage data from T3 yet", "")); select.disabled = true; return; }
+      // The default is the plain weekly window when T3 reports one, else the first window.
+      const weekly = metrics.find((m) => m.key.endsWith(":seven_day"));
+      const fallback = weekly ?? metrics[0];
+      select.append(new Option(weekly ? "Default (Weekly)" : `Default (${fallback.label})`, ""));
+      for (const m of metrics) select.append(new Option((m.provider === "Claude" ? "" : m.provider + " · ") + m.label + "  (" + m.used + "%)", m.key));
+      if (saved && !metrics.some((m) => m.key === saved)) select.append(new Option(saved + " (not reported now)", saved));
+      select.value = saved ?? "";
+      select.disabled = false;
+    }
+    // Usage may still be loading when the inspector opens: ask every 2 s until T3 reports something.
+    let poll;
+    const ask = () => PI.toPlugin({ type: "listMetrics" });
+    PI.onSettings = () => { style.value = PI.settings.style === "ring" ? "ring" : "bar"; render(); };
+    PI.on("metrics", (msg) => {
+      metrics = msg.metrics ?? [];
+      render();
+      if (metrics.length > 0) { clearInterval(poll); poll = undefined; }
+    });
+    PI.whenReady(() => { ask(); poll = setInterval(ask, 2000); });
+    select.addEventListener("change", () => PI.setSettings({ metric: select.value || undefined }));
+    style.addEventListener("change", () => PI.setSettings({ style: style.value }));
+    mountStatus();
+    mountGlobals();
+  </script>
+</body>
+</html>

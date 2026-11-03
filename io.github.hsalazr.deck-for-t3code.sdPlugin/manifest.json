@@ -1,0 +1,144 @@
+{
+	"$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+	"Name": "Deck for T3 Code",
+	"Version": "1.0.0.0",
+	"Author": "hsalazr",
+	"URL": "https://hsalazr.github.io/deck-for-t3code/",
+	"SupportURL": "https://github.com/hsalazr/deck-for-t3code/issues",
+	"Description": "Your T3 Code threads on Stream Deck. Live status, a flash when an agent needs you, and subagents folded into their thread.",
+	"UUID": "io.github.hsalazr.deck-for-t3code",
+	"Category": "Deck for T3 Code",
+	"CategoryIcon": "imgs/plugin/category",
+	"Icon": "imgs/plugin/marketplace",
+	"CodePath": "bin/plugin.js",
+	"SDKVersion": 3,
+	"Software": {
+		"MinimumVersion": "7.1"
+	},
+	"OS": [
+		{
+			"Platform": "mac",
+			"MinimumVersion": "13"
+		}
+	],
+	"Nodejs": {
+		"Version": "24"
+	},
+	"Actions": [
+		{
+			"Name": "Thread",
+			"UUID": "io.github.hsalazr.deck-for-t3code.thread",
+			"Icon": "imgs/actions/thread/icon",
+			"Tooltip": "Shows one T3 Code thread. Place several: they fill in reading order. Tap to open; hold and release for Stop, Snooze, Settle and quick messages.",
+			"PropertyInspectorPath": "ui/thread.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"SupportedInMultiActions": false,
+			"States": [
+				{
+					"Image": "imgs/actions/thread/key",
+					"ShowTitle": false
+				}
+			]
+		},
+		{
+			"Name": "Overview",
+			"UUID": "io.github.hsalazr.deck-for-t3code.overview",
+			"Icon": "imgs/actions/overview/icon",
+			"Tooltip": "Counts of T3 threads that need you, are working, or are done. Tap to open a full page of thread tiles; hold 0.8 s to clear done/failed highlights.",
+			"PropertyInspectorPath": "ui/overview.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"SupportedInMultiActions": false,
+			"States": [
+				{
+					"Image": "imgs/actions/overview/key",
+					"ShowTitle": false
+				}
+			]
+		},
+		{
+			"Name": "Usage",
+			"UUID": "io.github.hsalazr.deck-for-t3code.usage",
+			"Icon": "imgs/actions/usage/icon",
+			"Tooltip": "One usage limit (weekly, weekly per model, 5-hour…) with an ahead/behind-pace marker. Press to refresh.",
+			"PropertyInspectorPath": "ui/usage.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"SupportedInMultiActions": false,
+			"States": [
+				{
+					"Image": "imgs/actions/usage/key",
+					"ShowTitle": false
+				}
+			]
+		},
+		{
+			"Name": "Back",
+			"UUID": "io.github.hsalazr.deck-for-t3code.back",
+			"Icon": "imgs/actions/back/icon",
+			"Tooltip": "Leaves the T3 Threads page and returns to your previous profile.",
+			"Controllers": [
+				"Keypad"
+			],
+			"SupportedInMultiActions": false,
+			"VisibleInActionsList": false,
+			"States": [
+				{
+					"Image": "imgs/actions/back/key",
+					"ShowTitle": false
+				}
+			]
+		},
+		{
+			"Name": "Thread Action",
+			"UUID": "io.github.hsalazr.deck-for-t3code.thread-action",
+			"Icon": "imgs/actions/thread/icon",
+			"Tooltip": "A key on the T3 Thread Actions page.",
+			"Controllers": [
+				"Keypad"
+			],
+			"SupportedInMultiActions": false,
+			"VisibleInActionsList": false,
+			"States": [
+				{
+					"Image": "imgs/actions/thread/key",
+					"ShowTitle": false
+				}
+			]
+		}
+	],
+	"Profiles": [
+		{
+			"Name": "profiles/Deck for T3 Code",
+			"DeviceType": 0,
+			"Readonly": true,
+			"DontAutoSwitchWhenInstalled": true,
+			"AutoInstall": false
+		},
+		{
+			"Name": "profiles/Deck for T3 Code Mini",
+			"DeviceType": 1,
+			"Readonly": true,
+			"DontAutoSwitchWhenInstalled": true,
+			"AutoInstall": false
+		},
+		{
+			"Name": "profiles/Deck for T3 Code XL",
+			"DeviceType": 2,
+			"Readonly": true,
+			"DontAutoSwitchWhenInstalled": true,
+			"AutoInstall": false
+		},
+		{
+			"Name": "profiles/Deck for T3 Code Neo",
+			"DeviceType": 9,
+			"Readonly": true,
+			"DontAutoSwitchWhenInstalled": true,
+			"AutoInstall": false
+		}
+	]
+}

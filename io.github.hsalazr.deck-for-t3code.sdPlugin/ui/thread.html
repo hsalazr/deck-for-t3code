@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>T3 Thread</title><link rel="stylesheet" href="style.css"></head>
+<body>
+  <h3>This key</h3>
+  <div class="hint wide">Thread keys fill from top-left to bottom-right, in order, with no gaps. When a thread leaves, the rest slide up. If there are more threads than keys, threads needing you and working threads win. Subagents fold into their main thread.</div>
+  <div class="hint wide">Tap: open in T3 Code (clears its highlight). Hold, and release once the key says so: the Thread Actions page for that thread, with your quick messages, Compact, Snooze, Settle and Stop. Stop, Settle, Compact and messages only fire when held for 0.8 s.</div>
+  <h3>Quick messages</h3>
+  <div class="row" style="align-items:start"><label>One per line</label><textarea data-global="messages" rows="8" placeholder="continue"></textarea></div>
+  <div class="hint">Each line becomes a key on the Thread Actions page, in order (up to 21 on Stream Deck XL, 7 on Stream Deck, 2 on Neo, none on Mini). Hold a message key to send it, as if typed in T3. Write <code>Label | full text</code> to show a short label on the key and send the full text.</div>
+  <div id="globals"></div>
+  <script src="common.js"></script>
+  <script>mountStatus(); mountGlobals();</script>
+</body>
+</html>

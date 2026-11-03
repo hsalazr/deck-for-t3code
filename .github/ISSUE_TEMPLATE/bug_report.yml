@@ -1,0 +1,55 @@
+name: Bug report
+description: Something doesn't look or work right
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. Deck for T3 Code is an independent project and isn't affiliated with T3 Tools Inc.
+        **Please don't paste tokens, project names or thread titles you consider private.** Logs can contain them.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect, and what did you see instead? A photo or screenshot of the keys helps.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Put a Thread key on the deck
+        2. ...
+  - type: input
+    id: plugin
+    attributes:
+      label: Plugin version
+      placeholder: 1.0.0
+    validations:
+      required: true
+  - type: input
+    id: sd
+    attributes:
+      label: Stream Deck app and device
+      placeholder: Stream Deck 7.1, Stream Deck XL
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: macOS 15.1
+    validations:
+      required: true
+  - type: input
+    id: t3
+    attributes:
+      label: T3 Code version
+      description: The version shown in T3 Code's About screen, or `t3 --version`.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines
+      description: From the plugin's `logs/` folder. Remove anything private first.
+      render: text

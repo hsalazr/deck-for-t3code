@@ -1,0 +1,36 @@
+{
+  "name": "deck-for-t3code",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Stream Deck plugin that puts your T3 Code threads on keys: live status, a flash when an agent needs you, usage limits at a glance.",
+  "license": "GPL-3.0-or-later",
+  "homepage": "https://hsalazr.github.io/deck-for-t3code/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hsalazr/deck-for-t3code.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hsalazr/deck-for-t3code/issues"
+  },
+  "scripts": {
+    "build": "rollup -c",
+    "watch": "rollup -c -w --watch.onEnd=\"streamdeck restart io.github.hsalazr.deck-for-t3code\"",
+    "test": "node --test --experimental-strip-types test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "profile": "node scripts/build-profile.mjs",
+    "notices": "node scripts/notices.mjs"
+  },
+  "devDependencies": {
+    "@elgato/cli": "^1.10.4",
+    "@elgato/streamdeck": "^3.0.4",
+    "@rollup/plugin-commonjs": "^29.0.3",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "@rollup/plugin-terser": "^1.0.2",
+    "@rollup/plugin-typescript": "^12.3.1",
+    "@types/node": "^22.20.5",
+    "rollup": "^4.67.4",
+    "tslib": "^2.9.1",
+    "typescript": "5.9"
+  }
+}

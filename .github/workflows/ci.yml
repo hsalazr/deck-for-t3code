@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npx tsc --noEmit -p .
+      - run: npm run build
+      - name: Validate the plugin
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          dirs=(*.sdPlugin)
+          [ "${#dirs[@]}" -eq 1 ] || { echo "Expected exactly one *.sdPlugin folder, found ${#dirs[@]}"; exit 1; }
+          npx streamdeck validate --no-update-check "${dirs[0]}"

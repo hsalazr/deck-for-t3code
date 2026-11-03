@@ -1,0 +1,4 @@
+# Files left out of the packed .streamDeckPlugin
+logs/
+*.log
+*.map

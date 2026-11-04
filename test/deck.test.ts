@@ -19,6 +19,7 @@ class FakeMonitor extends EventEmitter {
 	snapshot: Snapshot = { connection: { kind: "ok" }, cards: new Map(), visible: [], projectNames: new Map([["p", "proj"]]) };
 	calls: string[] = [];
 	deckThreads: string[] = [];
+	location = { home: "/tmp/t3", cli: "/tmp/t3/bin/t3", custom: true };
 	setCards(cards: ThreadCard[], connection: Connection = { kind: "ok" }): void {
 		this.snapshot = { ...this.snapshot, connection, cards: new Map(cards.map((c) => [c.threadId, c])), visible: cards };
 		this.emit("change", this.snapshot);
@@ -62,6 +63,11 @@ class FakeHost implements DeckHost {
 	warnings: string[] = [];
 	async switchToProfile(deviceId: string, profile?: string, page?: number): Promise<void> {
 		this.switches.push(`${deviceId}:${profile ?? "previous"}:${page ?? ""}`);
+	}
+	/** What the app locator would answer (see test/app.test.ts for the real one). */
+	app: string[] = ["-b", "com.t3tools.t3code"];
+	async appArgs(): Promise<string[]> {
+		return this.app;
 	}
 	async open(args: string[]): Promise<void> {
 		this.opened.push(args);
@@ -186,6 +192,16 @@ test("settle held on the actions page, then the key-up lands on the Threads page
 	assert.deepEqual(host.opened, [], "the release didn't open a thread");
 });
 
+test("thread tile without a link: a tap brings up the detected T3 app", async () => {
+	const tile = add("thread", fakeAction("tile", 1));
+	host.app = ["-b", "com.t3tools.t3code.custom"];
+	monitor.setCards([card("t1", { state: "done", link: "" })]);
+	await press(tile, 100);
+	await flush();
+	assert.deepEqual(host.opened, [["-b", "com.t3tools.t3code.custom"]]);
+	assert.deepEqual(monitor.calls, ["ack:t1"]);
+});
+
 test("thread tile: tap opens, long press shows a release cue and opens actions on release", async () => {
 	const tile = add("thread", fakeAction("tile", 1));
 	monitor.setCards([card("t1", { state: "done" })]);
@@ -277,6 +293,23 @@ test("thread actions off: keys say so, holds and taps send nothing; header and O
 	assert.deepEqual(host.opened.at(-1), ["t3code://threads/env/t1"]);
 });
 
+test("a linked machine's thread: actions say so and send nothing, Open still deep-links there", async () => {
+	await focusedPage({ activeRunId: "run-1", environmentId: "env-remote", link: "http://127.0.0.1:3773/env-remote/t1" });
+	deck.actionsEnabled = true;
+	const stop = add("action", fakeAction("stop", 7, 3), { action: "stop" });
+	const snooze = add("action", fakeAction("snooze", 1, 3), { action: "snooze1h" });
+	const message = add("action", fakeAction("msg", 3, 1), { action: "message", index: 0 });
+	const open = add("action", fakeAction("open", 2), { action: "open" });
+	for (const k of [stop, snooze, message]) assert.ok(k.last().includes("On another") && k.last().includes("machine"), k.id);
+	await press(stop, CONFIRM_HOLD_MS + 100);
+	await press(message, CONFIRM_HOLD_MS + 100);
+	await press(snooze, 100);
+	assert.deepEqual(commands.sent, []);
+	assert.deepEqual(snooze.events, ["alert"]);
+	await press(open, 100);
+	assert.deepEqual(host.opened.at(-1), ["t3code://threads/env-remote/t1"]);
+});
+
 test("stop: dimmed with nothing running, hold to interrupt when a run is active", async () => {
 	await focusedPage();
 	deck.actionsEnabled = true;
@@ -320,7 +353,17 @@ test("offline: the first Thread key says why, the rest are blank; a tap opens T3
 	assert.ok(a.last().includes("Open T3 Code"));
 	assert.ok(!b.last().includes("<text"));
 	await press(b, 100);
+	await flush();
 	assert.deepEqual(host.opened, [["-b", "com.t3tools.t3code"]]);
+	// Whatever the locator picks is what gets opened: a custom build's id, or the t3code:// scheme.
+	host.app = ["-b", "com.t3tools.t3code.custom"];
+	await press(b, 100);
+	await flush();
+	assert.deepEqual(host.opened.at(-1), ["-b", "com.t3tools.t3code.custom"]);
+	host.app = ["t3code://new"];
+	await press(b, 100);
+	await flush();
+	assert.deepEqual(host.opened.at(-1), ["t3code://new"]);
 	host.openFails = true;
 	monitor.setCards([], { kind: "offline", detail: "", reason: "not-installed" });
 	assert.ok(a.last().includes("Install T3"));

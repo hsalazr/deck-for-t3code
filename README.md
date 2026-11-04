@@ -19,6 +19,7 @@ Every [T3 Code](https://t3.codes) thread on a Stream Deck key. See who's working
 - **Thread Actions page.** Hold a thread key, then let go, to send a quick message, compact the context, snooze, settle or stop the thread.
 - **Usage keys.** Any usage limit T3 Code reports, as a bar or a ring, with a tick at even pace.
 - **Context bar.** A thin bar along the bottom edge shows how full the thread's context window is.
+- **Your other machines too.** With T3 Code's **Linked environments** (Settings → Labs) turned on, threads on your linked machines show up alongside this Mac's.
 - **Private.** Talks only to T3 Code on your Mac. No account, no telemetry.
 
 ## Requirements
@@ -72,7 +73,7 @@ Settled threads never show. Snoozed threads stay hidden unless **Show snoozed** 
 
 | Key says | Why |
 |---|---|
-| `Install T3 Code` | No T3 Code app found (in `/Applications` or `~/Applications`) and no server running, or the T3 home you set doesn't exist or isn't an absolute path. |
+| `Install T3 Code` | No T3 Code app found in `/Applications` or `~/Applications` and no server running, or the T3 home you set doesn't exist or isn't an absolute path. Custom and renamed builds count: any app whose bundle id starts with `com.t3tools.t3code` or that claims the `t3code://` link scheme. |
 | `Open T3 Code` | T3 Code isn't running (or has never run). |
 | `T3 CLI missing` | `~/.t3/bin/t3` is missing, or failed the safety check (see [Safety checks](#safety-checks)). |
 | `Sign-in failed` | The plugin couldn't get a token, or T3 Code rejected a fresh one. |
@@ -80,6 +81,8 @@ Settled threads never show. Snoozed threads stay hidden unless **Show snoozed** 
 | `T3 error` | T3 Code answered with something unexpected, or its address isn't a local one. See the logs. |
 
 The Overview key shows the same words under `T3 CODE` (red for errors; `Signed out` is grey), and a Usage key says `T3 offline`. Tapping a Thread or Overview key while T3 is offline opens T3 Code.
+
+**Which app opens.** The plugin doesn't assume T3 Code's name or bundle id, so custom and rebranded builds work too. It brings forward the app set in **T3 app bundle id** if you set one; otherwise the app running the T3 server (found from the server's process); otherwise it opens `t3code://new`, which launches whichever app owns T3 Code's links.
 
 ### Thread
 
@@ -108,6 +111,7 @@ Opened by holding a Thread key. It acts on that one thread.
 - **Compact** (sends `/compact`), **Settle**, **Stop** and the **quick messages** need a **0.8 s hold**. A tap only shows a hint ("hold to confirm", "Hold to send") for three seconds; while you hold, the key fills with a progress wash. Settle returns you to the T3 Threads page; the others stay on the page.
 - **Stop** is solid red in the corner, apart from the rest. It interrupts the running turn (queued messages stay queued). With nothing running it is dimmed and says "Nothing running".
 - All keys that change the thread say "Enable in settings" until you turn on **Enable thread actions**. Back, the thread key and Open always work.
+- For a thread on a **linked machine**, the keys that change the thread say "On another machine" and do nothing: actions go through this Mac's T3 Code server. Open still works.
 
 **Quick messages** are one per line in the Thread key settings, shared by every deck. A line is both the label and the text sent, or write `Label | full text` to show a short label and send the long text. Blank lines are dropped. Until you edit them, you get six defaults (`continue`, `summarize where you are`, `run the tests and report`, `explain the last change`, `what's left to do?`, `write a handoff note`); clear the box for none. Messages go out as if you had typed them in T3 Code, starting an idle thread or steering a running one.
 
@@ -144,6 +148,7 @@ Open any key's settings (Property Inspector). The status row at the top says whe
 - **Snoozed:** show snoozed threads.
 - **Refresh every:** 2 (default), 5 or 10 seconds; see [below](#how-it-talks-to-t3-code).
 - **T3 home:** if T3 Code keeps its data somewhere other than `~/.t3`. Must be an absolute path (a leading `~/` is fine). The `T3CODE_HOME` environment variable is honoured too.
+- **T3 app bundle id:** only for a T3 Code build the plugin doesn't find on its own. Set it to the app's bundle id (`osascript -e 'id of app "Your T3 App"'` prints it) and the plugin opens that app and skips detection.
 - **Sign out / revoke tokens:** click twice to confirm. Revokes every token the plugin minted and deletes them from your Mac. Nothing is minted again until you press **Sign in again** (the same button) or restart the plugin. The result line says `Signed out`, or `Signed out — N token(s) will be revoked later` when T3 Code was unreachable for some revokes (they are retried when T3 Code is back and each time the plugin starts).
 - **Usage key:** which limit (default: the weekly one) and Bar or Ring.
 
@@ -157,10 +162,11 @@ The plugin talks only to the T3 Code server on your Mac, found through T3 Code's
 - **Usage limits.** Only while a Usage key is on a deck. Every 5 minutes, backing off to at most 20 while T3 Code reports the same check time, with a retry after 30 seconds on failure. A tap on the key refreshes at once.
 - **Thread Actions** send the same commands T3 Code's UI sends (interrupt a run, snooze, settle, send a message).
 - **Opening a thread** uses macOS `open` with a `t3code://` link (or opens the T3 Code app).
+- **Linked machines.** If **Linked environments** is on in T3 Code (Settings → Labs), the plugin asks this Mac's T3 Code server for its links, and lists each reachable machine's threads and project names through that same local server, which forwards the request over its own link. The plugin never connects to another machine itself. Linked machines are polled more slowly (active threads at most every 10 seconds, the rest every 30), have no live stream (so no background-work chip, "Seen in T3" or usage-limit pause), and show no context bar. A machine that stops answering keeps its keys for 2 minutes, then they go. With the setting off, only this Mac's threads show.
 
 ## Privacy & security
 
-No data leaves your Mac. There is no server, no account, no analytics, no telemetry and no crash reporting. Thread titles, project names and statuses are held in memory to draw the keys; the only things the plugin writes to disk are its tokens (plus a list of tokens still to revoke) and Stream Deck's own log files, and logs are scrubbed of anything that looks like a token.
+The plugin sends nothing off your Mac. (If you turn on T3 Code's Linked environments, T3 Code itself fetches your linked machines' thread lists for the plugin over its own link.) There is no server, no account, no analytics, no telemetry and no crash reporting. Thread titles, project names and statuses are held in memory to draw the keys; the only things the plugin writes to disk are its tokens (plus a list of tokens still to revoke) and Stream Deck's own log files, and logs are scrubbed of anything that looks like a token.
 
 The plugin uses **up to three tokens**, minted with your local `t3` CLI and stored in `~/Library/Application Support/io.github.hsalazr.deck-for-t3code/` (folder mode 0700, files mode 0600, outside the plugin folder so they survive updates):
 
@@ -187,6 +193,7 @@ t3 auth session revoke <id>
 
 - **Loopback only.** Tokens and requests only go to the server origin from `server-runtime.json`, and only if it is `http` or `https` on `127.0.0.1`, `localhost` or `::1` with no user name or password. Anything else is refused before a token is minted or sent.
 - **T3 home must be absolute** (after expanding a leading `~/`).
+- **Finding the app runs nothing from it.** The plugin only reads `Info.plist` files (with `plutil`), asks `ps` for the T3 server's executable path, and calls `open`.
 - **The CLI is vetted before it runs.** `<T3 home>/bin/t3` must be a regular, executable file, owned by you or root, that no other user can write to. Otherwise the key says "T3 CLI missing" and nothing runs. (Fix a loose file with `chmod go-w`.)
 - **No redirects.** Requests that carry a token refuse HTTP redirects.
 - **Logs are redacted.** Any run of 32 or more token-like characters is replaced with `[redacted]` before it reaches a log file.

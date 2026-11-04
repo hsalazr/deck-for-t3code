@@ -26,6 +26,8 @@ import {
 	type ThreadActionName,
 } from "./render.ts";
 import { tomorrowAt9, type ThreadCommands } from "./t3/commands.ts";
+import { AppLocator } from "./t3/app.ts";
+import type { T3Location } from "./t3/auth.ts";
 import type { Monitor, Snapshot } from "./t3/monitor.ts";
 import type { UsageMonitor } from "./t3/usage-monitor.ts";
 import { metricsOf, pace, pickMetric } from "./usage.ts";
@@ -57,12 +59,17 @@ export interface DeckHost {
 	switchToProfile(deviceId: string, profile?: string, page?: number): Promise<void>;
 	/** Runs `open` with these arguments; rejects if it fails. */
 	open(args: string[]): Promise<void>;
+	/** `open` arguments that bring up the T3 Code app at this location (see `AppLocator.openArgs`). */
+	appArgs(loc: T3Location): Promise<string[]>;
 	warn(message: string): void;
 }
+
+const appLocator = new AppLocator();
 
 const defaultHost: DeckHost = {
 	switchToProfile: (deviceId, profile, page) => streamDeck.profiles.switchToProfile(deviceId, profile, page),
 	open: (args) => new Promise((resolve, reject) => execFile("/usr/bin/open", args, (error) => (error ? reject(error) : resolve()))),
+	appArgs: (loc) => appLocator.openArgs(loc),
 	warn: (message) => streamDeck.logger.warn(message),
 };
 
@@ -101,7 +108,6 @@ export const HOLD_CUE_MS = 250;
 const HINT_MS = 3000;
 /** Hold progress redraws this often. */
 const PROGRESS_STEP_MS = 100;
-const T3_BUNDLE_ID = "com.t3tools.t3code";
 
 export class Deck {
 	readonly #monitor: Monitor;
@@ -258,7 +264,7 @@ export class Deck {
 		const action = entry.settings.action;
 		if (!action || !HOLD_ACTIONS.has(action) || !this.#actionsEnabled) return false;
 		const card = this.#focused(entry);
-		if (!card) return false;
+		if (!card || !canOperate(card)) return false;
 		if (action === "stop") return card.activeRunId !== undefined;
 		if (action === "message") return this.#messageFor(entry) !== undefined;
 		return true;
@@ -272,7 +278,7 @@ export class Deck {
 			return;
 		}
 		const card = this.#focused(entry);
-		if (!card || !this.#actionsEnabled) return entry.action.showAlert();
+		if (!card || !this.#actionsEnabled || !canOperate(card)) return entry.action.showAlert();
 		switch (entry.settings.action) {
 			case "stop": {
 				const runId = card.activeRunId;
@@ -346,8 +352,8 @@ export class Deck {
 		const card = this.#focused(entry);
 		if (!card) return entry.action.showAlert();
 		if (action === "header" || action === "open") return this.#open(entry, card);
-		// Everything else changes the thread; the key already says "Enable in settings".
-		if (!this.#actionsEnabled) return entry.action.showAlert();
+		// Everything else changes the thread; the key already says "Enable in settings" (or "On another machine").
+		if (!this.#actionsEnabled || !canOperate(card)) return entry.action.showAlert();
 		if (HOLD_ACTIONS.has(action)) {
 			if (!holdable) return; // e.g. Stop with nothing running
 			// A tap only explains itself; holding confirms.
@@ -396,19 +402,26 @@ export class Deck {
 	#open(entry: KeyEntry, card: ThreadCard): void {
 		this.#monitor.ack(card.threadId);
 		const url = deepLinkFor(card.link, card.threadId);
-		this.#launch(entry, url ? [url] : ["-b", T3_BUNDLE_ID]);
+		if (url) this.#launch(entry, Promise.resolve([url]));
+		else this.#openT3(entry);
 	}
 
 	/** Brings up T3 Code itself (also what a tap does while T3 is offline). */
 	#openT3(entry: KeyEntry): void {
-		this.#launch(entry, ["-b", T3_BUNDLE_ID]);
+		this.#launch(entry, this.#host.appArgs(this.#monitor.location));
 	}
 
-	#launch(entry: KeyEntry, args: string[]): void {
-		this.#host.open(args).catch((error: unknown) => {
-			this.#host.warn(`open ${args.join(" ")} failed: ${(error as Error)?.message ?? String(error)}`);
-			return entry.action.showAlert();
-		});
+	#launch(entry: KeyEntry, pending: Promise<string[]>): void {
+		let args: string[] = [];
+		pending
+			.then((resolved) => {
+				args = resolved;
+				return this.#host.open(args);
+			})
+			.catch((error: unknown) => {
+				this.#host.warn(`open ${args.join(" ")} failed: ${(error as Error)?.message ?? String(error)}`);
+				return entry.action.showAlert();
+			});
 	}
 
 	#mostUrgent(): ThreadCard | undefined {
@@ -618,6 +631,12 @@ export class Deck {
 		for (const e of this.#keys.values()) clearTimeout(e.holdTimer);
 	}
 }
+
+/**
+ * Thread actions go through this machine's server (its /ws dispatchCommand), which
+ * can't act on a linked machine's threads; those keys stay unavailable.
+ */
+export const canOperate = (card: ThreadCard): boolean => !card.environmentId;
 
 /** Next hold-progress redraw, up to the moment the hold fires. */
 function progressFrame(downAt: number, now: number): number | undefined {

@@ -34,6 +34,8 @@ export interface ThreadSummary {
 	itemCount?: number;
 	createdAt: string;
 	updatedAt: string;
+	/** Set by the plugin for threads in a linked environment (another machine); absent for this machine's. */
+	environmentId?: string;
 }
 
 /**
@@ -75,6 +77,8 @@ export interface ThreadCard {
 	ackKey: string;
 	updatedAt: number;
 	createdAt: number;
+	/** The linked environment (another machine) the thread lives in; absent for this machine's threads. */
+	environmentId?: string;
 }
 
 const WORKING = new Set(["preparing", "queued", "starting", "running"]);
@@ -142,6 +146,7 @@ export function buildCards(threads: readonly ThreadSummary[], opts: BuildOptions
 			projectId: t.projectId,
 			title: t.title || "Untitled thread",
 			link: t.link,
+			...(t.environmentId ? { environmentId: t.environmentId } : {}),
 			state: ownState(t, opts),
 			ownStatus: t.status,
 			subagentsWorking: 0,

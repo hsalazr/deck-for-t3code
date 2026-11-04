@@ -18,6 +18,10 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { APP_DIRS, bundleIdOverride, t3AppInstalled } from "./app.ts";
+
+export { t3AppInstalled };
+
 /** Why the plugin can't reach T3, so keys can say what to do about it. */
 export type ConnectionReason = "not-installed" | "not-running" | "cli-missing" | "sign-in-failed" | "signed-out" | "server-error";
 
@@ -60,14 +64,17 @@ export interface T3Location {
 	cli: string;
 	/** The home came from a setting or T3CODE_HOME rather than the default. */
 	custom: boolean;
+	/** "T3 app bundle id" setting: when set, it is the app to open, and detection is skipped. */
+	appBundleId?: string;
 }
 
 export const expandHome = (p: string): string => (p === "~" || p.startsWith("~/") ? path.join(os.homedir(), p.slice(1)) : p);
 
-export function locate(overrides: { t3Home?: string } = {}, env: NodeJS.ProcessEnv = process.env): T3Location {
+export function locate(overrides: { t3Home?: string; t3AppBundleId?: string } = {}, env: NodeJS.ProcessEnv = process.env): T3Location {
 	const configured = overrides.t3Home?.trim() || env.T3CODE_HOME?.trim() || "";
 	const home = configured ? expandHome(configured) : path.join(os.homedir(), ".t3");
-	return { home, cli: path.join(home, "bin", "t3"), custom: configured !== "" };
+	const appBundleId = bundleIdOverride(overrides.t3AppBundleId);
+	return { home, cli: path.join(home, "bin", "t3"), custom: configured !== "", ...(appBundleId ? { appBundleId } : {}) };
 }
 
 /** T3 home must be an absolute path once `~` is expanded. */
@@ -107,20 +114,6 @@ export function loopbackOrigin(raw: unknown): string {
 	return url.origin;
 }
 
-/** App bundle folders checked when deciding whether T3 Code is installed at all. */
-const APP_DIRS = ["/Applications", path.join(os.homedir(), "Applications")];
-
-export async function t3AppInstalled(dirs: readonly string[] = APP_DIRS): Promise<boolean> {
-	for (const dir of dirs) {
-		try {
-			if ((await fs.readdir(dir)).some((name) => /^T3 Code.*\.app$/.test(name))) return true;
-		} catch {
-			// folder missing or unreadable
-		}
-	}
-	return false;
-}
-
 const exists = (p: string): Promise<boolean> =>
 	fs.stat(p).then(
 		() => true,
@@ -138,13 +131,13 @@ export async function readServerOrigin(loc: T3Location, deps: { appInstalled?: (
 		if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
 			throw new T3Error("server-error", `can't read ${file}: ${(error as Error).message}`);
 		}
-		const installed = await (deps.appInstalled ?? t3AppInstalled)();
+		const installed = await (deps.appInstalled ?? (() => t3AppInstalled(APP_DIRS, { override: loc.appBundleId })))();
 		if (!(await exists(loc.home))) {
 			if (loc.custom) throw new T3Error("not-installed", `T3 home ${loc.home} does not exist. Check T3 home in the key settings.`);
-			if (!installed) throw new T3Error("not-installed", "T3 Code isn't installed (no T3 Code app and no ~/.t3).");
+			if (!installed) throw new T3Error("not-installed", "T3 Code isn't installed (no T3 Code app in /Applications or ~/Applications, and no ~/.t3).");
 			throw new T3Error("not-running", "T3 Code has never run on this Mac. Open it once.");
 		}
-		if (!installed && !loc.custom) throw new T3Error("not-installed", "T3 Code isn't installed (no T3 Code app in /Applications).");
+		if (!installed && !loc.custom) throw new T3Error("not-installed", "T3 Code isn't installed (no T3 Code app in /Applications or ~/Applications).");
 		throw new T3Error("not-running", "T3 Code is not running (no server-runtime.json).");
 	}
 	let state: { origin?: unknown; port?: unknown; pid?: unknown };

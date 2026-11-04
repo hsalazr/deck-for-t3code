@@ -23,10 +23,11 @@ import { execFileSync, execSync } from "node:child_process";
 import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseQuickMessages, type ThreadCard } from "../src/model.ts";
+import { type ThreadCard } from "../src/model.ts";
 import { renderActionKey, renderBackKey, renderOverview, renderThreadKey, renderUsageKey, type ActionKeyInput } from "../src/render.ts";
 import { pace, type UsageMetric } from "../src/usage.ts";
 import { PROFILES } from "../scripts/build-profile.mjs";
+import { EXAMPLE_MESSAGES } from "./quick-messages.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SCRATCH = "/tmp/t3deck-docs2";
@@ -179,20 +180,7 @@ function heroKeys(): string[] {
 	return keys;
 }
 
-/** Quick messages as a user would type them in the settings: one per line, `Label | full text` allowed. */
-const QUICK_MESSAGES = parseQuickMessages(`continue
-run the tests and report
-summarize where you are
-Open PR | open a pull request for this branch
-address the review comments
-merge if CI is green
-write a handoff file
-add tests for this
-explain the last change
-check for flaky tests
-rebase on main
-update the changelog
-list open TODOs`);
+const QUICK_MESSAGES = EXAMPLE_MESSAGES;
 
 /** The Thread Actions page of one bundled profile for one thread, key by key, in reading order. */
 function actionKeys(profile: (typeof PROFILES)[number]): string[] {
@@ -333,12 +321,7 @@ function renderDeckShots(): void {
 	// Site images: just the deck, on transparent, at 2×.
 	const bare = (keys: string[], columns = 8): string => `<style>${BASE_CSS}body{background:transparent;padding:0}.deck{box-shadow:0 0 0 1px #ffffff1a,inset 0 1px 0 #ffffff14}</style>${deck(keys, columns)}`;
 	shot("hero", bare(hero), join(ASSETS, "hero.png"), DECK_W, DECK_H, 2, true);
-	shot("actions-page", bare(actions), join(ASSETS, "thread-actions.png"), DECK_W, DECK_H, 2, true);
-	// The same page on the other decks that ship one, straight from the bundled layouts.
-	for (const [file, name] of [["Deck for T3 Code", "thread-actions-sd"], ["Deck for T3 Code Neo", "thread-actions-neo"], ["Deck for T3 Code Mini", "thread-actions-mini"]] as const) {
-		const p = profileFor(file);
-		shot(name, bare(actionKeys(p), p.columns), join(ASSETS, `${name}.png`), deckW(p.columns), deckH(p.rows), 2, true);
-	}
+	// The same page on the other decks that ship one: marketing/render-devices.ts (the site's carousel).
 
 	// Marketplace images (1920×960, black stage, glow, headline).
 	const stage = (inner: string, css = ""): string => `<style>${BASE_CSS}${css}</style><div class="stage" style="width:1920px;height:960px"><div class="glow"></div>${inner}</div>`;

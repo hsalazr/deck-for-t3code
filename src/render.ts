@@ -546,6 +546,16 @@ function splitAt(word: string, room: number): [string, string] {
 	let i = 0;
 	while (i < gs.length && w + charWidth(gs[i]!) <= room) w += charWidth(gs[i++]!);
 	if (i === 0) i = 1;
+	// Prefer breaking after a hyphen, slash or underscore that fits ("double-" + "check")
+	// over cutting at an arbitrary letter ("double-chec" + "k").
+	if (i < gs.length) {
+		for (let j = i - 1; j >= 2; j--) {
+			if (gs[j] === "-" || gs[j] === "/" || gs[j] === "_") {
+				i = j + 1;
+				break;
+			}
+		}
+	}
 	return [gs.slice(0, i).join(""), gs.slice(i).join("")];
 }
 
@@ -584,6 +594,12 @@ export function wrap(input: string, width: number, maxLines: number, widthOf: (l
 		// A short first line (glyph, spinner) that can't take the word: start on the next, wider line.
 		if (!current && w > room() && lines.length === 0 && w <= widthOf(1) && room() < widthOf(1)) breakLine();
 		while (w > room()) {
+			// A word that fits on the next line moves there whole; only a word longer
+			// than an empty line is split.
+			if (current && w <= widthOf(lines.length + 1)) {
+				breakLine();
+				continue;
+			}
 			// Hard-split words longer than a line.
 			const space = current ? room() - used - SPACE : room();
 			if (current && space < 3) {

@@ -99,7 +99,14 @@ section { padding: 128px 0 0; }
 .hero-media img, .hero-media video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .hero-media video { background: transparent; }
 .hero-media.is-square { aspect-ratio: 1 / 1; }
-@media (prefers-reduced-motion: reduce) { .hero-media video { display: none; } }
+/* Reduce motion: without JavaScript only the still shows; demo-video.js stops the
+   autoplay and adds .is-opt-in plus a play button instead. */
+@media (prefers-reduced-motion: reduce) { .hero-media:not(.is-opt-in) video { display: none; } }
+.demo-play { position: absolute; left: 50%; bottom: 9%; transform: translateX(-50%); /* below the keys the first frame is about */ display: inline-flex; align-items: center; gap: 10px; padding: 14px 22px 14px 18px; border-radius: 999px; border: 1px solid #ffffff33; background: #000000b3; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: #fff; font: 600 17px/1 var(--sans, system-ui); cursor: pointer; box-shadow: 0 10px 30px #000a; }
+.demo-play:hover { background: var(--accent-strong); border-color: transparent; }
+.demo-play svg { width: 22px; height: 22px; fill: currentColor; }
+.is-square .demo-play { bottom: 4%; gap: 8px; padding: 10px 16px 10px 13px; font-size: 15px; }
+.is-square .demo-play svg { width: 18px; height: 18px; }
 
 /* cards */
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; }

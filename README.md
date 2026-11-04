@@ -1,10 +1,10 @@
 # Deck for T3 Code
 
-Every T3 Code thread on a Stream Deck key. See who's working, who needs you, who's done. Glance, tap, move on.
+Every [T3 Code](https://t3.codes) thread on a Stream Deck key. See who's working, who needs you, who's done. Glance, tap, move on.
 
 ![A Stream Deck XL running Deck for T3 Code: an overview tile, two usage tiles and 24 thread keys. Example data.](docs/assets/hero.png)
 
-**macOS only.** Needs T3 Code installed and running on the same Mac.
+**macOS only.** Needs [T3 Code](https://t3.codes) installed and running on the same Mac.
 
 > Not affiliated with or endorsed by T3 Tools Inc. T3 Code is a trademark of its respective owner.
 

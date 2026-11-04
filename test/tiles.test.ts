@@ -213,3 +213,12 @@ test("offline wording names the fix", () => {
 	assert.ok(!renderThreadKey({ card: undefined, projectName: "", connection: { kind: "offline", detail: "" }, animation: "off", now: 0, primary: false }).includes("<text"));
 	assert.ok(!overview(counts({}), { connection: { kind: "offline", detail: "", reason: "not-running" } }).includes("#F0524F"), "offline overview is grey, not red");
 });
+
+test("a word that fits on the next line moves there whole instead of being split", () => {
+	// A busy tile's first line is narrow (spinner); "Playwright" must not become "Playw" + "right".
+	const lines = wrapWidths("Add Playwright smoke tests", [7, 12, 12, 12]);
+	assert.ok(lines.includes("Add") || lines[0] === "Add", `got ${JSON.stringify(lines)}`);
+	assert.ok(lines.some((l) => l.split(" ").includes("Playwright")), `got ${JSON.stringify(lines)}`);
+	// A word longer than any line is still split.
+	assert.ok(wrapWidths("Supercalifragilisticexpialidocious", [12, 12, 12]).length > 1);
+});

@@ -584,6 +584,12 @@ export function wrap(input: string, width: number, maxLines: number, widthOf: (l
 		// A short first line (glyph, spinner) that can't take the word: start on the next, wider line.
 		if (!current && w > room() && lines.length === 0 && w <= widthOf(1) && room() < widthOf(1)) breakLine();
 		while (w > room()) {
+			// A word that fits on the next line moves there whole; only a word longer
+			// than an empty line is split.
+			if (current && w <= widthOf(lines.length + 1)) {
+				breakLine();
+				continue;
+			}
 			// Hard-split words longer than a line.
 			const space = current ? room() - used - SPACE : room();
 			if (current && space < 3) {

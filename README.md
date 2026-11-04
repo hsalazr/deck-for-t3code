@@ -2,7 +2,7 @@
 
 Every [T3 Code](https://t3.codes) thread on a Stream Deck key. See who's working, who needs you, who's done. Glance, tap, move on.
 
-![A Stream Deck XL running Deck for T3 Code: an overview tile, two usage tiles and 24 thread keys. Example data.](docs/assets/hero.png)
+![Deck for T3 Code on a Stream Deck XL: start with two keys, tap for every thread, hold for actions, one key in every state. Example data.](docs/assets/demo.gif)
 
 **macOS only.** Needs [T3 Code](https://t3.codes) installed and running on the same Mac.
 
@@ -30,9 +30,9 @@ Every [T3 Code](https://t3.codes) thread on a Stream Deck key. See who's working
 
 ## Install
 
-**From the Stream Deck Marketplace:** coming soon.
+**From the Stream Deck Marketplace:** coming soon. For now, use a release.
 
-**From a release:** download the `.streamDeckPlugin` file from [Releases](https://github.com/hsalazr/deck-for-t3code/releases) and double-click it.
+**From a release:** download the `.streamDeckPlugin` file from [GitHub Releases](https://github.com/hsalazr/deck-for-t3code/releases) and double-click it.
 
 **From source** (Node 24):
 
@@ -220,8 +220,8 @@ Bug reports, ideas and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIB
 
 Deck for T3 Code is free. If it saves you time, you can chip in:
 
-- [GitHub Sponsors](https://github.com/sponsors/hsalazr) (preferred)
-- [Liberapay](https://liberapay.com/hsalazr)
+- 💖 [GitHub Sponsors](https://github.com/sponsors/hsalazr) (preferred)
+- 💛 [Liberapay](https://liberapay.com/hsalazr)
 
 Bug reports and stars help just as much.
 

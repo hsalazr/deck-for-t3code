@@ -1,4 +1,4 @@
-/* Deck for T3 Code: static site styles. No build step, no external requests. */
+/* Deck for T3 Code: static site styles. No build step, no external resources. */
 :root {
   color-scheme: dark;
   --bg: #000;
@@ -58,17 +58,32 @@ section { padding: 128px 0 0; }
 .nav { display: flex; align-items: center; gap: 22px; font-size: 15px; }
 .nav a { color: var(--muted); text-decoration: none; }
 .nav a:hover { color: #fff; }
-.nav .gh { color: var(--text); border: 1px solid var(--line-strong); border-radius: 999px; padding: 6px 14px; }
+.nav .gh { display: inline-flex; align-items: center; gap: 8px; color: var(--text); border: 1px solid var(--line-strong); border-radius: 999px; padding: 6px 14px; }
 .nav .gh:hover { border-color: #ffffff66; }
-.nav .sponsor { display: inline-flex; align-items: center; gap: 6px; }
-.nav .sponsor svg { color: var(--accent); }
-.nav .sponsor:hover svg { color: #fff; }
+.nav .sponsor { display: inline-flex; align-items: center; gap: 7px; }
+
+/* icons: inline SVG sprite, sized to the text */
+.ico { width: 16px; height: 16px; flex: none; fill: currentColor; }
+.ico-heart { color: #db61a2; }
+.ico-lp { color: #f6c915; }
+.btn .ico { width: 18px; height: 18px; }
+.foot a:has(.ico) { display: inline-flex; align-items: center; gap: 8px; }
+/* GitHub star count: hidden until stars.js sees more than 100 stars */
+.stars { display: inline-flex; align-items: center; gap: 5px; margin-left: 2px; padding-left: 10px; border-left: 1px solid var(--line-strong); font-size: .88em; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--muted); }
+.stars[hidden] { display: none; }
+.stars .ico { width: 14px; height: 14px; color: #e3b341; }
+.btn.primary .stars { color: #ffffffd9; border-left-color: #ffffff4d; }
+.btn.primary .stars .ico { color: #ffe08a; }
 
 /* buttons */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 22px; border-radius: 999px; font: 600 16px/1 var(--sans); text-decoration: none; border: 1px solid var(--line-strong); color: var(--text); background: transparent; transition: border-color .15s, background .15s; }
 .btn:hover { border-color: #ffffff77; color: #fff; }
 .btn.primary { background: var(--accent-strong); border-color: transparent; color: #fff; }
 .btn.primary:hover { background: oklch(0.65 0.19 258); background: color-mix(in oklab, var(--accent-strong), white 12%); }
+/* Marketplace button until the listing exists: not a link, visibly off */
+.btn:disabled, .btn[aria-disabled="true"] { cursor: default; color: var(--muted); background: #ffffff06; border-style: dashed; border-color: var(--line-strong); opacity: .85; }
+.btn:disabled:hover { border-color: var(--line-strong); color: var(--muted); }
+.soon { display: inline-block; padding: 4px 9px; border: 1px solid #6a96f566; border-radius: 999px; background: #6a96f51f; color: var(--accent); font: 600 11px/1 var(--mono); letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; vertical-align: 2px; }
 
 /* hero */
 .hero { padding-top: 72px; text-align: center; position: relative; }
@@ -78,7 +93,6 @@ section { padding: 128px 0 0; }
 .hero h1 em { font-style: normal; color: var(--accent); }
 .hero .sub { max-width: 620px; margin: 22px auto 0; color: var(--muted); font-size: clamp(18px, 2.2vw, 21px); }
 .cta { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 34px; }
-.cta-note { margin-top: 14px; font-size: 14px; color: var(--muted); }
 /* hero media: the still image is always underneath; the video fades over it once it has a frame */
 .hero-media { position: relative; margin: 64px auto 0; max-width: 1040px; aspect-ratio: 16 / 9; border-radius: clamp(14px, 2.4vw, 28px); overflow: hidden; background: #000; box-shadow: 0 0 0 1px var(--line), 0 40px 80px #000; }
 /* 16:9 like the demo video; the wider still image fits inside instead of being cropped. */
@@ -96,10 +110,8 @@ section { padding: 128px 0 0; }
 /* support strip */
 .strip { margin-top: 56px; display: flex; align-items: center; justify-content: space-between; gap: 20px 32px; flex-wrap: wrap; padding: 20px 24px; border: 1px solid #6a96f544; border-radius: var(--radius); background: linear-gradient(90deg, #6a96f51a, #6a96f50a 60%, transparent); }
 .strip p { font-size: 17px; max-width: 560px; }
-.strip strong { color: #fff; }
 .strip-btns { display: flex; flex-wrap: wrap; gap: 10px; }
 .strip .btn { min-height: 44px; padding: 0 18px; font-size: 15px; }
-.lead-in { margin: 56px 0 28px; text-align: center; color: var(--muted); }
 
 /* key legend */
 .keys { grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); }
@@ -107,7 +119,6 @@ section { padding: 128px 0 0; }
 .key-card img { width: 112px; height: 112px; border-radius: 10px; box-shadow: 0 0 0 1px var(--line-strong); }
 .key-card h3 { font-size: 18px; }
 .key-card p { margin-top: 4px; font-size: 15px; line-height: 1.5; }
-.note { margin-top: 24px; color: var(--muted); font-size: 16px; max-width: 760px; }
 
 /* split layouts */
 .split > * { min-width: 0; }
@@ -223,8 +234,9 @@ footer { margin-top: 128px; border-top: 1px solid var(--line); padding: 40px 0 5
   .nav .gh { padding: 6px 12px; }
   .nav .sponsor span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .nav .sponsor { padding: 10px 6px; }
+  .nav .stars { display: none; } /* the hero button carries the count on phones */
   .strip { padding: 18px; }
-  .strip-btns, .strip .btn { width: 100%; }
+  .strip-btns, .strip .btn, .cta .btn { width: 100%; }
   summary { padding: 14px 16px; }
   .d-body { padding: 4px 16px 20px; }
   .hero-media { margin-top: 48px; }
@@ -238,7 +250,7 @@ footer { margin-top: 128px; border-top: 1px solid var(--line); padding: 40px 0 5
 .steps > li > div { min-width: 0; }
 
 /* thread actions on other decks: same key size as each other, so decks compare by size */
-.deck-shots { display: flex; flex-wrap: wrap; gap: 28px 32px; align-items: flex-end; justify-content: center; }
+.deck-shots { margin-top: 56px; display: flex; flex-wrap: wrap; gap: 28px 32px; align-items: flex-end; justify-content: center; }
 .deck-shots figure { margin: 0; max-width: 100%; }
 .deck-shots img { width: 100%; height: auto; filter: drop-shadow(0 20px 40px #000); }
 .deck-shots figure:nth-child(1) { width: 518px; }

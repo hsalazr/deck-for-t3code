@@ -9,6 +9,7 @@
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/icon-256.png">
   <link rel="stylesheet" href="assets/style.css">
+  <script src="assets/stars.js" defer></script>
   <meta property="og:type" content="website">
   <meta property="og:title" content="Deck for T3 Code">
   <meta property="og:description" content="Every T3 Code thread on a Stream Deck key. See who's working, who needs you, who's done.">
@@ -17,6 +18,13 @@
   <meta name="twitter:card" content="summary_large_image">
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <!-- Icons: GitHub mark, heart and star from Octicons (MIT); Liberapay from Simple Icons (CC0). -->
+  <symbol id="i-github" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 16 16"><path d="M4.25 2.5c-1.336 0-2.75 1.164-2.75 3 0 2.15 1.58 4.144 3.365 5.682A20.565 20.565 0 0 0 8 13.393a20.561 20.561 0 0 0 3.135-2.211C12.92 9.644 14.5 7.65 14.5 5.5c0-1.836-1.414-3-2.75-3-1.373 0-2.609.986-3.029 2.456a.749.749 0 0 1-1.442 0C6.859 3.486 5.623 2.5 4.25 2.5zM8 14.25l-.345.666-.002-.001-.006-.003-.018-.01a7.643 7.643 0 0 1-.31-.17 22.075 22.075 0 0 1-3.434-2.414C2.045 10.731 0 8.35 0 5.5 0 2.836 2.086 1 4.25 1 5.797 1 7.153 1.802 8 3.02 8.847 1.802 10.203 1 11.75 1 13.914 1 16 2.836 16 5.5c0 2.85-2.045 5.231-3.885 6.818a22.08 22.08 0 0 1-3.744 2.584l-.018.01-.006.003h-.002L8 14.25zm0 0 .345.666a.752.752 0 0 1-.69 0L8 14.25z"/></symbol>
+  <symbol id="i-star" viewBox="0 0 16 16"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25z"/></symbol>
+  <symbol id="i-lp" viewBox="0 0 24 24"><path d="M2.32 0A2.321 2.321 0 0 0 0 2.32v19.36A2.321 2.321 0 0 0 2.32 24h19.36A2.32 2.32 0 0 0 24 21.68V2.32A2.32 2.32 0 0 0 21.68 0zm9.208 3.98l-2.27 9.405a2.953 2.953 0 0 0-.073.539.853.853 0 0 0 .09.432.7.7 0 0 0 .334.302c.157.077.378.126.661.147l-.49 2.008c-.772 0-1.38-.1-1.82-.3-.441-.203-.757-.477-.947-.826a2.391 2.391 0 0 1-.278-1.2c.005-.452.068-.933.188-1.445l2.074-8.67zm3.9 3.888c.61 0 1.135.092 1.576.277.44.185.802.438 1.085.76.283.32.493.696.629 1.126.136.43.204.89.204 1.379v.001c0 .794-.13 1.52-.392 2.179a5.16 5.16 0 0 1-1.086 1.706 4.84 4.84 0 0 1-1.665 1.118c-.648.267-1.353.4-2.114.4-.37 0-.74-.033-1.11-.098l-.735 2.956H9.403l2.71-11.298c.435-.13.934-.248 1.494-.351a10.045 10.045 0 0 1 1.821-.155zm-.31 2.041a4.67 4.67 0 0 0-.98.098l-1.143 4.752c.185.044.413.065.685.065.425 0 .812-.079 1.16-.237a2.556 2.556 0 0 0 .89-.661c.244-.283.435-.623.571-1.02a4.03 4.03 0 0 0 .204-1.315c0-.468-.104-.865-.31-1.192-.207-.326-.566-.49-1.077-.49z"/></symbol>
+</svg>
 <a class="skip" href="#main">Skip to content</a>
 
 <header class="site-header">
@@ -27,22 +35,22 @@
       <a href="#how">How it works</a>
       <a href="#install">Install</a>
       <a href="#faq">FAQ</a>
-      <a class="sponsor" href="https://github.com/sponsors/hsalazr"><svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M8 14.2S1.8 10.6 1.8 6.1A3.6 3.6 0 0 1 8 3.7a3.6 3.6 0 0 1 6.2 2.4C14.2 10.6 8 14.2 8 14.2z"/></svg><span>Sponsor</span></a>
-      <a class="gh" href="https://github.com/hsalazr/deck-for-t3code">GitHub</a>
+      <a class="sponsor" href="https://github.com/sponsors/hsalazr"><svg class="ico ico-heart" aria-hidden="true"><use href="#i-heart"/></svg><span>Sponsor</span></a>
+      <a class="gh" href="https://github.com/hsalazr/deck-for-t3code"><svg class="ico" aria-hidden="true"><use href="#i-github"/></svg><span>GitHub</span><span class="stars" data-stars hidden><svg class="ico" aria-hidden="true"><use href="#i-star"/></svg><span class="stars-n"></span><span class="visually-hidden"> stars on GitHub</span></span></a>
     </nav>
   </div>
 </header>
 
 <main id="main">
   <div class="hero wrap" id="top">
-    <span class="pill">macOS · Stream Deck 7.1+ · free and open source</span>
+    <span class="pill">macOS · Stream Deck 7.1+ · Free, open source</span>
     <h1>Your agents, <em>on a key.</em></h1>
     <p class="sub">Every <a class="t3-link" href="https://t3.codes" rel="noopener">T3 Code</a> thread on your Stream Deck. See who's working, who needs you, who's done.</p>
     <div class="cta">
-      <a class="btn primary" href="#">Get it on the Stream Deck Marketplace</a>
-      <a class="btn" href="https://github.com/hsalazr/deck-for-t3code">View on GitHub</a>
+      <a class="btn primary" href="https://github.com/hsalazr/deck-for-t3code"><svg class="ico" aria-hidden="true"><use href="#i-github"/></svg><span>View on GitHub</span><span class="stars" data-stars hidden><svg class="ico" aria-hidden="true"><use href="#i-star"/></svg><span class="stars-n"></span><span class="visually-hidden"> stars on GitHub</span></span></a>
+      <!-- MARKETPLACE_URL: replace when listed -->
+      <button class="btn soon-btn" type="button" disabled aria-disabled="true"><span>Stream Deck Marketplace</span><span class="soon">Coming soon</span></button>
     </div>
-    <p class="cta-note">Needs T3 Code on the same Mac.</p>
     <div class="hero-media">
       <img src="assets/hero.png" width="2688" height="1408" alt="A Stream Deck XL full of thread keys: amber for needs you, green for done, blue spinners for working, one dashed key paused by a usage limit. Example data.">
       <video autoplay muted loop playsinline preload="metadata" poster="assets/demo-poster.png" aria-hidden="true" tabindex="-1">
@@ -54,21 +62,21 @@
 
   <section id="why" aria-labelledby="why-h">
     <div class="wrap">
-      <h2 class="visually-hidden" id="why-h">What it does</h2>
+      <h2 class="visually-hidden" id="why-h">At a glance</h2>
       <div class="grid three">
-        <div class="card"><h3>One glance</h3><p>The Overview key counts what needs you, what's working and what's done.</p></div>
-        <div class="card"><h3>Subagents folded in</h3><p>They ride along inside their thread's key. A waiting one still makes it flash.</p></div>
-        <div class="card"><h3>Tap, hold, done</h3><p>Tap to open a thread. Hold to steer it: quick messages, compact, snooze, stop.</p></div>
+        <div class="card"><h3>Start with two keys</h3><p>An Overview key and a Thread key. Nothing to pair.</p></div>
+        <div class="card"><h3>Tap for every thread</h3><p>Overview fills the deck with threads. Tap one to open it.</p></div>
+        <div class="card"><h3>Hold for actions</h3><p>Hold a thread key to message, compact, snooze or stop it.</p></div>
       </div>
     </div>
   </section>
 
   <div class="wrap">
     <aside class="strip" aria-label="Support">
-      <p><strong>Free forever.</strong> If it saves you a context switch, a coffee keeps it alive.</p>
+      <p>Saves you a context switch? A tip keeps it alive.</p>
       <div class="strip-btns">
-        <a class="btn primary" href="https://github.com/sponsors/hsalazr">GitHub Sponsors</a>
-        <a class="btn" href="https://liberapay.com/hsalazr">Liberapay</a>
+        <a class="btn" href="https://github.com/sponsors/hsalazr"><svg class="ico ico-heart" aria-hidden="true"><use href="#i-heart"/></svg><span>GitHub Sponsors</span></a>
+        <a class="btn" href="https://liberapay.com/hsalazr"><svg class="ico ico-lp" aria-hidden="true"><use href="#i-lp"/></svg><span>Liberapay</span></a>
       </div>
     </aside>
   </div>
@@ -76,27 +84,27 @@
   <section id="keys" aria-labelledby="keys-h">
     <div class="wrap">
       <div class="section-head">
-        <p class="eyebrow">The keys</p>
-        <h2 id="keys-h">Colour says it before you read it.</h2>
-        <p>Anything that needs you also gets a glyph, and only those blink.</p>
+        <p class="eyebrow">Keys</p>
+        <h2 id="keys-h">One key, every state.</h2>
       </div>
       <div class="grid keys">
-        <article class="card key-card"><img src="assets/keys/needs-you.png" width="288" height="288" alt="A solid amber key with an exclamation mark, titled Add retry to checkout flow"><div><h3>Needs you</h3><p>Amber and blinking, marked <strong>!</strong>. Waiting on an approval or an answer.</p></div></article>
-        <article class="card key-card"><img src="assets/keys/failed.png" width="288" height="288" alt="A solid red key with a cross, titled Cache build artifacts in CI"><div><h3>Failed</h3><p>Red and blinking, marked <strong>✕</strong>. The latest run failed.</p></div></article>
-        <article class="card key-card"><img src="assets/keys/done.png" width="288" height="288" alt="A solid green key with a check mark, titled Fix flaky login test"><div><h3>Done</h3><p>Green, marked <strong>✓</strong>. Finished while you were away. Never blinks.</p></div></article>
-        <article class="card key-card"><img src="assets/keys/working.png" width="288" height="288" alt="A dark key titled Paginate the orders endpoint with a blue spinner in the corner, the project name acme-api, 23 percent, and a thin context bar along the bottom"><div><h3>Working</h3><p>Blue spinner. The agent or a subagent is running.</p></div></article>
-        <article class="card key-card"><img src="assets/keys/subagents.png" width="288" height="288" alt="A dark key with a blue spinner and a blue badge showing 2 subagents"><div><h3>Subagents</h3><p>The badge counts those working inside the thread.</p></div></article>
-        <article class="card key-card"><img src="assets/keys/background.png" width="288" height="288" alt="A dark key with a white spinner and a chip reading PR #42 CI"><div><h3>Waiting on something</h3><p>White spinner. Background work, like a PR's CI, is still running.</p></div></article>
-        <article class="card key-card"><img src="assets/keys/limit.png" width="288" height="288" alt="A dimmed key with a dashed border and a panel reading USAGE LIMIT, back in 2h 10m"><div><h3>Usage limit</h3><p>Dashed and dim, with a countdown to when it resumes.</p></div></article>
-        <article class="card key-card"><img src="assets/keys/idle.png" width="288" height="288" alt="A plain dark key titled Document the release process, with a thin context bar"><div><h3>Idle</h3><p>Quiet. Leaves the deck after 8 hours by default.</p></div></article>
-        <article class="card key-card"><img src="assets/keys/overview.png" width="288" height="288" alt="An amber Overview key: T3 CODE, 2 need you, 12 working, 2 done, and +3 in the corner"><div><h3>Overview</h3><p>Counts it all. Tap for the full threads page; hold to clear highlights.</p></div></article>
-        <article class="card key-card"><img src="assets/keys/back-more.png" width="288" height="288" alt="A Back key with an amber chevron and the text +4 more"><div><h3>Back</h3><p>Returns to your previous profile. The chevron turns amber when something needs you.</p></div></article>
+        <article class="card key-card"><img src="assets/keys/needs-you.png" width="288" height="288" alt="A solid amber thread key with an exclamation mark, titled Add retry to checkout flow" loading="lazy"><div><h3>Needs you</h3><p>Amber, blinking, marked <strong>!</strong>.</p></div></article>
+        <article class="card key-card"><img src="assets/keys/failed.png" width="288" height="288" alt="A solid red thread key with a cross, titled Cache build artifacts in CI" loading="lazy"><div><h3>Failed</h3><p>Red, blinking, marked <strong>✕</strong>.</p></div></article>
+        <article class="card key-card"><img src="assets/keys/done.png" width="288" height="288" alt="A solid green thread key with a check mark, titled Fix flaky login test" loading="lazy"><div><h3>Done</h3><p>Green, marked <strong>✓</strong>. Never blinks.</p></div></article>
+        <article class="card key-card"><img src="assets/keys/working.png" width="288" height="288" alt="A dark thread key titled Paginate the orders endpoint with a blue spinner in the corner, the project name acme-api, 23 percent, and a thin context bar along the bottom" loading="lazy"><div><h3>Working</h3><p>Blue spinner.</p></div></article>
+        <article class="card key-card"><img src="assets/keys/subagents.png" width="288" height="288" alt="A dark thread key with a blue spinner and a blue badge showing 2 subagents" loading="lazy"><div><h3>Subagents</h3><p>A badge counts those working inside.</p></div></article>
+        <article class="card key-card"><img src="assets/keys/background.png" width="288" height="288" alt="A dark thread key with a white spinner and a chip reading PR #42 CI" loading="lazy"><div><h3>Background work</h3><p>White spinner. A PR's CI, say.</p></div></article>
+        <article class="card key-card"><img src="assets/keys/limit.png" width="288" height="288" alt="A dimmed thread key with a dashed border and a panel reading USAGE LIMIT, back in 2h 10m" loading="lazy"><div><h3>Usage limit</h3><p>Dashed and dim, with a countdown.</p></div></article>
+        <article class="card key-card"><img src="assets/keys/idle.png" width="288" height="288" alt="A plain dark thread key titled Document the release process, with a thin context bar" loading="lazy"><div><h3>Idle</h3><p>Quiet. Leaves after 8 hours.</p></div></article>
+        <article class="card key-card"><img src="assets/keys/overview.png" width="288" height="288" alt="An amber Overview key: T3 CODE, 2 need you, 12 working, 2 done, and +3 in the corner" loading="lazy"><div><h3>Overview</h3><p>Counts needs you, working, done. Tap for the T3 Threads page; hold to clear highlights.</p></div></article>
+        <article class="card key-card"><img src="assets/keys/back-more.png" width="288" height="288" alt="A Back key with an amber chevron and the text +4 more" loading="lazy"><div><h3>Back</h3><p>Returns to your previous profile.</p></div></article>
       </div>
       <div class="disclosures">
         <details>
-          <summary><span class="s-text"><span class="s-title">More about the keys</span><span class="s-hint">Context bar, +N, highlights, error keys</span></span></summary>
+          <summary><span class="s-text"><span class="s-title">More about the keys</span><span class="s-hint">Colour, context bar, +N, highlights, errors</span></span></summary>
           <div class="d-body">
             <ul class="checks">
+              <li><strong>Colour and motion:</strong> <span>needs you (waiting on an approval or answer) and failed (the latest run failed) blink; nothing else does. Done stays steady. A waiting subagent makes its thread's key flash, and the Back key's chevron turns amber when anything needs you. Working means the agent or a subagent is running.</span></li>
               <li><strong>Context bar:</strong> <span>the thin line along the bottom shows how full the context window is: grey, amber from 70%, red from 85%.</span></li>
               <li><strong>+N and +N more:</strong> <span>threads that don't fit on this deck's Thread keys.</span></li>
               <li><strong>Highlights:</strong> <span>done and failed clear when you open the thread, from the key or from T3 Code. Having it open while the run finishes doesn't count.</span></li>
@@ -112,26 +120,20 @@
     <div class="wrap">
       <div class="section-head">
         <p class="eyebrow">Thread Actions</p>
-        <h2 id="actions-h">Hold a key. Steer the thread.</h2>
-        <p>Hold a thread key for half a second, then let go. You get a page just for that thread.</p>
+        <h2 id="actions-h">Steer any thread.</h2>
+        <p>Hold a thread key and let go. That thread gets its own page: quick messages, compact, snooze, settle, stop.</p>
       </div>
       <figure class="shot">
-        <img src="assets/thread-actions.png" width="2688" height="1408" alt="The Thread Actions page on a Stream Deck XL: Back, the thread, and Open in the top-left, thirteen quick-message keys such as 'continue' and 'run the tests and report', and a bottom row with Compact, two Snooze keys, Settle, and a red Stop key in the corner." loading="lazy">
+        <img src="assets/thread-actions.png" width="2688" height="1408" alt="The Thread Actions page on a Stream Deck XL: Back, the thread and Open in the top-left, thirteen quick-message keys such as 'continue' and 'run the tests and report', and a bottom row with Compact, two Snooze keys, Settle and a red Stop key in the corner." loading="lazy">
       </figure>
-      <div class="grid three">
-        <div class="card"><h3>Quick messages</h3><p>Your own lines, like "continue", sent as if you'd typed them.</p></div>
-        <div class="card"><h3>Compact and snooze</h3><p>Trim the context, or send a thread away for a while.</p></div>
-        <div class="card"><h3>Hold to confirm</h3><p>Risky keys need a 0.8-second hold. A stray tap does nothing.</p></div>
-      </div>
-      <p class="lead-in">Also bundled for the 15-key Stream Deck, the Neo and the Mini.</p>
       <div class="deck-shots">
-        <figure><img src="assets/thread-actions-sd.png" width="1728" height="1088" alt="The Thread Actions page on a 15-key Stream Deck: Back, the thread and Open, seven quick messages, and a bottom row of Compact, two Snooze keys, Settle and a red Stop." loading="lazy"><figcaption>Stream Deck, 15 keys</figcaption></figure>
-        <figure><img src="assets/thread-actions-neo.png" width="1408" height="768" alt="The Thread Actions page on a Stream Deck Neo: Back, the thread, two quick messages, then Snooze, Compact, Settle and a red Stop." loading="lazy"><figcaption>Stream Deck Neo</figcaption></figure>
-        <figure><img src="assets/thread-actions-mini.png" width="1088" height="768" alt="The Thread Actions page on a Stream Deck Mini: Back, the thread, Snooze, Compact, Settle and a red Stop." loading="lazy"><figcaption>Stream Deck Mini</figcaption></figure>
+        <figure><img src="assets/thread-actions-sd.png" width="1728" height="1088" alt="The Thread Actions page on a 15-key Stream Deck: Back, the thread and Open, seven quick-message keys, and a bottom row of Compact, two Snooze keys, Settle and a red Stop key." loading="lazy"><figcaption>Stream Deck, 15 keys</figcaption></figure>
+        <figure><img src="assets/thread-actions-neo.png" width="1408" height="768" alt="The Thread Actions page on a Stream Deck Neo: Back, the thread, two quick-message keys, then Snooze, Compact, Settle and a red Stop key." loading="lazy"><figcaption>Stream Deck Neo</figcaption></figure>
+        <figure><img src="assets/thread-actions-mini.png" width="1088" height="768" alt="The Thread Actions page on a Stream Deck Mini: Back, the thread, Snooze, Compact, Settle and a red Stop key." loading="lazy"><figcaption>Stream Deck Mini</figcaption></figure>
       </div>
       <div class="disclosures">
         <details>
-          <summary><span class="s-text"><span class="s-title">Actions, decks and opt-in</span><span class="s-hint">What each deck gets, quick-message syntax, how to turn it on</span></span></summary>
+          <summary><span class="s-text"><span class="s-title">Decks, holds and opt-in</span><span class="s-hint">Deck table, holds, syntax, opt-in</span></span></summary>
           <div class="d-body">
             <div class="table-wrap">
               <table>
@@ -145,11 +147,12 @@
               </table>
             </div>
             <ul class="checks">
-              <li><strong>Other models</strong> <span>(like the Stream Deck +) have no bundled pages. Thread, Overview and Usage keys still work, Overview jumps to the most urgent thread, and a long press on a Thread key clears its highlight.</span></li>
-              <li><strong>Quick messages:</strong> <span>write <code>Label | full text</code> for a short label on the key.</span></li>
-              <li><strong>Snooze</strong> <span>for an hour or until 9:00 tomorrow. The thread leaves your keys, so you land back on the T3 Threads page.</span></li>
-              <li><strong>Compact</strong> <span>sends <code>/compact</code>. Compact, Settle, Stop and quick messages fire after a 0.8-second hold; a tap only shows "Hold to confirm".</span></li>
-              <li><strong>Off until you turn on</strong> <span><strong>Enable thread actions</strong>, which mints a separate token. <a href="#how">More on tokens</a>.</span></li>
+              <li><strong>Other models:</strong> <span>decks like the Stream Deck + have no bundled pages. Thread, Overview and Usage keys still work, Overview jumps to the most urgent thread, and a hold on a Thread key clears its highlight.</span></li>
+              <li><strong>Holds:</strong> <span>opening the page takes half a second. Risky keys (Compact, Settle, Stop and quick messages) fire after 0.8 s; a tap only shows "Hold to confirm", so a stray tap does nothing.</span></li>
+              <li><strong>Quick messages:</strong> <span>your own lines, sent as if you'd typed them. Write <code>Label | full text</code> for a short label on the key.</span></li>
+              <li><strong>Compact:</strong> <span>sends <code>/compact</code>.</span></li>
+              <li><strong>Snooze:</strong> <span>for an hour or until 9:00 tomorrow. The thread leaves your keys, so you land back on the T3 Threads page.</span></li>
+              <li><strong>Opt-in:</strong> <span>off until you tick <strong>Enable thread actions</strong>, which mints a separate token. <a href="#how">More on tokens</a>.</span></li>
             </ul>
           </div>
         </details>
@@ -161,27 +164,27 @@
     <div class="wrap">
       <div class="split">
         <div>
-          <p class="eyebrow">Usage tile</p>
+          <p class="eyebrow">Usage key</p>
           <h2 id="usage-h">Pace your limits.</h2>
           <p>Pick any limit T3 Code reports. The white tick marks even pace.</p>
           <div class="disclosures">
             <details>
-              <summary><span class="s-text"><span class="s-title">Reading the tile</span><span class="s-hint">Bar, ring, colours, refresh</span></span></summary>
+              <summary><span class="s-text"><span class="s-title">Reading the Usage key</span></span></summary>
               <div class="d-body">
                 <ul class="checks">
                   <li><strong>Bar:</strong> <span>percent used, how far ahead or under pace you are (within 3 points is on pace), and time to reset.</span></li>
                   <li><strong>Ring:</strong> <span>one segment per day for weekly limits, per hour for the 5-hour one.</span></li>
-                  <li><strong>Colour is pace:</strong> <span>green under, blue on pace, amber ahead, red when far ahead (15+ points on the ring) or at 90%.</span></li>
-                  <li><strong>Tap</strong> <span>to refresh. Otherwise every 5 minutes, and only while a Usage key is on your deck.</span></li>
+                  <li><strong>Colour:</strong> <span>green under pace, blue on pace, amber ahead, red when far ahead (15+ points on the ring) or at 90%.</span></li>
+                  <li><strong>Tap:</strong> <span>refreshes now. Otherwise see <a href="#how">Updates and load</a>.</span></li>
                 </ul>
               </div>
             </details>
           </div>
         </div>
         <div class="usage-keys">
-          <figure><img src="assets/keys/usage-bar.png" width="288" height="288" alt="Usage tile, bar style: Weekly 64 percent, an amber bar with a white tick, 12 percent ahead, resets in 3d 8h" loading="lazy"><figcaption>Bar: 12% ahead</figcaption></figure>
-          <figure><img src="assets/keys/usage-ring-5h.png" width="288" height="288" alt="Usage tile, ring style: 5-hour limit at 31 percent, five segments, a green fill, and a white tick at even pace" loading="lazy"><figcaption>Ring: 5-hour</figcaption></figure>
-          <figure><img src="assets/keys/usage-ring.png" width="288" height="288" alt="Usage tile, ring style: weekly limit at 38 percent, seven day segments filling green" loading="lazy"><figcaption>Ring: weekly</figcaption></figure>
+          <figure><img src="assets/keys/usage-bar.png" width="288" height="288" alt="Usage key, bar style: Weekly 64 percent, an amber bar with a white tick, 12 percent ahead, resets in 3d 8h" loading="lazy"><figcaption>Bar: 12% ahead</figcaption></figure>
+          <figure><img src="assets/keys/usage-ring-5h.png" width="288" height="288" alt="Usage key, ring style: 5-hour limit at 31 percent, five segments, a green fill, and a white tick at even pace" loading="lazy"><figcaption>Ring: 5-hour</figcaption></figure>
+          <figure><img src="assets/keys/usage-ring.png" width="288" height="288" alt="Usage key, ring style: weekly limit at 38 percent, seven day segments filling green" loading="lazy"><figcaption>Ring: weekly</figcaption></figure>
         </div>
       </div>
     </div>
@@ -191,19 +194,19 @@
     <div class="wrap">
       <div class="section-head">
         <p class="eyebrow">How it works</p>
-        <h2 id="how-h">It only talks to T3 Code. On your Mac.</h2>
+        <h2 id="how-h">It only talks to T3 Code, on your Mac.</h2>
         <p>No cloud, no account, no telemetry.</p>
       </div>
       <div class="flow" role="img" aria-label="Diagram: T3 Code on your Mac sends thread data over localhost to the Deck for T3 Code plugin, which draws keys on your Stream Deck.">
-        <div class="card node"><h3>T3 Code</h3><p>Running on your Mac</p></div>
+        <div class="card node"><h3>T3 Code</h3><p>Your threads</p></div>
         <div class="link" aria-hidden="true"><span>localhost</span><svg viewBox="0 0 56 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7h50M45 2l7 5-7 5"/></svg></div>
-        <div class="card node me"><h3>Deck for T3 Code</h3><p>Up to three local tokens</p></div>
+        <div class="card node me"><h3>Deck for T3 Code</h3><p>Local tokens</p></div>
         <div class="link" aria-hidden="true"><span>keys</span><svg viewBox="0 0 56 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7h50M45 2l7 5-7 5"/></svg></div>
-        <div class="card node"><h3>Stream Deck</h3><p>Status on every key</p></div>
+        <div class="card node"><h3>Stream Deck</h3><p>Keys</p></div>
       </div>
       <div class="disclosures">
         <details>
-          <summary><span class="s-text"><span class="s-title">Tokens and scopes</span><span class="s-hint">Three local tokens: two read-only, one opt-in</span></span></summary>
+          <summary><span class="s-text"><span class="s-title">Tokens and scopes</span><span class="s-hint">Three tokens, one opt-in</span></span></summary>
           <div class="d-body">
             <div class="grid three tokens">
               <div class="tok">
@@ -228,7 +231,7 @@
           </div>
         </details>
         <details>
-          <summary><span class="s-text"><span class="s-title">Where tokens live</span><span class="s-hint">Local storage, loopback only, scrubbed logs</span></span></summary>
+          <summary><span class="s-text"><span class="s-title">Where tokens live</span><span class="s-hint">Storage, loopback, logs</span></span></summary>
           <div class="d-body">
             <ul class="checks">
               <li>Made by your local <code>t3</code> CLI and stored in <code>~/Library/Application Support/io.github.hsalazr.deck-for-t3code/</code>, readable only by you. In <code>t3 auth session list</code> they show as <em>Stream Deck (Deck for T3 Code…)</em>.</li>
@@ -239,7 +242,7 @@
           </div>
         </details>
         <details>
-          <summary><span class="s-text"><span class="s-title">Updates and load</span><span class="s-hint">Live stream, 30-second check, light on T3 Code</span></span></summary>
+          <summary><span class="s-text"><span class="s-title">Updates and load</span><span class="s-hint">What is polled, and when</span></span></summary>
           <div class="d-body">
             <ul class="checks">
               <li>A live stream from T3 Code pushes changes. The thread list is re-read when something changes (no more often than your "Refresh every" setting, 2 seconds by default) and every 30 seconds to be sure.</li>
@@ -249,7 +252,7 @@
           </div>
         </details>
         <details>
-          <summary><span class="s-text"><span class="s-title">Revoking access</span><span class="s-hint">One button, or two CLI commands</span></span></summary>
+          <summary><span class="s-text"><span class="s-title">Revoking access</span><span class="s-hint">One button or two commands</span></span></summary>
           <div class="d-body">
             <ul class="checks">
               <li>Press <strong>Sign out / revoke tokens</strong> in the plugin's settings. <strong>Sign in again</strong> resumes.</li>
@@ -270,14 +273,16 @@
         <h2 id="install-h">Two minutes, tops.</h2>
       </div>
       <ol class="steps">
-        <li><div><h3>Check the basics</h3><p>macOS 13+, the Stream Deck app 7.1+, and T3 Code installed and running.</p></div></li>
-        <li><div><h3>Install the plugin</h3><p>From the Stream Deck Marketplace (link coming soon), or double-click the <code>.streamDeckPlugin</code> from <a href="https://github.com/hsalazr/deck-for-t3code/releases">GitHub Releases</a>.</p></div></li>
-        <li><div><h3>Drag keys onto your deck</h3><p>Add an <strong>Overview</strong> key, a few <strong>Thread</strong> keys and, if you like, a <strong>Usage</strong> key.</p></div></li>
-        <li><div><h3>That's it</h3><p>Nothing to pair. For Thread Actions, tick <strong>Enable thread actions</strong> in a key's settings.</p></div></li>
+        <li><div><h3>Check the basics</h3><p>macOS 13+, Stream Deck app 7.1+, T3 Code running on the same Mac.</p></div></li>
+        <li><div><h3>Install the plugin</h3>
+          <!-- MARKETPLACE_URL: replace when listed -->
+          <p>Marketplace listing: <span class="soon">Coming soon</span>. Until then, double-click the <code>.streamDeckPlugin</code> from <a href="https://github.com/hsalazr/deck-for-t3code/releases">GitHub Releases</a>.</p></div></li>
+        <li><div><h3>Add keys to your deck</h3><p>An <strong>Overview</strong> key, a few <strong>Thread</strong> keys, optionally a <strong>Usage</strong> key.</p></div></li>
+        <li><div><h3>Unlock Thread Actions (optional)</h3><p>Tick <strong>Enable thread actions</strong> in a key's settings.</p></div></li>
       </ol>
       <div class="disclosures">
         <details>
-          <summary><span class="s-text"><span class="s-title">Build it yourself</span><span class="s-hint">Free to fork. Needs Node 24.</span></span></summary>
+          <summary><span class="s-text"><span class="s-title">Build from source</span><span class="s-hint">Needs Node 24</span></span></summary>
           <div class="d-body">
 <pre><code>git clone https://github.com/hsalazr/deck-for-t3code.git
 cd deck-for-t3code
@@ -297,15 +302,12 @@ npx streamdeck link *.sdPlugin</code></pre>
         <h2 id="faq-h">Good questions.</h2>
       </div>
       <div class="disclosures faq">
-        <details><summary><span class="s-text"><span class="s-title">Windows or Linux?</span></span></summary><div class="d-body"><p>Not yet. macOS 13 or later only, and T3 Code has to run on the same Mac.</p></div></details>
-        <details><summary><span class="s-text"><span class="s-title">Do I need T3 Code?</span></span></summary><div class="d-body"><p>Yes. The plugin is a window onto it and does nothing without it. <a href="https://t3.codes" rel="noopener">Get T3 Code</a> (free, macOS).</p></div></details>
-        <details><summary><span class="s-text"><span class="s-title">Which Stream Decks work?</span></span></summary><div class="d-body"><p>Any deck with keys shows Thread, Overview and Usage keys. Full pages are bundled for the XL, the 15-key Stream Deck (including MK.2), the Neo and the Mini; see the table above. Dials and touch strips aren't used.</p></div></details>
-        <details><summary><span class="s-text"><span class="s-title">What does it see, and what leaves my Mac?</span></span></summary><div class="d-body"><p>It reads thread titles, project names, run status, background task names, context size and usage limits from T3 Code, to draw the keys, and keeps them in memory only. Nothing leaves your Mac.</p></div></details>
-        <details><summary><span class="s-text"><span class="s-title">Can it change my threads?</span></span></summary><div class="d-body"><p>Only if you turn on <strong>Enable thread actions</strong>. Until then every token is read-only.</p></div></details>
-        <details><summary><span class="s-text"><span class="s-title">How do I remove access?</span></span></summary><div class="d-body"><p>Press <strong>Sign out / revoke tokens</strong> in the plugin's settings before you uninstall. Other ways are under <a href="#how">How it works</a>.</p></div></details>
+        <details><summary><span class="s-text"><span class="s-title">Windows or Linux?</span></span></summary><div class="d-body"><p>Not yet. macOS 13 or later only.</p></div></details>
+        <details><summary><span class="s-text"><span class="s-title">Do I need T3 Code?</span></span></summary><div class="d-body"><p>Yes. The plugin is a window onto it and does nothing without it. <a href="https://t3.codes" rel="noopener">Get T3 Code</a>.</p></div></details>
+        <details><summary><span class="s-text"><span class="s-title">Which Stream Decks work?</span></span></summary><div class="d-body"><p>Any deck with keys. Full pages are bundled for the XL, the 15-key Stream Deck, the Neo and the Mini; other models get the keys only (see the table under Thread Actions). Dials and touch strips aren't used.</p></div></details>
+        <details><summary><span class="s-text"><span class="s-title">What does it see, and can it change anything?</span></span></summary><div class="d-body"><p>It reads thread titles, project names, run status, background task names, context size and usage limits from T3 Code, to draw the keys, and keeps them in memory only. Nothing leaves your Mac.</p><p>It can only change threads if you turn on <strong>Enable thread actions</strong>. Until then every token is read-only. To remove access, see Revoking access under <a href="#how">How it works</a>.</p></div></details>
         <details><summary><span class="s-text"><span class="s-title">A key says "Sign-in failed" or "T3 CLI missing"</span></span></summary><div class="d-body"><p>The plugin couldn't get a token. Check that T3 Code is running, that <code>~/.t3/bin/t3</code> exists and isn't writable by others (<code>chmod go-w</code>), and that you haven't signed out (press <strong>Sign in again</strong>). If your T3 data lives elsewhere, set <strong>T3 home</strong> to its absolute path.</p></div></details>
-        <details><summary><span class="s-text"><span class="s-title">Is it affiliated with T3 Code?</span></span></summary><div class="d-body"><p>Not affiliated with or endorsed by T3 Tools Inc. T3 Code is a trademark of its respective owner. It's an independent community project, and the key pictures here use made-up example data.</p></div></details>
-        <details><summary><span class="s-text"><span class="s-title">Can I fork it? Sell it?</span></span></summary><div class="d-body"><p>Fork away, it's GPL-3.0-or-later. Free to use and fork. Please don't sell it as a product. That's a request, not a licence term.</p></div></details>
+        <details><summary><span class="s-text"><span class="s-title">Is it affiliated with T3 Code?</span></span></summary><div class="d-body"><p>No. It's an independent community project, and the key pictures here use made-up example data.</p></div></details>
       </div>
     </div>
   </section>
@@ -314,14 +316,13 @@ npx streamdeck link *.sdPlugin</code></pre>
     <div class="wrap">
       <div class="section-head">
         <p class="eyebrow">Support</p>
-        <h2 id="support-h">Free forever. Tips welcome.</h2>
-        <p>A tip keeps it maintained. Bug reports and stars help just as much.</p>
+        <h2 id="support-h">Tips welcome.</h2>
+        <p>Stars and <a href="https://github.com/hsalazr/deck-for-t3code/issues">bug reports</a> help just as much as tips.</p>
       </div>
       <div class="grid support">
-        <div class="card"><h3>GitHub Sponsors</h3><p>Monthly or one-off.</p><a class="btn primary" href="https://github.com/sponsors/hsalazr">Sponsor on GitHub</a></div>
-        <div class="card"><h3>Liberapay</h3><p>Recurring, no platform cut.</p><a class="btn" href="https://liberapay.com/hsalazr">Donate on Liberapay</a></div>
+        <div class="card"><h3>GitHub Sponsors</h3><p>Monthly or one-off.</p><a class="btn" href="https://github.com/sponsors/hsalazr"><svg class="ico ico-heart" aria-hidden="true"><use href="#i-heart"/></svg><span>Sponsor</span></a></div>
+        <div class="card"><h3>Liberapay</h3><p>Recurring, no platform cut.</p><a class="btn" href="https://liberapay.com/hsalazr"><svg class="ico ico-lp" aria-hidden="true"><use href="#i-lp"/></svg><span>Donate</span></a></div>
       </div>
-      <p class="note">Found a bug? <a href="https://github.com/hsalazr/deck-for-t3code/issues">Open an issue</a>.</p>
     </div>
   </section>
 </main>
@@ -331,17 +332,17 @@ npx streamdeck link *.sdPlugin</code></pre>
     <div>
       <a class="brand" href="#top"><img src="assets/icon-256.png" alt="" width="28" height="28"><span>Deck for T3 Code</span></a>
       <p>Licensed GPL-3.0-or-later. Free to use and fork. Please don't sell it as a product.</p>
-      <p class="disclaimer">Not affiliated with or endorsed by T3 Tools Inc. T3 Code is a trademark of its respective owner. Stream Deck is a trademark of its respective owner, and this project isn't affiliated with or endorsed by Elgato or Corsair.</p>
+      <p class="disclaimer">Not affiliated with or endorsed by T3 Tools Inc. T3 Code is a trademark of its respective owner. Stream Deck is a trademark of its respective owner; not affiliated with or endorsed by Elgato or Corsair.</p>
     </div>
     <nav aria-label="Footer">
       <ul>
         <li><a href="https://t3.codes" rel="noopener">T3 Code</a></li>
-        <li><a href="https://github.com/hsalazr/deck-for-t3code">GitHub</a></li>
+        <li><a href="https://github.com/hsalazr/deck-for-t3code"><svg class="ico" aria-hidden="true"><use href="#i-github"/></svg><span>GitHub</span></a></li>
         <li><a href="https://github.com/hsalazr/deck-for-t3code/releases">Releases</a></li>
-        <li><a href="https://github.com/hsalazr/deck-for-t3code/blob/main/LICENSE">License (GPL-3.0-or-later)</a></li>
+        <li><a href="https://github.com/hsalazr/deck-for-t3code/blob/main/LICENSE">License</a></li>
         <li><a href="https://github.com/hsalazr/deck-for-t3code/blob/main/SECURITY.md">Security</a></li>
-        <li><a href="https://github.com/sponsors/hsalazr">GitHub Sponsors</a></li>
-        <li><a href="https://liberapay.com/hsalazr">Liberapay</a></li>
+        <li><a href="https://github.com/sponsors/hsalazr"><svg class="ico ico-heart" aria-hidden="true"><use href="#i-heart"/></svg><span>GitHub Sponsors</span></a></li>
+        <li><a href="https://liberapay.com/hsalazr"><svg class="ico ico-lp" aria-hidden="true"><use href="#i-lp"/></svg><span>Liberapay</span></a></li>
       </ul>
     </nav>
   </div>

@@ -66,7 +66,7 @@ const FRAMES = join(SCRATCH, "frames");
 
 const FPS = 30;
 /** Loop length. A multiple of 1000/15 ms too, so the 15 fps GIF loops on a whole frame. */
-const DURATION = 33_000;
+const DURATION = 39_600;
 const FRAME_COUNT = (DURATION * FPS) / 1000;
 
 /** Same as src/deck.ts. */
@@ -107,8 +107,24 @@ const T_TO_PROFILE = TAP_BACK.up + 30;
 // Act 4: one key, every state.
 const ACT4 = 19_600;
 const ZOOM_IN = [19_800, 20_850] as const;
-const ZOOM_OUT = [31_450, 32_500] as const;
-const ACT1_AGAIN = 31_600;
+/**
+ * How long each state holds the big key. The blinking ones get whole blink
+ * cycles from src/render.ts (needs you 900 ms, failed 1400 ms), starting lit
+ * and ending dark, so no blink is cut short.
+ */
+const STATE_MS = { working: 1600, subagents: 2100, background: 1800, input: 3 * 900, done: 1800, failed: 2 * 1400, paused: 1800, context: 2400 };
+const STATE_AT = (() => {
+	let at = ZOOM_IN[1];
+	const out: Record<string, number> = {};
+	for (const [k, ms] of Object.entries(STATE_MS)) {
+		out[k] = at;
+		at += ms;
+	}
+	out.end = at;
+	return out as Record<keyof typeof STATE_MS | "end", number>;
+})();
+const ZOOM_OUT = [STATE_AT.end, STATE_AT.end + 1050] as const;
+const ACT1_AGAIN = STATE_AT.end + 150;
 
 // ---------------------------------------------------------------- layout (CSS px, 1920×1080 master)
 
@@ -557,28 +573,37 @@ interface StarState {
 }
 const keyAt = (card: ThreadCard, local: number): string => renderThreadKey({ card, projectName: card.projectId, connection: ok, animation: "smooth", now: BASE + local });
 const STATES: StarState[] = [
-	{ id: "working", from: ZOOM_IN[0], to: 22_000, color: PALETTE.working, title: "Working", sub: "A blue spinner while the agent runs.", svg: (l) => keyAt(star({}), l) },
+	{ id: "working", from: ZOOM_IN[0], to: STATE_AT.subagents, color: PALETTE.working, title: "Working", sub: "A blue spinner while the agent runs.", svg: (l) => keyAt(star({}), l) },
 	{
-		id: "subagents", from: 22_000, to: 23_600, color: PALETTE.working, title: "Subagents", sub: "Folded into the same key. A badge counts them.",
-		svg: (l) => keyAt(star({ subagents: l < 500 ? 1 : l < 1000 ? 2 : 3 }), l),
+		id: "subagents", from: STATE_AT.subagents, to: STATE_AT.background, color: PALETTE.working, title: "Subagents", sub: "Folded into the same key. A badge counts them.",
+		svg: (l) => keyAt(star({ subagents: l < 600 ? 1 : l < 1200 ? 2 : 3 }), l),
 	},
 	{
-		id: "background", from: 23_600, to: 24_850, color: PALETTE.background, title: "Waiting on CI", sub: "A white spinner: only background work is left.",
+		id: "background", from: STATE_AT.background, to: STATE_AT.input, color: PALETTE.background, title: "Waiting on CI", sub: "A white spinner: only background work is left.",
 		svg: (l) => keyAt(star({ own: "completed", run: false, background: 1, waitingOn: PR_WAIT }), l),
 	},
-	{ id: "input", from: 24_850, to: 26_100, color: PALETTE.input, title: "Needs you", sub: "Amber blink and a “!”: your turn.", svg: (l) => keyAt(star({ state: "input", own: "waiting" }), l) },
-	{ id: "done", from: 26_100, to: 27_300, color: PALETTE.done, title: "Done", sub: "Solid green and a ✓ until you look.", svg: (l) => keyAt(star({ state: "done", own: "completed", run: false }), l) },
-	{ id: "failed", from: 27_300, to: 28_550, color: PALETTE.failed, title: "Failed", sub: "Red blink and a ✕.", svg: (l) => keyAt(star({ state: "failed", own: "failed", run: false }), l) },
+	{ id: "input", from: STATE_AT.input, to: STATE_AT.done, color: PALETTE.input, title: "Needs you", sub: "Amber blink and a “!”: your turn.", svg: (l) => keyAt(star({ state: "input", own: "waiting" }), l) },
+	{ id: "done", from: STATE_AT.done, to: STATE_AT.failed, color: PALETTE.done, title: "Done", sub: "Solid green and a ✓ until you look.", svg: (l) => keyAt(star({ state: "done", own: "completed", run: false }), l) },
+	{ id: "failed", from: STATE_AT.failed, to: STATE_AT.paused, color: PALETTE.failed, title: "Failed", sub: "Red blink and a ✕.", svg: (l) => keyAt(star({ state: "failed", own: "failed", run: false }), l) },
 	{
-		id: "paused", from: 28_550, to: 29_750, color: PALETTE.paused, title: "Usage limit", sub: "Dimmed and dashed, with when it resumes.",
+		id: "paused", from: STATE_AT.paused, to: STATE_AT.context, color: PALETTE.paused, title: "Usage limit", sub: "Dimmed and dashed, with when it resumes.",
 		svg: (l) => keyAt(star({ state: "paused", own: "idle", run: false }, { pausedUntil: BASE + l + 2 * 3_600_000 + 10 * 60_000 + 30_000 }), l),
 	},
 	{
-		id: "context", from: 29_750, to: ZOOM_OUT[1], color: PALETTE.context, title: "Context window", sub: "The bottom bar fills: grey, then amber, then red.",
-		svg: (l) => keyAt(star({ state: "idle", own: "idle", run: false, ctx: Math.round(lerp(30, 92, easeInOut(ramp(l, 150, 1550)))) }), l),
+		id: "context", from: STATE_AT.context, to: ZOOM_OUT[1], color: PALETTE.context, title: "Context window", sub: "The bottom bar fills: grey, then amber, then red.",
+		svg: (l) => keyAt(star({ state: "idle", own: "idle", run: false, ctx: Math.round(lerp(30, 92, easeInOut(ramp(l, 200, 1900)))) }), l),
 	},
 ];
-const STATE_FADE = 170;
+/**
+ * A state change dips through the key's dark background: the old image fades
+ * out, then the new one fades in. Cross-fading two keys with different text
+ * would double-expose it.
+ */
+const DIP_OUT = 130;
+const DIP_IN = 170;
+const KEY_BG = `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144"><rect width="144" height="144" fill="#0E1013"/></svg>`;
+/** A state's own clock: it starts when its image starts to show, so a blink always opens lit. */
+const stateClock = (i: number, t: number): number => Math.max(0, t - STATES[i]!.from - (i === 0 ? 0 : DIP_OUT));
 
 interface Big {
 	x: number;
@@ -605,18 +630,22 @@ function bigAt(t: number, p: number): Big | undefined {
 	const i = Math.max(0, STATES.findIndex((s) => t >= s.from && t < s.to));
 	const cur = STATES[i]!;
 	const layers: Big["layers"] = [];
-	const a = i === 0 ? 1 : ramp(t, cur.from, cur.from + STATE_FADE);
-	if (a < 1) layers.push({ svg: STATES[i - 1]!.svg(t - STATES[i - 1]!.from), opacity: 1 });
-	layers.push({ svg: cur.svg(t - cur.from), opacity: a });
+	const away = i === 0 ? 1 : easeInOut(ramp(t, cur.from, cur.from + DIP_OUT));
+	const shown = i === 0 ? 1 : easeInOut(ramp(t, cur.from + DIP_OUT, cur.from + DIP_OUT + DIP_IN));
+	if (shown < 1) {
+		layers.push({ svg: KEY_BG, opacity: 1 });
+		if (away < 1) layers.push({ svg: STATES[i - 1]!.svg(stateClock(i - 1, t)), opacity: 1 - away });
+	}
+	if (shown > 0) layers.push({ svg: cur.svg(stateClock(i, t)), opacity: shown });
 	const { cx, cy, s } = zoomFrame(p);
 	return { x: cx - BIG / 2, y: cy - BIG / 2, scale: s / ZOOM, opacity, layers };
 }
-/** State labels beside the big key: each fades in as its state starts. */
+/** State labels beside the big key: the old one fades out, then the new one fades in with its key. */
 function labelsAt(t: number, p: number): { id: string; opacity: number; dy: number }[] {
 	const shown = easeInOut(ramp(p, 0.75, 1));
 	return STATES.map((s, i) => {
-		const inn = i === 0 ? 1 : easeOut(ramp(t, s.from, s.from + 320));
-		const out = i === STATES.length - 1 ? 0 : easeInOut(ramp(t, s.to, s.to + 160));
+		const inn = i === 0 ? 1 : easeOut(ramp(t, s.from + DIP_OUT, s.from + DIP_OUT + 320));
+		const out = i === STATES.length - 1 ? 0 : easeInOut(ramp(t, s.to, s.to + DIP_OUT));
 		return { id: `lab-${s.id}`, opacity: Math.min(inn, 1 - out) * shown, dy: (1 - inn) * 12 };
 	});
 }

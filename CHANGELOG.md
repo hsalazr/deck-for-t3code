@@ -10,6 +10,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Threads on linked machines: with T3 Code's **Settings → Labs → Linked environments** turned on, the deck also lists each reachable linked machine's threads, through this Mac's T3 Code server (`t3_environment_links`, then `t3_thread_list` / `t3_project_list` with `environmentId`). They are polled every 10 s (recent ones every 30 s), have no live-stream extras or context bar, and their Thread Actions keys say "On another machine". A machine that fails for 2 minutes loses its keys; with the setting off, nothing changes.
 - **T3 app bundle id** setting, next to T3 home, for builds that detection misses. When it's set, the plugin opens that app and skips detection.
 
 ## [1.0.0] - Unreleased
@@ -32,7 +33,6 @@ First public release (manifest version 1.0.0.0). Repeated identical log lines fr
 - `THIRD_PARTY_NOTICES.md`, listing the bundled packages and their licenses (`npm run notices`).
 - A live connection to T3 Code's shell stream drives updates, with a full reconcile every 30 seconds. Usage limits are fetched every 5 minutes with backoff, and only while a Usage key is on a deck.
 - macOS 13+ support, Stream Deck 7.1+.
-- Threads on linked machines: with T3 Code's **Settings → Labs → Linked environments** turned on, the deck also lists each reachable linked machine's threads, through this Mac's T3 Code server (`t3_environment_links`, then `t3_thread_list` / `t3_project_list` with `environmentId`). They are polled every 10 s (recent ones every 30 s), have no live-stream extras or context bar, and their Thread Actions keys say "On another machine". A machine that fails for 2 minutes loses its keys; with the setting off, nothing changes.
 
 ### Security
 

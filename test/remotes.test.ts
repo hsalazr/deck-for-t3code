@@ -198,7 +198,8 @@ test("a failing linked machine never breaks the local poll; its tiles go after i
 
 	env.fail = new ToolError("The linked environment stopped answering.");
 	setClock(T0 + REMOTE_ACTIVE_MIN_MS);
-	await m.refresh();
+	await m.refresh(); // this machine's poll; the linked one it starts runs on
+	await m.refreshRemotes();
 	assert.equal(m.snapshot.connection.kind, "ok");
 	assert.ok(m.snapshot.cards.has("local-1"));
 	assert.ok(m.snapshot.cards.has("r"), "kept through a short outage");

@@ -271,7 +271,8 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 
 	/**
 	 * Poll both lists now (e.g. after a key press or a thread action), then
-	 * linked machines if they are due. Resolves when both are done.
+	 * linked machines if they are due. Resolves when this machine's poll is
+	 * done; linked machines (network round trips) finish on their own.
 	 */
 	async refresh(): Promise<void> {
 		if (!this.#running) return;
@@ -279,7 +280,7 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 		clearTimeout(this.#pollTimer);
 		this.#pollTimer = undefined;
 		await this.#tick();
-		await this.#pollRemotes(false);
+		void this.#pollRemotes(false);
 	}
 
 	/** Links, then every linked machine's lists, now (tests; the timer does this on its own). */

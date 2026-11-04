@@ -1,0 +1,4 @@
+# Rendered media: never diff or merge as text.
+*.mp4 binary
+*.webm binary
+*.gif binary

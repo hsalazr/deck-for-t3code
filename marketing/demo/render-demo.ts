@@ -32,8 +32,16 @@
  *   docs/assets/demo.gif          800×450, 15 fps (README)
  *   marketing/gallery-video.mp4   1920×1080 H.264 (Elgato Marketplace)
  *
+ * FORMAT=square renders the same loop for phones instead: a 1080×1080 frame
+ * with bigger captions and a camera that frames the keys being acted on
+ * (about two keys across at 360 px), and act 4's key filling the frame:
+ *
+ *   docs/assets/demo-square.mp4   1080×1080 H.264
+ *   docs/assets/demo-square.webm  1080×1080 VP9
+ *
  * Environment:
  *   DEMO_SCRATCH  scratch dir (default: <os tmpdir>/t3deck-demo); frames go to <scratch>/frames
+ *   FORMAT        "wide" (default) or "square"; square frames go to <scratch>/frames-square
  *   CHROME        headless Chrome binary (default: the one T3 Code ships in ~/.t3/tools)
  *   ONLY=frames   render frames only; ONLY=encode encodes existing frames
  *   PREVIEW=ms,…  render just these moments to <scratch>/preview/t<ms>.png and stop
@@ -60,7 +68,10 @@ import { PROFILES } from "../../scripts/build-profile.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SCRATCH = process.env.DEMO_SCRATCH ?? join(tmpdir(), "t3deck-demo");
-const FRAMES = join(SCRATCH, "frames");
+const FORMAT = process.env.FORMAT ?? "wide";
+if (FORMAT !== "wide" && FORMAT !== "square") throw new Error(`FORMAT must be "wide" or "square", not "${FORMAT}"`);
+const SQUARE = FORMAT === "square";
+const FRAMES = join(SCRATCH, SQUARE ? "frames-square" : "frames");
 
 // ---------------------------------------------------------------- timing
 
@@ -128,7 +139,8 @@ const ACT1_AGAIN = STATE_AT.end + 150;
 
 // ---------------------------------------------------------------- layout (CSS px, 1920×1080 master)
 
-const W = 1920;
+/** The frame. The deck itself is laid out for the wide frame in both formats; square shows it through a camera. */
+const W = SQUARE ? 1080 : 1920;
 const H = 1080;
 const KEY = 144;
 const GAP = 20;
@@ -138,7 +150,7 @@ const ROWS = 4;
 const SLOTS = COLS * ROWS;
 const DECK_W = COLS * KEY + (COLS - 1) * GAP + 2 * PAD; // 1372
 const DECK_H = ROWS * KEY + (ROWS - 1) * GAP + 2 * PAD; // 716
-const DECK_X = (W - DECK_W) / 2;
+const DECK_X = (1920 - DECK_W) / 2;
 const DECK_Y = 258;
 
 const slotPos = (slot: number): { x: number; y: number } => ({
@@ -151,11 +163,61 @@ const slotCenter = (slot: number): { x: number; y: number } => {
 };
 const slotDist = (a: number, b: number): number => Math.hypot((a % COLS) - (b % COLS), Math.floor(a / COLS) - Math.floor(b / COLS));
 
-/** Act 4: the key drawn 3× (432 px) left of centre, its label to the right. */
-const ZOOM = 3;
+/** Act 4: the key drawn 3× (432 px) left of centre, its label to the right; square: 4.5× (648 px), label below. */
+const ZOOM = SQUARE ? 4.5 : 3;
 const BIG = KEY * ZOOM;
-const BIG_CENTER = { x: 660, y: 650 };
+const BIG_CENTER = SQUARE ? { x: 540, y: 560 } : { x: 660, y: 650 };
 const LABEL_X = BIG_CENTER.x + BIG / 2 + 84;
+
+// ---------------------------------------------------------------- square: the camera
+
+/** A camera shot: deck point (fx, fy) lands on the frame's anchor, scaled by s. */
+interface Shot {
+	fx: number;
+	fy: number;
+	s: number;
+}
+/** Where a shot puts its focus point: centred, below the captions. */
+const ANCHOR = { x: 540, y: 690 };
+const COL_X = (col: number): number => DECK_X + PAD + KEY / 2 + col * (KEY + GAP);
+const ROW_Y = (row: number): number => DECK_Y + PAD + KEY / 2 + row * (KEY + GAP);
+const SHOT = {
+	/** Act 1 and act 4: the Overview and Usage keys, with a ring of other apps' keys. */
+	home: { fx: COL_X(3.5), fy: ROW_Y(1), s: 2.1 },
+	/** Act 2: the first threads, with the amber and the green one. */
+	threads: { fx: COL_X(1.55), fy: ROW_Y(0.8), s: 1.8 },
+	/** Act 3: the held thread. */
+	held: { fx: COL_X(3), fy: ROW_Y(0.9), s: 2.0 },
+	/** Thread Actions, top row: the thread and the quick messages. */
+	messages: { fx: COL_X(2.5), fy: ROW_Y(0.5), s: 1.65 },
+	/** Thread Actions, bottom row: Compact and Snooze. */
+	bottom: { fx: COL_X(1.2), fy: ROW_Y(2.4), s: 1.9 },
+	/** Back on the Threads page: the row that slides up. */
+	slide: { fx: COL_X(4.2), fy: ROW_Y(1), s: 1.8 },
+	/** Back key. */
+	back: { fx: COL_X(1), fy: ROW_Y(0.7), s: 1.9 },
+} satisfies Record<string, Shot>;
+/** Camera moves: from each start time the camera eases to the shot over `ms`. */
+const MOVES: { at: number; ms: number; to: Shot }[] = [
+	{ at: 6650, ms: 900, to: SHOT.threads },
+	{ at: 10_900, ms: 700, to: SHOT.held },
+	{ at: 12_750, ms: 600, to: SHOT.messages },
+	{ at: 14_650, ms: 450, to: SHOT.bottom },
+	{ at: 17_300, ms: 500, to: SHOT.slide },
+	{ at: 18_300, ms: 420, to: SHOT.back },
+	{ at: 19_000, ms: 600, to: SHOT.home },
+];
+function cameraAt(t: number): Shot {
+	let shot: Shot = SHOT.home;
+	for (const m of MOVES) {
+		if (t < m.at) break;
+		const k = easeInOut(ramp(t, m.at, m.at + m.ms));
+		shot = { fx: lerp(shot.fx, m.to.fx, k), fy: lerp(shot.fy, m.to.fy, k), s: lerp(shot.s, m.to.s, k) };
+	}
+	return shot;
+}
+/** A deck point seen through a shot, in frame pixels. */
+const onScreen = (shot: Shot, x: number, y: number): { x: number; y: number } => ({ x: ANCHOR.x + shot.s * (x - shot.fx), y: ANCHOR.y + shot.s * (y - shot.fy) });
 
 // ---------------------------------------------------------------- easing
 
@@ -405,7 +467,13 @@ function fingerAt(t: number): Finger | undefined {
 			ripple = { scale: 0.7 + 1.3 * e, opacity: 0.55 * (1 - e) };
 		}
 	}
-	return { x, y, opacity: appear * (1 - vanish), scale: (1.25 - 0.25 * appear) * (1 + 0.08 * lift) * (1 - 0.1 * press), press, ripple };
+	const scale = (1.25 - 0.25 * appear) * (1 + 0.08 * lift) * (1 - 0.1 * press);
+	if (SQUARE) {
+		// Through the camera, and a little smaller than the keys it grows with.
+		const cam = cameraAt(t);
+		return { ...onScreen(cam, x, y), opacity: appear * (1 - vanish), scale: scale * cam.s * 0.8, press, ripple };
+	}
+	return { x, y, opacity: appear * (1 - vanish), scale, press, ripple };
 }
 
 // ---------------------------------------------------------------- key tiles
@@ -622,6 +690,11 @@ function zoomAt(t: number): number {
 /** Where the zoomed key's centre is, and how big (1 = a deck key, ZOOM = the big key). */
 function zoomFrame(p: number): { cx: number; cy: number; s: number } {
 	const c = slotCenter(SLOT_OVERVIEW);
+	if (SQUARE) {
+		// Act 4 starts and ends on the home shot.
+		const from = onScreen(SHOT.home, c.x, c.y);
+		return { cx: lerp(from.x, BIG_CENTER.x, p), cy: lerp(from.y, BIG_CENTER.y, p), s: lerp(SHOT.home.s, ZOOM, p) };
+	}
 	return { cx: lerp(c.x, BIG_CENTER.x, p), cy: lerp(c.y, BIG_CENTER.y, p), s: lerp(1, ZOOM, p) };
 }
 function bigAt(t: number, p: number): Big | undefined {
@@ -708,13 +781,18 @@ function frameAt(t: number): Frame {
 	const { cx, cy, s } = zoomFrame(p);
 	const c = slotCenter(SLOT_OVERVIEW);
 	const big = bigAt(t, p);
+	// Square, outside the zoom: the camera frames the deck.
+	const cam = SQUARE && p === 0 ? cameraAt(t) : undefined;
+	const deck = cam
+		? { tx: r2(ANCHOR.x - cam.s * cam.fx), ty: r2(ANCHOR.y - cam.s * cam.fy), s: +cam.s.toFixed(4), opacity: r3(deckOpacity) }
+		: { tx: r2(cx - s * c.x), ty: r2(cy - s * c.y), s: +s.toFixed(4), opacity: r3(deckOpacity) };
 	const finger = fingerAt(t);
 	const roundTile = (tl: Tile): Tile => ({ ...tl, x: r2(tl.x), y: r2(tl.y), scale: +tl.scale.toFixed(4), opacity: r3(tl.opacity), dim: r3(tl.dim), layers: tl.layers.map((l) => ({ svg: l.svg, opacity: r3(l.opacity) })) });
 	const round = <T>(o: T): T => JSON.parse(JSON.stringify(o, (_k, v) => (typeof v === "number" ? r3(v) : v)));
 	const fades = (list: { id: string; opacity: number; dy: number }[]) => list.map((x) => ({ id: x.id, opacity: r3(x.opacity), dy: r2(x.dy) }));
 	return {
 		tiles: tiles.filter((tl) => tl.opacity > 0.001).map(roundTile),
-		deck: { tx: r2(cx - s * c.x), ty: r2(cy - s * c.y), s: +s.toFixed(4), opacity: r3(deckOpacity) },
+		deck,
 		big: big ? round(big) : undefined,
 		finger: finger && finger.opacity > 0.001 ? round(finger) : undefined,
 		captions: fades(captionsAt(t)),
@@ -727,6 +805,20 @@ function frameAt(t: number): Frame {
 const ACCENT = "oklch(0.72 0.15 252)";
 const SANS = `"Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif`;
 const MONO = `ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace`;
+
+/** Square: bigger captions over a black scrim, act 4's label under the key. Readable at 360 px wide. */
+const SQUARE_CSS = `
+.eyebrow{top:44px;font-size:20px;z-index:7}
+.cap{z-index:7;padding:0 40px}
+.cap.title{top:78px;font-size:84px}
+.cap.sub{top:184px;font-size:40px;line-height:1.25}
+.scrim{position:absolute;left:0;top:0;width:${W}px;height:400px;z-index:5;background:linear-gradient(180deg,#000 0%,#000 66%,#0000 100%)}
+#big,.lab,.finger{z-index:6}
+.lab{left:0;width:${W}px;top:${BIG_CENTER.y + BIG / 2 + 26}px;text-align:center}
+.lab .lt{font-size:60px}
+.lab .ls{margin-top:8px;font-size:34px}
+.note{top:1050px;font-size:16px;z-index:7}
+`;
 
 function pageHtml(): string {
 	const wells = Array.from({ length: SLOTS }, (_, s) => {
@@ -777,7 +869,7 @@ html,body{margin:0;width:${W}px;height:${H}px;overflow:hidden;background:#000;co
   box-shadow:0 10px 28px #000a,0 0 0 1px #0000004d}
 .finger>.ripple{position:absolute;inset:0;border-radius:50%;border:3px solid #ffffff;opacity:0}
 .note{position:absolute;left:0;width:${W}px;top:${DECK_Y + DECK_H + 44}px;text-align:center;font-size:17px;color:#a3a3a3;opacity:.7}
-</style></head><body>
+${SQUARE ? SQUARE_CSS : ""}</style></head><body>
 <div class="glow"></div>
 <div class="eyebrow">Deck for T3 Code</div>
 ${captions}
@@ -787,7 +879,7 @@ ${captions}
 ${wells}
 <div id="tiles"></div>
 <div class="sheen"></div>
-</div>
+</div>${SQUARE ? `<div class="scrim"></div>` : ""}
 <div id="big"><div class="face"><div class="gloss"></div></div></div>
 ${labels}
 <div class="finger" id="finger"><div class="ripple"></div><div class="core"></div></div>
@@ -928,7 +1020,7 @@ class Browser {
 }
 
 async function renderFrames(times: number[], name: (i: number, t: number) => string): Promise<void> {
-	const html = join(SCRATCH, "demo.html");
+	const html = join(SCRATCH, SQUARE ? "demo-square.html" : "demo.html");
 	writeFileSync(html, pageHtml());
 	const browser = new Browser();
 	try {
@@ -968,6 +1060,22 @@ function ffmpeg(args: string[]): void {
 }
 const hasEncoder = (name: string): boolean => execFileSync("ffmpeg", ["-hide_banner", "-encoders"], { encoding: "utf8" }).split("\n").some((l) => l.trim().split(/\s+/)[1] === name);
 
+function encodeSquare(): void {
+	const input = ["-framerate", String(FPS), "-i", join(FRAMES, "f%04d.png")];
+	const vf = "format=yuv420p,scale=out_color_matrix=bt709:out_range=tv";
+	const tags = ["-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv"];
+	const clean = ["-an", "-map_metadata", "-1", "-fflags", "+bitexact", "-flags:v", "+bitexact", "-threads", "4"];
+	console.log("encoding docs/assets/demo-square.mp4 (1080×1080)");
+	ffmpeg([...input, "-vf", vf, "-c:v", "libx264", "-preset", "slow", "-tune", "animation", "-crf", "24", "-profile:v", "high", "-g", String(FPS * 4), "-movflags", "+faststart", ...tags, ...clean, join(ASSETS, "demo-square.mp4")]);
+	if (hasEncoder("libvpx-vp9")) {
+		console.log("encoding docs/assets/demo-square.webm (1080×1080, VP9)");
+		ffmpeg([...input, "-vf", vf, "-c:v", "libvpx-vp9", "-crf", "37", "-b:v", "0", "-deadline", "good", "-cpu-used", "2", "-row-mt", "1", "-g", String(FPS * 4), ...tags, ...clean, join(ASSETS, "demo-square.webm")]);
+	} else console.warn("libvpx-vp9 not available: skipped docs/assets/demo-square.webm");
+	for (const f of [join(ASSETS, "demo-square.mp4"), join(ASSETS, "demo-square.webm")]) {
+		if (existsSync(f)) console.log(`  ${f.slice(ROOT.length + 1)}  ${(statSync(f).size / 1e6).toFixed(2)} MB`);
+	}
+}
+
 function encode(): void {
 	const input = ["-framerate", String(FPS), "-i", join(FRAMES, "f%04d.png")];
 	const bt709 = (w: number, h: number): string => `scale=${w}:${h}:flags=lanczos:out_color_matrix=bt709:out_range=tv,format=yuv420p`;
@@ -1003,7 +1111,7 @@ function encode(): void {
 mkdirSync(SCRATCH, { recursive: true });
 const started = Date.now();
 if (process.env.PREVIEW) {
-	const dir = join(SCRATCH, "preview");
+	const dir = join(SCRATCH, SQUARE ? "preview-square" : "preview");
 	mkdirSync(dir, { recursive: true });
 	const times = process.env.PREVIEW.split(",").map(Number);
 	await renderFrames(times, (_i, t) => join(dir, `t${String(t).padStart(5, "0")}.png`));
@@ -1017,7 +1125,8 @@ if (process.env.PREVIEW) {
 	}
 	if (process.env.ONLY !== "frames") {
 		if (readdirSync(FRAMES).length !== FRAME_COUNT) throw new Error(`expected ${FRAME_COUNT} frames in ${FRAMES}`);
-		encode();
+		if (SQUARE) encodeSquare();
+		else encode();
 	}
 	console.log(`done in ${((Date.now() - started) / 1000).toFixed(0)} s`);
 }

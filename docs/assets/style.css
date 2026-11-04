@@ -98,6 +98,7 @@ section { padding: 128px 0 0; }
 /* 16:9 like the demo video; the wider still image fits inside instead of being cropped. */
 .hero-media img, .hero-media video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .hero-media video { background: transparent; }
+.hero-media.is-square { aspect-ratio: 1 / 1; }
 @media (prefers-reduced-motion: reduce) { .hero-media video { display: none; } }
 
 /* cards */

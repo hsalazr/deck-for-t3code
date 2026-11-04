@@ -42,6 +42,8 @@ export interface MonitorSettings {
 	flashOnDone: boolean;
 	flashOnFailed: boolean;
 	t3Home?: string;
+	/** "T3 app bundle id": the app to open, for builds detection misses. */
+	t3AppBundleId?: string;
 }
 
 export const DEFAULT_SETTINGS: MonitorSettings = {
@@ -199,8 +201,9 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 			flashOnDone: (s.flashOnDone ?? DEFAULT_SETTINGS.flashOnDone) !== false,
 			flashOnFailed: (s.flashOnFailed ?? DEFAULT_SETTINGS.flashOnFailed) !== false,
 			...(typeof s.t3Home === "string" && s.t3Home.trim() ? { t3Home: s.t3Home.trim() } : {}),
+			...(typeof s.t3AppBundleId === "string" && s.t3AppBundleId.trim() ? { t3AppBundleId: s.t3AppBundleId.trim() } : {}),
 		};
-		const relocate = next.t3Home !== this.#settings.t3Home;
+		const relocate = next.t3Home !== this.#settings.t3Home || next.t3AppBundleId !== this.#settings.t3AppBundleId;
 		const refilter = next.showSnoozed !== this.#settings.showSnoozed;
 		this.#settings = next;
 		if (relocate) {

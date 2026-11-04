@@ -70,7 +70,7 @@ Settled threads never show. Snoozed threads stay hidden unless **Show snoozed** 
 
 | Key says | Why |
 |---|---|
-| `Install T3 Code` | No T3 Code app found (in `/Applications` or `~/Applications`) and no server running, or the T3 home you set doesn't exist or isn't an absolute path. |
+| `Install T3 Code` | No T3 Code app found in `/Applications` or `~/Applications` and no server running, or the T3 home you set doesn't exist or isn't an absolute path. Custom and renamed builds count: any app whose bundle id starts with `com.t3tools.t3code` or that claims the `t3code://` link scheme. |
 | `Open T3 Code` | T3 Code isn't running (or has never run). |
 | `T3 CLI missing` | `~/.t3/bin/t3` is missing, or failed the safety check (see [Safety checks](#safety-checks)). |
 | `Sign-in failed` | The plugin couldn't get a token, or T3 Code rejected a fresh one. |
@@ -78,6 +78,8 @@ Settled threads never show. Snoozed threads stay hidden unless **Show snoozed** 
 | `T3 error` | T3 Code answered with something unexpected, or its address isn't a local one. See the logs. |
 
 The Overview key shows the same words under `T3 CODE` (red for errors; `Signed out` is grey), and a Usage key says `T3 offline`. Tapping a Thread or Overview key while T3 is offline opens T3 Code.
+
+**Which app opens.** The plugin doesn't assume T3 Code's name or bundle id, so custom and rebranded builds work too. It brings forward the app set in **T3 app bundle id** if you set one; otherwise the app running the T3 server (found from the server's process); otherwise it opens `t3code://new`, which launches whichever app owns T3 Code's links.
 
 ### Thread
 
@@ -142,6 +144,7 @@ Open any key's settings (Property Inspector). The status row at the top says whe
 - **Snoozed:** show snoozed threads.
 - **Refresh every:** 2 (default), 5 or 10 seconds; see [below](#how-it-talks-to-t3-code).
 - **T3 home:** if T3 Code keeps its data somewhere other than `~/.t3`. Must be an absolute path (a leading `~/` is fine). The `T3CODE_HOME` environment variable is honoured too.
+- **T3 app bundle id:** only for a T3 Code build the plugin doesn't find on its own. Set it to the app's bundle id (`osascript -e 'id of app "Your T3 App"'` prints it) and the plugin opens that app and skips detection.
 - **Sign out / revoke tokens:** click twice to confirm. Revokes every token the plugin minted and deletes them from your Mac. Nothing is minted again until you press **Sign in again** (the same button) or restart the plugin. The result line says `Signed out`, or `Signed out — N token(s) will be revoked later` when T3 Code was unreachable for some revokes (they are retried when T3 Code is back and each time the plugin starts).
 - **Usage key:** which limit (default: the weekly one) and Bar or Ring.
 
@@ -185,6 +188,7 @@ t3 auth session revoke <id>
 
 - **Loopback only.** Tokens and requests only go to the server origin from `server-runtime.json`, and only if it is `http` or `https` on `127.0.0.1`, `localhost` or `::1` with no user name or password. Anything else is refused before a token is minted or sent.
 - **T3 home must be absolute** (after expanding a leading `~/`).
+- **Finding the app runs nothing from it.** The plugin only reads `Info.plist` files (with `plutil`), asks `ps` for the T3 server's executable path, and calls `open`.
 - **The CLI is vetted before it runs.** `<T3 home>/bin/t3` must be a regular, executable file, owned by you or root, that no other user can write to. Otherwise the key says "T3 CLI missing" and nothing runs. (Fix a loose file with `chmod go-w`.)
 - **No redirects.** Requests that carry a token refuse HTTP redirects.
 - **Logs are redacted.** Any run of 32 or more token-like characters is replaced with `[redacted]` before it reaches a log file.

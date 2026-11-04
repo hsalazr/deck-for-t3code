@@ -39,7 +39,7 @@ window.connectElgatoStreamDeckSocket = (port, uuid, registerEvent, _info, action
 };
 
 const DEFAULT_MESSAGES = ["continue", "summarize where you are", "run the tests and report", "explain the last change", "what's left to do?", "write a handoff note"];
-const DEFAULTS = { pollSeconds: 2, recentHours: 8, showSnoozed: false, flashOnDone: true, flashOnFailed: true, animation: "smooth", showLabels: false, t3Home: "",
+const DEFAULTS = { pollSeconds: 2, recentHours: 8, showSnoozed: false, flashOnDone: true, flashOnFailed: true, animation: "smooth", showLabels: false, t3Home: "", t3AppBundleId: "",
   actionsEnabled: false, messages: DEFAULT_MESSAGES.join("\n") };
 
 // ---------- Connection status (top of every inspector) ----------
@@ -115,6 +115,8 @@ const GLOBALS_HTML = `
   <div class="row"><label>Snoozed</label><div class="check"><input type="checkbox" data-global="showSnoozed" id="s"><label for="s">Show snoozed threads</label></div></div>
   <div class="row"><label>Refresh every</label><select data-global="pollSeconds"><option value="2">2 s</option><option value="5">5 s</option><option value="10">10 s</option></select></div>
   <div class="row"><label>T3 home</label><input type="text" data-global="t3Home" placeholder="~/.t3 (default)"></div>
+  <div class="row"><label>T3 app bundle id</label><input type="text" data-global="t3AppBundleId" placeholder="Detected (default)" spellcheck="false"></div>
+  <div class="hint">Only for a T3 Code build the plugin doesn't find on its own: the app's bundle id, e.g. <code>com.t3tools.t3code</code>.</div>
   <h3>Sign-in</h3>
   <div class="row"><label>Tokens</label><div><button type="button" id="signOut">Sign out / revoke tokens</button> <span class="result" id="signOutResult"></span></div></div>
   <div class="hint">Revokes the tokens this plugin minted with the T3 CLI (listed in <code>t3 auth session list</code>) and deletes them from this Mac.</div>`;

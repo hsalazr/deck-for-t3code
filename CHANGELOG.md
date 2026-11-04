@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Custom and rebranded T3 Code builds (another app name or bundle id, such as `T3 Acme.app` with `com.t3tools.t3code.custom`) are found. Keys now say `Open T3 Code` instead of `Install T3 Code` when such a build isn't running. Tapping a key brings up the app that runs the T3 server, or, when none is running, the app that owns `t3code://` links, instead of always asking for `com.t3tools.t3code`.
+
+### Added
+
+- **T3 app bundle id** setting, next to T3 home, for builds that detection misses. When it's set, the plugin opens that app and skips detection.
+
 ## [1.0.0] - Unreleased
 
 First public release (manifest version 1.0.0.0). Repeated identical log lines from one source are collapsed for 10 minutes, and a busy tile's first title line keeps clear of the spinner.

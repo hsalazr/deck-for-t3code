@@ -869,12 +869,15 @@ const OFF_ICON = "#4B5260";
 const caption = (title: string, sub?: string, color = WHITE): string =>
 	text(72, 110, title, { size: 16, weight: 750, fill: color, anchor: "middle" }) + (sub ? text(72, 130, sub, { size: 14, weight: 600, fill: color === WHITE ? SOFT : color, anchor: "middle" }) : "");
 
-/** Thread actions are off: the key says where to turn them on. */
-const disabledNote = (): string => caption("Enable in", "settings", SOFT);
+/** Thread actions are off: the key says where to turn them on, or that the thread is on a linked machine. */
+const disabledNoteFor = (remote: boolean): string => (remote ? caption("On another", "machine", SOFT) : caption("Enable in", "settings", SOFT));
 
 export function renderActionKey(input: ActionKeyInput): string {
 	const { action, card } = input;
-	const enabled = input.enabled !== false;
+	// Actions go through this machine's server; a linked machine's thread can only be opened.
+	const remote = !!card?.environmentId;
+	const enabled = input.enabled !== false && !remote;
+	const disabledNote = (): string => disabledNoteFor(remote);
 	if (action === "header") {
 		if (!card) return renderMessage("No thread", SOFT);
 		const inner = renderThreadKey({ card, projectName: input.projectName ?? "", connection: input.connection, animation: input.animation, now: input.now });

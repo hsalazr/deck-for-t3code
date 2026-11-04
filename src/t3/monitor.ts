@@ -12,6 +12,10 @@
  *   the newest few) when a root leaves the active list because its run ended.
  * Background work, visits, run timing and limit pauses come from the shell
  * stream; context usage from the context watcher, for threads on keys only.
+ *
+ * Threads on linked machines (T3 Code's Labs → Linked environments) come from
+ * the same local server, which forwards the list calls; see `remotes.ts`.
+ * They are polled on their own, slower timer.
  */
 import { EventEmitter } from "node:events";
 
@@ -29,6 +33,7 @@ import {
 } from "./auth.ts";
 import type { ContextUsage, WatchTarget } from "./context-watcher.ts";
 import { AuthRejectedError, McpClient, ToolError, UnreachableError } from "./mcp.ts";
+import { RemoteEnvironments } from "./remotes.ts";
 import { waitingLabel, type PendingTask, type ShellView } from "./shell-stream.ts";
 
 export type { ConnectionReason };
@@ -124,6 +129,8 @@ const MAX_RECENT_PAGES = 5;
 /** How long a main thread stays "working" after its background work finishes. */
 const SUBAGENT_GRACE_MS = 30_000;
 const PROJECTS_REFRESH_MS = 60_000;
+/** How often the linked-machines timer checks whether a remote poll is due. */
+const REMOTE_TICK_MS = 2_000;
 /** Both lists, regardless of the shell stream. */
 export const FULL_POLL_MS = 30_000;
 /** Shell changes are gathered this long before polling. */
@@ -161,6 +168,13 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 	#shellWasConnected = false;
 
 	#threads: ThreadSummary[] = [];
+	/** This machine's threads from the last poll (recent and active merged). */
+	#local: ThreadSummary[] = [];
+	readonly #remotes: RemoteEnvironments;
+	#remoteTimer: NodeJS.Timeout | undefined;
+	#remoteInflight: Promise<void> | undefined;
+	/** This machine's project names (remote ones are merged on top). */
+	#localProjectNames = new Map<string, string>();
 	/** The last recent-roots list (refreshed by full polls and early head fetches). */
 	#recent: ThreadSummary[] = [];
 	/** Roots in the last active list: when one leaves, its run ended. */
@@ -190,6 +204,7 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 		this.#transport = opts.call;
 		this.#now = opts.now ?? Date.now;
 		this.#startedAt = this.#now();
+		this.#remotes = new RemoteEnvironments((name, args) => this.#call(name, args), (message) => this.emit("log", message));
 	}
 
 	configure(settings: Partial<MonitorSettings>): void {
@@ -209,11 +224,14 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 		if (relocate) {
 			this.#location = locate(next);
 			this.#dropClient();
+			this.#remotes.clear();
 		}
 		if (relocate || refilter) {
 			this.#needFull = true;
 			this.#request(0);
 		}
+		// Snoozed threads shown or hidden: linked machines' recent lists change too.
+		if (refilter && !relocate) void this.#pollRemotes(true);
 		this.#rebuild();
 	}
 
@@ -224,6 +242,7 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 		this.#needFull = true;
 		this.#retryRevokes();
 		this.#request(0);
+		this.#scheduleRemotes(REMOTE_TICK_MS);
 	}
 
 	stop(): void {
@@ -231,8 +250,10 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 		this.#dropClient();
 		clearTimeout(this.#pollTimer);
 		clearTimeout(this.#rebuildTimer);
+		clearTimeout(this.#remoteTimer);
 		this.#pollTimer = undefined;
 		this.#rebuildTimer = undefined;
+		this.#remoteTimer = undefined;
 	}
 
 	/** Stop done/failed flashing for this thread's current run. */
@@ -248,13 +269,27 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 		this.#rebuild();
 	}
 
-	/** Poll both lists now (e.g. after a key press or a thread action). Resolves when that poll is done. */
-	refresh(): Promise<void> {
-		if (!this.#running) return Promise.resolve();
+	/**
+	 * Poll both lists now (e.g. after a key press or a thread action), then
+	 * linked machines if they are due. Resolves when both are done.
+	 */
+	async refresh(): Promise<void> {
+		if (!this.#running) return;
 		this.#needFull = true;
 		clearTimeout(this.#pollTimer);
 		this.#pollTimer = undefined;
-		return this.#tick();
+		await this.#tick();
+		await this.#pollRemotes(false);
+	}
+
+	/** Links, then every linked machine's lists, now (tests; the timer does this on its own). */
+	refreshRemotes(): Promise<void> {
+		return this.#pollRemotes(true);
+	}
+
+	/** Linked machines with threads on the deck. */
+	get linkedEnvironments(): ReadonlyMap<string, { label: string; failing: boolean }> {
+		return this.#remotes.environments;
 	}
 
 	/** Background work (subagents, commands, monitors, PR watches) comes from T3's shell stream. */
@@ -283,6 +318,8 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 	 */
 	async signOut(): Promise<SignOutResult> {
 		this.#dropClient();
+		this.#remotes.clear();
+		this.#compose();
 		const result = await this.#tokens.signOut(this.#location);
 		this.#setConnection(connectionFor(new SignedOutError()));
 		this.#shell?.restart?.();
@@ -514,17 +551,18 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 		const byId = new Map<string, ThreadSummary>();
 		for (const t of this.#recent) byId.set(t.threadId, t);
 		for (const t of active) byId.set(t.threadId, t);
-		this.#threads = [...byId.values()];
+		this.#local = [...byId.values()];
+		this.#compose();
 		if (fetchedFull) this.#lastFullAt = startedAt;
-		this.#absorb(this.#threads, this.#now());
+		this.#absorb(this.#local, this.#now());
 		await this.#refreshProjects();
 		this.#rebuild();
 	}
 
 	/** First sight of each thread: decide whether its latest result counts as news. Then forget threads gone for a day. */
-	#absorb(threads: readonly ThreadSummary[], now: number): void {
+	#absorb(threads: readonly ThreadSummary[], now: number, seedAll = false): void {
 		const shell = this.#liveShell();
-		const firstPoll = !this.#seeded;
+		const firstPoll = seedAll || !this.#seeded;
 		for (const t of threads) {
 			const known = this.#seen.has(t.threadId);
 			this.#seen.set(t.threadId, now);
@@ -547,13 +585,67 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 				}
 				cursor = typeof result?.nextCursor === "number" ? result.nextCursor : null;
 			}
-			this.#projectNames.clear();
-			for (const [id, name] of names) this.#projectNames.set(id, name);
+			this.#localProjectNames = names;
+			this.#mergeProjectNames();
 			this.#projectsAt = this.#now();
 		} catch (error) {
 			this.#projectsAt = this.#now() - PROJECTS_REFRESH_MS / 2; // retry in 30s
 			this.emit("log", `project list failed: ${(error as Error).message}`);
 		}
+	}
+
+	/** This machine's threads plus linked machines' (this machine's win on an id clash). */
+	#compose(): void {
+		const byId = new Map<string, ThreadSummary>();
+		for (const t of this.#remotes.threads()) byId.set(t.threadId, t);
+		for (const t of this.#local) byId.set(t.threadId, t);
+		this.#threads = [...byId.values()];
+	}
+
+	#mergeProjectNames(): void {
+		this.#projectNames.clear();
+		for (const [id, name] of this.#remotes.projectNames()) this.#projectNames.set(id, name);
+		for (const [id, name] of this.#localProjectNames) this.#projectNames.set(id, name);
+	}
+
+	#scheduleRemotes(delayMs: number): void {
+		if (!this.#running) return;
+		clearTimeout(this.#remoteTimer);
+		this.#remoteTimer = setTimeout(() => {
+			this.#remoteTimer = undefined;
+			void this.#pollRemotes(false).finally(() => this.#scheduleRemotes(REMOTE_TICK_MS));
+		}, delayMs);
+	}
+
+	/**
+	 * Linked machines, on their own cadence (see `remotes.ts`). Only while this
+	 * machine's server answers: it is the one forwarding the calls. Never throws.
+	 */
+	#pollRemotes(force: boolean): Promise<void> {
+		if (this.#remoteInflight) return this.#remoteInflight;
+		const now = this.#now();
+		if (!this.#running || this.snapshot.connection.kind !== "ok" || this.#tokens.signedOut) return Promise.resolve();
+		if (!this.#remotes.due(now, this.#settings.pollSeconds * 1000, force)) return Promise.resolve();
+		const run = this.#remotes
+			.poll({ now, pollMs: this.#settings.pollSeconds * 1000, showSnoozed: this.#settings.showSnoozed, force })
+			.then((firstSeen) => {
+				if (!this.#running) return;
+				this.#compose();
+				// A machine's first answer is like the first poll: results that are already there don't flash.
+				const remote = this.#remotes.threads();
+				this.#absorb(remote.filter((t) => !firstSeen.has(t.environmentId!)), this.#now());
+				this.#absorb(remote.filter((t) => firstSeen.has(t.environmentId!)), this.#now(), true);
+				this.#mergeProjectNames();
+				this.#rebuild();
+			})
+			.catch((error: unknown) => {
+				this.emit("log", `linked environments poll failed: ${(error as Error)?.message ?? String(error)}`);
+			})
+			.finally(() => {
+				this.#remoteInflight = undefined;
+			});
+		this.#remoteInflight = run;
+		return run;
 	}
 
 	/** The shell stream, only while it is connected: its picture is meaningless otherwise. */
@@ -642,7 +734,8 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 		const targets = new Map<string, WatchTarget>();
 		for (const id of this.#deckThreads) {
 			const card = this.snapshot.cards.get(id);
-			if (!card) continue;
+			// Context usage comes from this machine's server; it knows nothing about a linked machine's threads.
+			if (!card || card.environmentId) continue;
 			const extras = shell?.extras(id);
 			targets.set(id, {
 				runKey: card.ackKey,

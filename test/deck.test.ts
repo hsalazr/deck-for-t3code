@@ -293,6 +293,23 @@ test("thread actions off: keys say so, holds and taps send nothing; header and O
 	assert.deepEqual(host.opened.at(-1), ["t3code://threads/env/t1"]);
 });
 
+test("a linked machine's thread: actions say so and send nothing, Open still deep-links there", async () => {
+	await focusedPage({ activeRunId: "run-1", environmentId: "env-remote", link: "http://127.0.0.1:3773/env-remote/t1" });
+	deck.actionsEnabled = true;
+	const stop = add("action", fakeAction("stop", 7, 3), { action: "stop" });
+	const snooze = add("action", fakeAction("snooze", 1, 3), { action: "snooze1h" });
+	const message = add("action", fakeAction("msg", 3, 1), { action: "message", index: 0 });
+	const open = add("action", fakeAction("open", 2), { action: "open" });
+	for (const k of [stop, snooze, message]) assert.ok(k.last().includes("On another") && k.last().includes("machine"), k.id);
+	await press(stop, CONFIRM_HOLD_MS + 100);
+	await press(message, CONFIRM_HOLD_MS + 100);
+	await press(snooze, 100);
+	assert.deepEqual(commands.sent, []);
+	assert.deepEqual(snooze.events, ["alert"]);
+	await press(open, 100);
+	assert.deepEqual(host.opened.at(-1), ["t3code://threads/env-remote/t1"]);
+});
+
 test("stop: dimmed with nothing running, hold to interrupt when a run is active", async () => {
 	await focusedPage();
 	deck.actionsEnabled = true;

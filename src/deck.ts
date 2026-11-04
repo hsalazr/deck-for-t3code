@@ -264,7 +264,7 @@ export class Deck {
 		const action = entry.settings.action;
 		if (!action || !HOLD_ACTIONS.has(action) || !this.#actionsEnabled) return false;
 		const card = this.#focused(entry);
-		if (!card) return false;
+		if (!card || !canOperate(card)) return false;
 		if (action === "stop") return card.activeRunId !== undefined;
 		if (action === "message") return this.#messageFor(entry) !== undefined;
 		return true;
@@ -278,7 +278,7 @@ export class Deck {
 			return;
 		}
 		const card = this.#focused(entry);
-		if (!card || !this.#actionsEnabled) return entry.action.showAlert();
+		if (!card || !this.#actionsEnabled || !canOperate(card)) return entry.action.showAlert();
 		switch (entry.settings.action) {
 			case "stop": {
 				const runId = card.activeRunId;
@@ -352,8 +352,8 @@ export class Deck {
 		const card = this.#focused(entry);
 		if (!card) return entry.action.showAlert();
 		if (action === "header" || action === "open") return this.#open(entry, card);
-		// Everything else changes the thread; the key already says "Enable in settings".
-		if (!this.#actionsEnabled) return entry.action.showAlert();
+		// Everything else changes the thread; the key already says "Enable in settings" (or "On another machine").
+		if (!this.#actionsEnabled || !canOperate(card)) return entry.action.showAlert();
 		if (HOLD_ACTIONS.has(action)) {
 			if (!holdable) return; // e.g. Stop with nothing running
 			// A tap only explains itself; holding confirms.
@@ -631,6 +631,12 @@ export class Deck {
 		for (const e of this.#keys.values()) clearTimeout(e.holdTimer);
 	}
 }
+
+/**
+ * Thread actions go through this machine's server (its /ws dispatchCommand), which
+ * can't act on a linked machine's threads; those keys stay unavailable.
+ */
+export const canOperate = (card: ThreadCard): boolean => !card.environmentId;
 
 /** Next hold-progress redraw, up to the moment the hold fires. */
 function progressFrame(downAt: number, now: number): number | undefined {

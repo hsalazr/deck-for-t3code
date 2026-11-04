@@ -8,6 +8,16 @@ updates:
     groups:
       dev-dependencies:
         dependency-type: development
+    ignore:
+      # TypeScript 7 is the native compiler; @rollup/plugin-typescript still needs
+      # the JavaScript compiler API, so the build breaks. Lift this when the build
+      # moves to a TS 7-compatible bundler.
+      - dependency-name: typescript
+        versions: [">=7"]
+      # Stream Deck runs plugins on Node 24 (manifest Nodejs.Version), so the
+      # Node types should not get ahead of it.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:

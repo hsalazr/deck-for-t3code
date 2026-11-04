@@ -26,9 +26,10 @@ import { execFileSync, execSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DEFAULT_MESSAGES, parseQuickMessages, type ThreadCard } from "../src/model.ts";
+import { type ThreadCard } from "../src/model.ts";
 import { renderActionKey, renderBackKey, type ActionKeyInput } from "../src/render.ts";
 import { PROFILES } from "../scripts/build-profile.mjs";
+import { EXAMPLE_MESSAGES } from "./quick-messages.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SCRATCH = process.env.DEVICES_SCRATCH ?? "/tmp/t3deck-devices";
@@ -60,7 +61,7 @@ function shot(name: string, html: string, out: string, w: number, h: number, sca
 const ok = { kind: "ok" } as const;
 /** Same clock as the other marketing renders, so spinners sit at the same angle. */
 const BASE = Math.round(Date.parse("2026-11-03T12:00:00Z") / 50_400) * 50_400;
-const QUICK_MESSAGES = parseQuickMessages(DEFAULT_MESSAGES.join("\n"));
+const QUICK_MESSAGES = EXAMPLE_MESSAGES;
 
 type Profile = (typeof PROFILES)[number];
 type Slot = string | { action: string; index: number };
@@ -110,6 +111,7 @@ interface Device {
 // Proportions follow the real decks' fronts: 15-key about 1.4:1, Mini about 1.4:1,
 // Neo closer to square with its info bar row. Key size is the same on all three.
 const DEVICES: Device[] = [
+	{ out: "stream-deck-xl", profile: "Deck for T3 Code XL", pad: [110, 100, 110], radius: 64, height: 452 },
 	{ out: "stream-deck", profile: "Deck for T3 Code", pad: [126, 104, 126], radius: 58, height: 436 },
 	{ out: "stream-deck-neo", profile: "Deck for T3 Code Neo", pad: [96, 88, 64], radius: 58, height: 452, infoBar: true },
 	{ out: "stream-deck-mini", profile: "Deck for T3 Code Mini", pad: [86, 86, 86], radius: 52, height: 372 },

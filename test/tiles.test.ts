@@ -222,3 +222,9 @@ test("a word that fits on the next line moves there whole instead of being split
 	// A word longer than any line is still split.
 	assert.ok(wrapWidths("Supercalifragilisticexpialidocious", [12, 12, 12]).length > 1);
 });
+
+test("a word too long for a line breaks after its hyphen, not at a random letter", () => {
+	const lines = wrapWidths("double-check edge cases", [11, 11, 11, 7]);
+	assert.equal(lines[0], "double-", `got ${JSON.stringify(lines)}`);
+	assert.ok(lines[1]!.startsWith("check"), `got ${JSON.stringify(lines)}`);
+});

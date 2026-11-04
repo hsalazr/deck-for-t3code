@@ -94,7 +94,7 @@ section { padding: 128px 0 0; }
 .hero .sub { max-width: 620px; margin: 22px auto 0; color: var(--muted); font-size: clamp(18px, 2.2vw, 21px); }
 .cta { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 34px; }
 /* hero media: the still image is always underneath; the video fades over it once it has a frame */
-.hero-media { position: relative; margin: 64px auto 0; max-width: 1040px; aspect-ratio: 16 / 9; border-radius: clamp(14px, 2.4vw, 28px); overflow: hidden; background: #000; box-shadow: 0 0 0 1px var(--line), 0 40px 80px #000; }
+.hero-media { position: relative; margin: 120px auto 0; max-width: 1040px; aspect-ratio: 16 / 9; border-radius: clamp(14px, 2.4vw, 28px); overflow: hidden; background: #000; box-shadow: 0 0 0 1px var(--line), 0 40px 80px #000; }
 /* 16:9 like the demo video; the wider still image fits inside instead of being cropped. */
 .hero-media img, .hero-media video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .hero-media video { background: transparent; }
@@ -245,7 +245,7 @@ footer { margin-top: 128px; border-top: 1px solid var(--line); padding: 40px 0 5
   th, td { white-space: normal; } /* the deck table wraps instead of scrolling sideways */
   thead th { line-height: 1.3; }
   th, td { padding: 10px 12px; }
-  .hero-media { margin-top: 48px; }
+  .hero-media { margin-top: 72px; }
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }

@@ -546,6 +546,16 @@ function splitAt(word: string, room: number): [string, string] {
 	let i = 0;
 	while (i < gs.length && w + charWidth(gs[i]!) <= room) w += charWidth(gs[i++]!);
 	if (i === 0) i = 1;
+	// Prefer breaking after a hyphen, slash or underscore that fits ("double-" + "check")
+	// over cutting at an arbitrary letter ("double-chec" + "k").
+	if (i < gs.length) {
+		for (let j = i - 1; j >= 2; j--) {
+			if (gs[j] === "-" || gs[j] === "/" || gs[j] === "_") {
+				i = j + 1;
+				break;
+			}
+		}
+	}
 	return [gs.slice(0, i).join(""), gs.slice(i).join("")];
 }
 

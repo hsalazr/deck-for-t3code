@@ -10,6 +10,7 @@
   <link rel="apple-touch-icon" href="assets/icon-256.png">
   <link rel="stylesheet" href="assets/style.css">
   <script src="assets/stars.js" defer></script>
+  <script src="assets/carousel.js" defer></script>
   <meta property="og:type" content="website">
   <meta property="og:title" content="Deck for T3 Code">
   <meta property="og:description" content="Every T3 Code thread on a Stream Deck key. See who's working, who needs you, who's done.">
@@ -127,10 +128,46 @@
       <figure class="shot">
         <img src="assets/thread-actions.png" width="2688" height="1408" alt="The Thread Actions page on a Stream Deck XL: Back, the thread and Open in the top-left, thirteen quick-message keys such as 'continue' and 'run the tests and report', and a bottom row with Compact, two Snooze keys, Settle and a red Stop key in the corner." loading="lazy">
       </figure>
-      <div class="deck-shots">
-        <figure><img src="assets/thread-actions-sd.png" width="1728" height="1088" alt="The Thread Actions page on a 15-key Stream Deck: Back, the thread and Open, seven quick-message keys, and a bottom row of Compact, two Snooze keys, Settle and a red Stop key." loading="lazy"><figcaption>Stream Deck, 15 keys</figcaption></figure>
-        <figure><img src="assets/thread-actions-neo.png" width="1408" height="768" alt="The Thread Actions page on a Stream Deck Neo: Back, the thread, two quick-message keys, then Snooze, Compact, Settle and a red Stop key." loading="lazy"><figcaption>Stream Deck Neo</figcaption></figure>
-        <figure><img src="assets/thread-actions-mini.png" width="1088" height="768" alt="The Thread Actions page on a Stream Deck Mini: Back, the thread, Snooze, Compact, Settle and a red Stop key." loading="lazy"><figcaption>Stream Deck Mini</figcaption></figure>
+      <p class="carousel-lead">The same page is bundled for the 15-key Stream Deck, the Neo and the Mini.</p>
+      <div class="carousel" role="region" aria-roledescription="carousel" aria-label="Thread Actions on other Stream Decks">
+        <ul class="slides" id="slides-list" tabindex="0" aria-label="Slides: scroll sideways, or use the arrow keys">
+          <li class="slide" id="slide-1" role="group" aria-roledescription="slide" aria-label="1 of 3: Stream Deck">
+            <figure>
+              <picture>
+                <source srcset="assets/devices/stream-deck.webp" type="image/webp">
+                <img src="assets/devices/stream-deck.png" width="1040" height="590" alt="The Thread Actions page on a 15-key Stream Deck: Back, the thread Add retry to checkout flow, and Open on the top row with the quick messages continue and summarize where you are; then run the tests and report, explain the last change, what's left to do?, write a handoff note and one empty message key; and a bottom row of Compact, Snooze 1 hour, Snooze tomorrow 9:00, Settle and a red Stop key." loading="lazy" decoding="async" draggable="false">
+              </picture>
+              <figcaption>Stream Deck · 15 keys</figcaption>
+            </figure>
+          </li>
+          <li class="slide" id="slide-2" role="group" aria-roledescription="slide" aria-label="2 of 3: Stream Deck Neo">
+            <figure>
+              <picture>
+                <source srcset="assets/devices/stream-deck-neo.webp" type="image/webp">
+                <img src="assets/devices/stream-deck-neo.png" width="1040" height="590" alt="The Thread Actions page on a Stream Deck Neo: Back, the thread Add retry to checkout flow, and the quick messages continue and summarize where you are; then Snooze 1 hour, Compact, Settle and a red Stop key. Below the keys, the Neo's dark info bar between two round touch points." loading="lazy" decoding="async" draggable="false">
+              </picture>
+              <figcaption>Stream Deck Neo · 8 keys</figcaption>
+            </figure>
+          </li>
+          <li class="slide" id="slide-3" role="group" aria-roledescription="slide" aria-label="3 of 3: Stream Deck Mini">
+            <figure>
+              <picture>
+                <source srcset="assets/devices/stream-deck-mini.webp" type="image/webp">
+                <img src="assets/devices/stream-deck-mini.png" width="1040" height="590" alt="The Thread Actions page on a Stream Deck Mini: Back, the thread Add retry to checkout flow and Snooze 1 hour; then Compact, Settle and a red Stop key. No room for quick messages." loading="lazy" decoding="async" draggable="false">
+              </picture>
+              <figcaption>Stream Deck Mini · 6 keys</figcaption>
+            </figure>
+          </li>
+        </ul>
+        <div class="carousel-nav">
+          <button class="carousel-btn prev" type="button" aria-label="Previous deck" aria-controls="slides-list"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4 6.5 10l6 6"/></svg></button>
+          <nav class="dots" aria-label="Choose a deck">
+          <a class="dot" href="#slide-1"><span class="visually-hidden">Slide 1: Stream Deck</span></a>
+          <a class="dot" href="#slide-2"><span class="visually-hidden">Slide 2: Stream Deck Neo</span></a>
+          <a class="dot" href="#slide-3"><span class="visually-hidden">Slide 3: Stream Deck Mini</span></a>
+          </nav>
+          <button class="carousel-btn next" type="button" aria-label="Next deck" aria-controls="slides-list"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7.5 4l6 6-6 6"/></svg></button>
+        </div>
       </div>
       <div class="disclosures">
         <details>
@@ -168,25 +205,25 @@
           <p class="eyebrow">Usage key</p>
           <h2 id="usage-h">Pace your limits.</h2>
           <p>Pick any limit T3 Code reports. The white tick marks even pace.</p>
-          <div class="disclosures">
-            <details>
-              <summary><span class="s-text"><span class="s-title">Reading the Usage key</span></span></summary>
-              <div class="d-body">
-                <ul class="checks">
-                  <li><strong>Bar:</strong> <span>percent used, how far ahead or under pace you are (within 3 points is on pace), and time to reset.</span></li>
-                  <li><strong>Ring:</strong> <span>one segment per day for weekly limits, per hour for the 5-hour one.</span></li>
-                  <li><strong>Colour:</strong> <span>green under pace, blue on pace, amber ahead, red when far ahead (15+ points on the ring) or at 90%.</span></li>
-                  <li><strong>Tap:</strong> <span>refreshes now. Otherwise see <a href="#how">Updates and load</a>.</span></li>
-                </ul>
-              </div>
-            </details>
-          </div>
         </div>
         <div class="usage-keys">
           <figure><img src="assets/keys/usage-bar.png" width="288" height="288" alt="Usage key, bar style: Weekly 64 percent, an amber bar with a white tick, 12 percent ahead, resets in 3d 8h" loading="lazy"><figcaption>Bar: 12% ahead</figcaption></figure>
           <figure><img src="assets/keys/usage-ring-5h.png" width="288" height="288" alt="Usage key, ring style: 5-hour limit at 31 percent, five segments, a green fill, and a white tick at even pace" loading="lazy"><figcaption>Ring: 5-hour</figcaption></figure>
           <figure><img src="assets/keys/usage-ring.png" width="288" height="288" alt="Usage key, ring style: weekly limit at 38 percent, seven day segments filling green" loading="lazy"><figcaption>Ring: weekly</figcaption></figure>
         </div>
+      </div>
+      <div class="disclosures">
+        <details>
+          <summary><span class="s-text"><span class="s-title">Reading the Usage key</span></span></summary>
+          <div class="d-body">
+            <ul class="checks">
+              <li><strong>Bar:</strong> <span>percent used, how far ahead or under pace you are (within 3 points is on pace), and time to reset.</span></li>
+              <li><strong>Ring:</strong> <span>one segment per day for weekly limits, per hour for the 5-hour one.</span></li>
+              <li><strong>Colour:</strong> <span>green under pace, blue on pace, amber ahead, red when far ahead (15+ points on the ring) or at 90%.</span></li>
+              <li><strong>Tap:</strong> <span>refreshes now. Otherwise see <a href="#how">Updates and load</a>.</span></li>
+            </ul>
+          </div>
+        </details>
       </div>
     </div>
   </section>

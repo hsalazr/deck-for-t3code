@@ -1,0 +1,124 @@
+name: Nightly
+
+# Builds main once a day (when it has changed) and publishes it as the rolling
+# `nightly` pre-release. Stable releases stay on `v*` tags (release.yml).
+on:
+  schedule:
+    - cron: "23 8 * * *" # 08:23 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+jobs:
+  nightly:
+    # GitHub only, and only from main: a nightly is "what main looks like now".
+    if: github.server_url == 'https://github.com' && github.ref == 'refs/heads/main'
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - name: Skip if main has not changed since the last nightly
+        id: changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          last=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/nightly" --jq .object.sha 2>/dev/null || true)
+          if [ "$EVENT" = schedule ] && [ "$last" = "$GITHUB_SHA" ]; then
+            echo "The nightly is already built from $GITHUB_SHA."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.changed.outputs.build == 'true'
+        uses: actions/checkout@v7
+      - if: steps.changed.outputs.build == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - if: steps.changed.outputs.build == 'true'
+        run: npm ci
+      - if: steps.changed.outputs.build == 'true'
+        run: npm test
+
+      - name: Find the plugin folder
+        if: steps.changed.outputs.build == 'true'
+        id: plugin
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          dirs=(*.sdPlugin)
+          [ "${#dirs[@]}" -eq 1 ] || { echo "Expected exactly one *.sdPlugin folder, found ${#dirs[@]}"; exit 1; }
+          echo "dir=${dirs[0]}" >> "$GITHUB_OUTPUT"
+
+      # The manifest's fourth part is the build number: nightly 1.0.0.N sorts after
+      # stable 1.0.0 (1.0.0.0) and before the next stable release.
+      - name: Stamp the nightly version
+        if: steps.changed.outputs.build == 'true'
+        id: version
+        env:
+          PLUGIN_DIR: ${{ steps.plugin.outputs.dir }}
+          RUN: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          version=$(node -e '
+            const fs = require("fs");
+            const file = process.argv[1];
+            const manifest = JSON.parse(fs.readFileSync(file, "utf8"));
+            const [a, b, c] = manifest.Version.split(".");
+            manifest.Version = `${a}.${b}.${c}.${process.env.RUN}`;
+            fs.writeFileSync(file, JSON.stringify(manifest, null, "\t") + "\n");
+            console.log(manifest.Version);
+          ' "$PLUGIN_DIR/manifest.json")
+          base="${version%.*}"
+          # The client version T3 Code sees: build metadata, so it never sorts before the stable one.
+          sed -i '' "s/^export const PLUGIN_VERSION = \".*\";/export const PLUGIN_VERSION = \"$base+nightly.$RUN\";/" src/version.ts
+          grep -q "+nightly.$RUN" src/version.ts
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Nightly version $version"
+
+      - if: steps.changed.outputs.build == 'true'
+        run: npm run build
+
+      - name: Validate and pack
+        if: steps.changed.outputs.build == 'true'
+        env:
+          PLUGIN_DIR: ${{ steps.plugin.outputs.dir }}
+        run: |
+          set -euo pipefail
+          npx streamdeck validate --no-update-check "$PLUGIN_DIR"
+          mkdir -p dist
+          npx streamdeck pack --no-update-check --output dist "$PLUGIN_DIR"
+          ls -l dist
+
+      - name: Publish the nightly pre-release
+        if: steps.changed.outputs.build == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          short="${GITHUB_SHA:0:7}"
+          {
+            echo "Nightly build of \`main\` at $short (manifest version $VERSION), built $(date -u '+%Y-%m-%d %H:%M UTC')."
+            echo
+            echo "Untested beyond CI and may break. Installing it replaces Deck for T3 Code on your deck; your keys and settings stay. To go back, install the latest stable release from the Releases page."
+            echo
+            # What main has that the last stable release doesn't, if the changelog says.
+            awk '
+              /^## \[Unreleased\]/ { on = 1; print "## Changes since the last release"; next }
+              on && /^## \[/ { exit }
+              on { print }
+            ' CHANGELOG.md
+          } > notes.md
+          gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
+          gh release create nightly dist/*.streamDeckPlugin \
+            --prerelease --latest=false --target "$GITHUB_SHA" \
+            --title "Nightly $VERSION" --notes-file notes.md

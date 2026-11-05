@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-05
+
 ### Fixed
 
 - Custom and rebranded T3 Code builds (another app name or bundle id, such as `T3 Acme.app` with `com.t3tools.t3code.custom`) are found. Keys now say `Open T3 Code` instead of `Install T3 Code` when such a build isn't running. Tapping a key brings up the app that runs the T3 server, or, when none is running, the app that owns `t3code://` links, instead of always asking for `com.t3tools.t3code`.
@@ -20,7 +22,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - Threads on linked machines: with T3 Code's **Settings → Labs → Linked environments** turned on, the deck also lists each reachable linked machine's threads, through this Mac's T3 Code server (`t3_environment_links`, then `t3_thread_list` / `t3_project_list` with `environmentId`). They are polled every 10 s (recent ones every 30 s), have no live-stream extras or context bar, and their Thread Actions keys say "On another machine". A machine that fails for 2 minutes loses its keys; with the setting off, nothing changes.
 - **T3 app bundle id** setting, next to T3 home, for builds that detection misses. When it's set, the plugin opens that app and skips detection.
 
-## [1.0.0] - Unreleased
+## [1.0.0] - 2026-11-04
 
 First public release (manifest version 1.0.0.0). Repeated identical log lines from one source are collapsed for 10 minutes, and a busy tile's first title line keeps clear of the spinner.
 
@@ -49,4 +51,6 @@ First public release (manifest version 1.0.0.0). Repeated identical log lines fr
 - Credentials only go to a loopback origin; the T3 home must be an absolute path; the T3 CLI must be a regular file owned by you (or root) and not writable by others before it runs.
 - Log lines are redacted of anything that looks like a token. No telemetry.
 
+[Unreleased]: https://github.com/hsalazr/deck-for-t3code/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/hsalazr/deck-for-t3code/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/hsalazr/deck-for-t3code/releases/tag/v1.0.0

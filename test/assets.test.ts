@@ -63,7 +63,7 @@ test("the plugin's icons are the ones the asset script produced", () => {
 	for (const [a, b] of pairs) assert.equal(readFileSync(join(ROOT, a), "utf8"), readFileSync(join(ROOT, b), "utf8"), a);
 });
 
-test("versions agree: manifest 1.0.0.0, package 1.0.0, MCP client constant", async () => {
+test("versions agree: manifest X.Y.Z.0, package X.Y.Z, MCP client constant", async () => {
 	const { PLUGIN_NAME, PLUGIN_VERSION } = await import("../src/version.ts");
 	const manifest = JSON.parse(readFileSync(join(ROOT, "io.github.hsalazr.deck-for-t3code.sdPlugin/manifest.json"), "utf8"));
 	const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));

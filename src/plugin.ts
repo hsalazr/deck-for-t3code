@@ -102,8 +102,10 @@ function applyGlobal(settings: GlobalSettings): void {
 	tokens.actionsEnabled = actions;
 	if (!actions && lastActions !== false) {
 		// Actions off: the token that may act on threads shouldn't exist at all.
-		tokens
-			.discard(monitor.location, "operate")
+		// Wait for T3 home to be found, so the revoke uses that home's CLI.
+		monitor
+			.located()
+			.then(() => tokens.discard(monitor.location, "operate"))
 			.then((had) => had && log("thread actions are off: revoked the actions token"))
 			.catch((error: unknown) => log(`couldn't revoke the actions token: ${describe(error)}`));
 	}
@@ -125,6 +127,7 @@ streamDeck.actions.registerAction(new ThreadActionKey());
 await streamDeck.connect();
 applyGlobal(await streamDeck.settings.getGlobalSettings<GlobalSettings>());
 monitor.start();
+await monitor.located().catch((error: unknown) => log(`finding T3 home failed: ${describe(error)}`))
 shell.start();
 context.start();
 usage.start();

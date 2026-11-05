@@ -7,6 +7,13 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Fixed
 
 - Custom and rebranded T3 Code builds (another app name or bundle id, such as `T3 Acme.app` with `com.t3tools.t3code.custom`) are found. Keys now say `Open T3 Code` instead of `Install T3 Code` when such a build isn't running. Tapping a key brings up the app that runs the T3 server, or, when none is running, the app that owns `t3code://` links, instead of always asking for `com.t3tools.t3code`.
+- Tapping a Thread key opens that thread when T3 Code list it with a `/threads/<environment>/<thread>` link, as some custom builds do. The plugin read `threads` as the environment and sent `t3code://threads/threads/...`, so the app came forward without openning the thread.
+- Custom builds that keep their data next to `~/.t3` (such as `~/.t3-custom`) are found without setting T3 home. The Stream Deck app doesn't pass on `T3CODE_HOME`, so before, the plugin looked only in `~/.t3` and said T3 Code had never run. The plugin only looks when no T3 home is set and `~/.t3` has no `userdata` folder, so stock install behave normaly, and it only uses a `~/.t3-<name>` folder when there is exactly one. Once that folder's server has answered, the plugin keeps it until T3 home changes or the plugin restarts. Before that, a `~/.t3/` that comes into use wins. With several such folders, set T3 home.
+- Tapping a thread hands its link to the app that runs the T3 server (`open -b`), not to whichever T3 Code build has the default for `t3code://` links.
+
+### Changed
+
+- Nightly pre-releases are titled `Nightly v<major>.<minor>.<patch>+nightly.<run>`. The Stream Deck app still shows the manifest's four-part version (`1.0.0.2`) as required.
 
 ### Added
 

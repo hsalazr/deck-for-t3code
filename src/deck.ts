@@ -54,6 +54,8 @@ export const DECK_PROFILE: Partial<Record<DeviceType, string>> = {
 const THREADS_PAGE = 0;
 const ACTIONS_PAGE = 1;
 
+const APP_LOOKUP_MS = 500;
+
 /** What the deck needs from Stream Deck and the OS; swapped out in tests. */
 export interface DeckHost {
 	switchToProfile(deviceId: string, profile?: string, page?: number): Promise<void>;
@@ -62,6 +64,7 @@ export interface DeckHost {
 	/** `open` arguments that bring up the T3 Code app at this location (see `AppLocator.openArgs`). */
 	appArgs(loc: T3Location): Promise<string[]>;
 	warn(message: string): void;
+	info?(message: string): void;
 }
 
 const appLocator = new AppLocator();
@@ -71,6 +74,7 @@ const defaultHost: DeckHost = {
 	open: (args) => new Promise((resolve, reject) => execFile("/usr/bin/open", args, (error) => (error ? reject(error) : resolve()))),
 	appArgs: (loc) => appLocator.openArgs(loc),
 	warn: (message) => streamDeck.logger.warn(message),
+	info: (message) => streamDeck.logger.info(message),
 };
 
 interface KeyEntry {
@@ -402,8 +406,16 @@ export class Deck {
 	#open(entry: KeyEntry, card: ThreadCard): void {
 		this.#monitor.ack(card.threadId);
 		const url = deepLinkFor(card.link, card.threadId);
-		if (url) this.#launch(entry, Promise.resolve([url]));
-		else this.#openT3(entry);
+		if (!url) return this.#openT3(entry) 
+		
+		let timer: NodeJS.Timeout | undefined;
+		const app = Promise.race([
+			this.#host.appArgs(this.#monitor.location).catch(() => []),
+			new Promise<string[]>((resolve) => (timer = setTimeout(() => resolve ([]), APP_LOOKUP_MS))),
+		]).finally(() => clearTimeout(timer));
+		const args = app.then((found)=> (found[0] === "-b" ? [...found, url]: [url]))
+		this.#launch(entry, args);
+		
 	}
 
 	/** Brings up T3 Code itself (also what a tap does while T3 is offline). */
@@ -416,6 +428,7 @@ export class Deck {
 		pending
 			.then((resolved) => {
 				args = resolved;
+				this.#host.info?.(`open ${args.join(" ")}`)
 				return this.#host.open(args);
 			})
 			.catch((error: unknown) => {

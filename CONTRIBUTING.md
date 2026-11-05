@@ -60,8 +60,8 @@ Tests, docs, screenshots and issues must not contain real project names, thread 
 
 ## Releasing (maintainer)
 
-1. Update `CHANGELOG.md` and the version in the manifest (`Version`, four parts, e.g. `1.0.0.0`), `package.json` and `package-lock.json` (`1.0.0`), and `PLUGIN_VERSION` in `src/version.ts` (sent to T3 Code as the client version; a test checks all four agree). The tag `v1.0.0` matches the manifest.
+1. Update `CHANGELOG.md` and the version in the manifest (`Version`, four parts, e.g. `1.0.0.0`: Stream Deck's manifest schema requires the fourth, build parts, and the Stream Deck app shows all four), `package.json` and `package-lock.json` (`1.0.0`), and `PLUGIN_VERSION` in `src/version.ts` (sent to T3 Code as the client version; a test checks all four agree). The tag `v1.0.0` matches the manifest.
 2. Run `npm run notices` after `npm ci` and commit `THIRD_PARTY_NOTICES.md` (repo root and plugin folder) if it changed. It lists the packages bundled into `bin/plugin.js` with their license texts; a test fails when the files are stale.
 3. Tag `vX.Y.Z` and push the tag. The release workflow builds, checks that the tag matches the manifest, packs the plugin and attaches the `.streamDeckPlugin` file to a GitHub release, using the matching `CHANGELOG.md` section as the notes.
 
-Nightlies need nothing: `.github/workflows/nightly.yml` builds `main` daily at 08:23 UTC when it has changed (or on demand: **Actions → Nightly → Run workflow**), stamps the manifest's fourth version part with the run number, and replaces the `nightly` pre-release with the change log's `[Unreleased]` section as notes.
+Nightlies need nothing: `.github/workflows/nightly.yml` builds `main` daily at 08:23 UTC when it has changed (or on demand: **Actions → Nightly → Run workflow**), stamps the manifest's fourth version part with the run number, and replaces the `nightly` pre-release (titled `Nightly v1.0.0+nightly.N`) with the change log's `[Unreleased]` section as notes.

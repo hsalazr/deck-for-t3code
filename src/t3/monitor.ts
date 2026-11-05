@@ -32,9 +32,11 @@ import {
 	type TokenStore,
 } from "./auth.ts";
 import type { ContextUsage, WatchTarget } from "./context-watcher.ts";
+import { discoverHome } from "./app.ts";
 import { AuthRejectedError, McpClient, ToolError, UnreachableError } from "./mcp.ts";
 import { RemoteEnvironments } from "./remotes.ts";
 import { waitingLabel, type PendingTask, type ShellView } from "./shell-stream.ts";
+import { error } from "node:console";
 
 export type { ConnectionReason };
 
@@ -109,6 +111,7 @@ export interface MonitorOptions {
 	/** Replaces the MCP client (tests): answers `t3_thread_list` / `t3_project_list`. */
 	call?: (name: string, args: Record<string, unknown>) => Promise<unknown>;
 	now?: () => number;
+	discoverHome?: (base: T3Location) => Promise<T3Location | "default" | undefined>;
 }
 
 interface ThreadListResult {
@@ -139,6 +142,8 @@ const SHELL_DEBOUNCE_MS = 250;
 const REBUILD_DEBOUNCE_MS = 150;
 const RETRY_MIN_MS = 5_000;
 const RETRY_MAX_MS = 30_000;
+
+const DISCOVER_TIMEOUTS_MS = 2_000;
 /** Threads not seen for this long are forgotten (and their acks with them). */
 export const SEEN_TTL_MS = 24 * 3600_000;
 
@@ -147,7 +152,15 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 	readonly #transport: MonitorOptions["call"];
 	readonly #now: () => number;
 	#settings: MonitorSettings = { ...DEFAULT_SETTINGS };
-	#location: T3Location = locate();
+
+	#base: T3Location = locate();
+	#location: T3Location = this.#base;
+	readonly #discover: MonitorOptions["discoverHome"];
+	#finding: Promise<void> | undefined;
+	#pinned = false;
+	#stops = 0;
+	#stopped = false;
+	#discovering: { base: T3Location; answer: Promise<T3Location | "default" | undefined> } | undefined;
 	#client: McpClient | undefined;
 	#clientOrigin: string | undefined;
 	#running = false;
@@ -203,6 +216,7 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 		this.#tokens = opts.tokens ?? defaultTokens;
 		this.#transport = opts.call;
 		this.#now = opts.now ?? Date.now;
+		this.#discover = opts.discoverHome ?? (opts.call ? undefined : (base) => discoverHome(base));
 		this.#startedAt = this.#now();
 		this.#remotes = new RemoteEnvironments((name, args) => this.#call(name, args), (message) => this.emit("log", message));
 	}
@@ -218,13 +232,18 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 			...(typeof s.t3Home === "string" && s.t3Home.trim() ? { t3Home: s.t3Home.trim() } : {}),
 			...(typeof s.t3AppBundleId === "string" && s.t3AppBundleId.trim() ? { t3AppBundleId: s.t3AppBundleId.trim() } : {}),
 		};
-		const relocate = next.t3Home !== this.#settings.t3Home || next.t3AppBundleId !== this.#settings.t3AppBundleId;
+		const rehome = next.t3Home !== this.#settings.t3Home;
+		const relocate = rehome || next.t3Home !== this.#settings.t3Home || next.t3AppBundleId !== this.#settings.t3AppBundleId;
 		const refilter = next.showSnoozed !== this.#settings.showSnoozed;
 		this.#settings = next;
-		if (relocate) {
-			this.#location = locate(next);
-			this.#dropClient();
-			this.#remotes.clear();
+		if (rehome) {
+			this.#base = locate(next);
+			this.#pinned = false;
+			this.#moveTo(this.#base);
+		}else if (relocate) {
+			this.#base = locate(next);
+			this.#location = {...this.#location, ...(this.#base.appBundleId ? { appBundleId: this.#base.appBundleId } : {}) };
+			if(!this.#base.appBundleId) delete this.#location.appBundleId;
 		}
 		if (relocate || refilter) {
 			this.#needFull = true;
@@ -238,15 +257,18 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 	start(): void {
 		if (this.#running) return;
 		this.#running = true;
+		this.#stopped = false;
 		this.#startedAt = this.#now();
 		this.#needFull = true;
-		this.#retryRevokes();
+		void this.#findHome().finally(() => this.#retryRevokes());
 		this.#request(0);
 		this.#scheduleRemotes(REMOTE_TICK_MS);
 	}
 
 	stop(): void {
 		this.#running = false;
+		this.#stopped = true;
+		this.#stops++;
 		this.#dropClient();
 		clearTimeout(this.#pollTimer);
 		clearTimeout(this.#rebuildTimer);
@@ -350,6 +372,10 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 		};
 	}
 
+	located() : Promise<void> {
+		return this.#findHome();
+	}
+
 	get location(): T3Location {
 		return this.#location;
 	}
@@ -412,13 +438,16 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 	async #runPoll(): Promise<void> {
 		const startedAt = this.#now();
 		this.#lastPollAt = Date.now();
-		const full = this.#needFull || startedAt - this.#lastFullAt >= FULL_POLL_MS - 100;
-		this.#needFull = false;
 		try {
-			await this.#poll(full, startedAt);
+			await this.#findHome();
+			const full = this.#needFull || startedAt - this.#lastFullAt >= FULL_POLL_MS - 100;
+			this.#needFull = false;
+		
+			if (!(await this.#poll(full, startedAt))) return;
 			// A poll that started before a sign-out mustn't report the connection as fine.
 			if (this.#tokens.signedOut) throw new SignedOutError();
 			this.#failures = 0;
+			if (this.#location.discovered) this.#pinned = true;
 			this.#lastFailure = "";
 			const before = this.snapshot.connection.kind;
 			if (before !== "ok") {
@@ -440,6 +469,56 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 			this.#lastFailure = message;
 		}
 	}
+
+	#findHome(): Promise<void> {
+		const discover = this.#discover;
+		if (!discover || this.#pinned || this.#stopped || this.#base.custom) return Promise.resolve();
+		this.#finding ??= this.#lookUpHome(discover).finally(() => (this.#finding = undefined));
+		return this.#finding;
+	}
+
+	async #lookUpHome(discover: NonNullable<MonitorOptions["discoverHome"]>): Promise<void> {
+		const base = this.#base;
+		const stops = this.#stops;
+		if (this.#discovering?.base !== base) {
+			const lookup = {
+				base,
+				answer: discover(base)
+					.catch((error: unknown) => {
+						this.emit("log", `looking for T3 home next to ~/.t3 failed: ${(error as Error)?.message ?? String(error)}`);
+						return undefined
+					})
+					.finally(()=> {
+						if (this.#discovering === lookup) this.#discovering = undefined;
+					}),
+			};
+			this.#discovering = lookup;
+		}
+		const pending = this.#discovering.answer;
+		let timer: NodeJS.Timeout | undefined;
+		const timeout = new Promise<undefined>((resolve) => (timer = setTimeout(() => resolve(undefined), DISCOVER_TIMEOUTS_MS)));
+		const found = await Promise.race([pending, timeout]).finally(()=> clearTimeout(timer));
+		if (stops !== this.#stops || base !== this.#base || found === undefined) return;
+		if (found === "default") this.#pinned = true;
+		const next = found === "default" ? base : found;
+		if (next.home === this.#location.home) return;
+		this.#moveTo(next);
+		this.#shell?.restart?.();
+		this.emit("log", `using T3 home ${next.home}${next.discovered ? " (found next to ~/.t3; set T3 home in the key settings to pin it)" : ""}`);
+	}
+
+	#moveTo(loc: T3Location): void {
+		this.#location = loc;
+		this.#dropClient();
+		this.#remotes.clear();
+		this.#recent = [];
+		this.#activeRoots = new Set();
+		this.#local = [];
+		this.#projectsAt = 0;
+		this.#needFull = true;
+		this.#seeded = false;
+		this.#compose;
+	}	
 
 	/** Tokens whose revoke failed earlier (replaced, or signed out while T3 was away). */
 	#retryRevokes(): void {
@@ -530,23 +609,27 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 		return roots;
 	}
 
-	async #poll(full: boolean, startedAt: number): Promise<void> {
+	async #poll(full: boolean, startedAt: number): Promise<boolean> {
+		const home = this.#location.home;
 		const active = await this.#listActive();
 		const activeIds = new Set(active.map((t) => t.threadId));
 		// A root that left the active list just finished; its entry in the recent list is stale.
 		const departed = [...this.#activeRoots].filter((id) => !activeIds.has(id));
 		let fetchedFull = full;
+		let recent = this.#recent;
 		if (full) {
-			this.#recent = await this.#listRoots(RECENT_LIMIT);
+			recent = await this.#listRoots(RECENT_LIMIT);
 		} else if (departed.length > 0) {
 			const head = await this.#listRoots(HEAD_LIMIT);
 			const inHead = new Set(head.map((t) => t.threadId));
-			if (departed.every((id) => inHead.has(id))) this.#recent = mergeById(this.#recent, head);
+			if (departed.every((id) => inHead.has(id))) recent = mergeById(recent, head);
 			else {
-				this.#recent = await this.#listRoots(RECENT_LIMIT);
+				recent = await this.#listRoots(RECENT_LIMIT);
 				fetchedFull = true;
 			}
 		}
+		if (this.#location.home !== home) return false;
+		this.#recent = recent;
 		this.#activeRoots = new Set(active.filter((t) => t.relationshipToParent !== "subagent").map((t) => t.threadId));
 
 		const byId = new Map<string, ThreadSummary>();
@@ -558,6 +641,7 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 		this.#absorb(this.#local, this.#now());
 		await this.#refreshProjects();
 		this.#rebuild();
+		return true;
 	}
 
 	/** First sight of each thread: decide whether its latest result counts as news. Then forget threads gone for a day. */

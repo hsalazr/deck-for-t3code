@@ -64,6 +64,8 @@ export interface T3Location {
 	cli: string;
 	/** The home came from a setting or T3CODE_HOME rather than the default. */
 	custom: boolean;
+
+	discovered?: boolean;
 	/** "T3 app bundle id" setting: when set, it is the app to open, and detection is skipped. */
 	appBundleId?: string;
 }
@@ -135,9 +137,12 @@ export async function readServerOrigin(loc: T3Location, deps: { appInstalled?: (
 		if (!(await exists(loc.home))) {
 			if (loc.custom) throw new T3Error("not-installed", `T3 home ${loc.home} does not exist. Check T3 home in the key settings.`);
 			if (!installed) throw new T3Error("not-installed", "T3 Code isn't installed (no T3 Code app in /Applications or ~/Applications, and no ~/.t3).");
-			throw new T3Error("not-running", "T3 Code has never run on this Mac. Open it once.");
+			throw new T3Error(
+				"not-running", 
+				`T3 Code has never run on this Mac. Open it once. If your build keeps its data other than ${loc.home}, set T3 home in the key settings.`
+			);
 		}
-		if (!installed && !loc.custom) throw new T3Error("not-installed", "T3 Code isn't installed (no T3 Code app in /Applications or ~/Applications).");
+		if (!installed && !loc.custom && !loc.discovered) throw new T3Error("not-installed", "T3 Code isn't installed (no T3 Code app in /Applications or ~/Applications).");
 		throw new T3Error("not-running", "T3 Code is not running (no server-runtime.json).");
 	}
 	let state: { origin?: unknown; port?: unknown; pid?: unknown };

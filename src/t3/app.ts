@@ -10,7 +10,7 @@
  * the network.
  */
 import { execFile } from "node:child_process";
-import { promises as fs } from "node:fs";
+import { promises as fs, read } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -206,4 +206,45 @@ export class AppLocator {
 		const id = pid === undefined ? undefined : await this.bundleIdForPid(pid);
 		return id ? ["-b", id] : [SCHEME_URL];
 	}
+}
+
+const SIBLING_HOME = /^\.t3-[A-Za-z0-9._-]*$/;
+
+export interface DiscoverDeps {
+	readdir?: (dir: string) => Promise<string[]>;
+	lstat?: (p: string) => Promise<{ isDirectory(): boolean; uid: number; mode: number}>;
+	stat?: (p: string) => Promise<{isDirectory(): boolean}>;
+	uid?: number;
+}
+
+export async function discoverHome(base: T3Location, deps: DiscoverDeps = {}): Promise<T3Location | "default" | undefined> {
+	if (base.custom) return "default";
+	const readdir = deps.readdir ?? ((dir: string) => fs.readdir(dir));
+	const lstat = deps.lstat ?? ((dir: string) => fs.lstat(dir));
+	const stat = deps.stat ?? ((dir: string) => fs.stat(dir));
+	const uid = deps.uid ?? process.getuid?.() ?? -1;
+	const ownedDir = (dir:string): Promise<boolean> => 
+		lstat(dir).then(
+			(st) => st.isDirectory() && st.uid === uid && (st.mode & 0o022) === 0,
+			() => false,
+		);
+		const inUse = await stat(path.join(base.home, "userdata")).then(
+			(st) => st.isDirectory(),
+			() => false,
+		)
+		if(inUse) return "default";
+		const root = path.dirname(base.home)
+		let names: string[];
+		try {
+			names = (await readdir(root)).filter((name) => SIBLING_HOME.test(name)).sort();
+		} catch {
+			return undefined
+		}
+		const homes: string[] = [];
+		for (const name of names) {
+			const home = path.join(root, name);
+			if ((await ownedDir(home)) && (await ownedDir(path.join(home, "userdata")))) homes.push(home);
+		}
+		const [home] = homes
+		return homes.length === 1 && home ? {...base, home, cli: path.join(home, "bin", "t3"), discovered: true } : undefined;
 }

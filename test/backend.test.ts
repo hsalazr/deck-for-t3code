@@ -36,6 +36,7 @@ import {
 	shouldSeed,
 	threadListOf,
 	type ContextSource,
+	type MonitorOptions,
 	type ShellSource,
 } from "../src/t3/monitor.ts";
 import { RpcAccess } from "../src/t3/rpc.ts";
@@ -150,6 +151,10 @@ test("readServerOrigin: missing runtime file maps to not-installed or not-runnin
 	const missing = { home: path.join(loc.home, "nope"), cli: "", custom: false };
 	await rejectsWith(readServerOrigin(missing, { appInstalled: installed }), (e) => reasonOf(e) === "not-running");
 	await rejectsWith(readServerOrigin(missing, { appInstalled: absent }), (e) => reasonOf(e) === "not-installed");
+	// The message points at T3 home for builds that keep their data elsewhere.
+	await rejectsWith(readServerOrigin(missing, { appInstalled: installed }), (e) => /set T3 home/.test((e as Error).message) && (e as Error).message.includes(missing.home));
+	// A home found next to ~/.t3 is a custom build's: no stock app needed, it just isn't running.
+	await rejectsWith(readServerOrigin({ ...loc, custom: false, discovered: true }, { appInstalled: absent }), (e) => reasonOf(e) === "not-running");
 	// A custom home that doesn't exist says so.
 	await rejectsWith(
 		readServerOrigin({ ...missing, custom: true }, { appInstalled: installed }),
@@ -711,8 +716,12 @@ class FakeShell extends EventEmitter implements ShellSource {
 	rootOf(id: string) {
 		return this.connected ? this.state.rootOf(id) : undefined;
 	}
+	restarts = 0;
 	kick() {
 		this.kicks++;
+	}
+	restart() {
+		this.restarts++;
 	}
 	put(thread: Record<string, unknown>) {
 		this.state.apply({ kind: "thread.updated", location: "active", thread });
@@ -734,7 +743,7 @@ after(() => {
 	for (const m of monitors) m.stop();
 });
 
-async function monitor(opts: { shell?: FakeShell } = {}) {
+async function monitor(opts: { shell?: FakeShell; discoverHome?: MonitorOptions["discoverHome"]; beforeStart?: (m: Monitor) => void } = {}) {
 	let clock = T0;
 	const server = { active: [] as ThreadSummary[], recent: [] as ThreadSummary[], calls: [] as Record<string, unknown>[], fail: undefined as Error | undefined };
 	const { tokens } = await store();
@@ -748,10 +757,12 @@ async function monitor(opts: { shell?: FakeShell } = {}) {
 			const list = args.statuses ? server.active : server.recent.slice(0, Number(args.limit));
 			return { threads: list, nextCursor: null, total: list.length };
 		},
+		...(opts.discoverHome ? { discoverHome: opts.discoverHome } : {}),
 	});
 	monitors.push(m);
 	if (opts.shell) m.attachShell(opts.shell);
 	m.configure({});
+	opts.beforeStart?.(m);
 	m.start();
 	return { m, server, setClock: (t: number) => (clock = t), clock: () => clock };
 }
@@ -1002,6 +1013,238 @@ test("monitor: setDeckThreads hands exactly those threads to the context watcher
 	assert.deepEqual([...context.targets.keys()], ["a", "w"]);
 	assert.deepEqual(context.targets.get("a"), { runKey: "a-run|completed", completedAt: T0 - 1000, working: false });
 	assert.equal(context.targets.get("w")?.working, true);
+	m.stop();
+});
+
+// ---------------------------------------------------------------- T3 home found next to ~/.t3
+
+const DEFAULT_HOME = path.join(os.homedir(), ".t3");
+const SIBLING = path.join(os.homedir(), ".t3-custom");
+const sibling = (base: T3Location): T3Location => ({ ...base, home: SIBLING, cli: path.join(SIBLING, "bin", "t3"), discovered: true });
+/** These tests rely on ~/.t3 being the default; T3CODE_HOME makes the home custom, so nothing is looked for. */
+const discovery = { skip: process.env.T3CODE_HOME ? "T3CODE_HOME is set" : false };
+
+/** A scripted discoverHome: answers from `answer`, counting calls. */
+function discoverer(answer: (base: T3Location) => T3Location | "default" | undefined | Promise<T3Location | "default" | undefined>) {
+	const d = {
+		calls: 0,
+		answer,
+		fn: async (base: T3Location) => {
+			d.calls++;
+			return d.answer(base);
+		},
+	};
+	return d;
+}
+
+test("monitor: a lone home next to ~/.t3 is used before the first poll, logged, and the shell restarts", discovery, async () => {
+	const shell = new FakeShell();
+	const d = discoverer(sibling);
+	const logs: string[] = [];
+	const { m } = await monitor({ shell, discoverHome: d.fn, beforeStart: (m) => m.on("log", (l) => logs.push(l)) });
+	await m.located();
+	assert.equal(m.location.home, SIBLING);
+	assert.equal(m.location.cli, path.join(SIBLING, "bin", "t3"));
+	assert.equal(m.location.discovered, true);
+	assert.equal(shell.restarts, 1);
+	assert.ok(logs.some((l) => l.includes(`using T3 home ${SIBLING}`) && l.includes("set T3 home")), logs.join("\n"));
+	m.stop();
+});
+
+test("monitor: pending revokes are retried in the found home, after it is found", discovery, async () => {
+	const d = discoverer(sibling);
+	const homes: string[] = [];
+	const { m } = await monitor({
+		discoverHome: d.fn,
+		beforeStart: (m) => (m.tokens.retryRevokes = async (loc) => (homes.push(loc.home), { revoked: 0, failed: 0 })),
+	});
+	await m.located();
+	await settle();
+	assert.deepEqual(homes, [SIBLING]);
+	m.stop();
+});
+
+test("monitor: ~/.t3 in use is kept and never looked up again", discovery, async () => {
+	const d = discoverer(() => "default");
+	const { m } = await monitor({ discoverHome: d.fn });
+	await m.refresh();
+	await m.refresh();
+	assert.equal(m.location.home, DEFAULT_HOME);
+	assert.equal(d.calls, 1);
+	m.stop();
+});
+
+test("monitor: a found home is pinned once its server answers; before that ~/.t3 coming into use wins", discovery, async () => {
+	const d = discoverer(sibling);
+	const { m, server } = await monitor({ discoverHome: d.fn });
+	server.fail = new T3Error("not-running", "T3 Code is not running");
+	await m.refresh();
+	assert.equal(m.location.home, SIBLING);
+	const calls = d.calls;
+	await m.refresh();
+	assert.ok(d.calls > calls, "not pinned while its server hasn't answered: looked up again");
+
+	// ~/.t3 comes into use before the found home's server ever answered: back to ~/.t3.
+	d.answer = () => "default";
+	await m.refresh();
+	assert.equal(m.location.home, DEFAULT_HOME);
+	assert.equal(m.location.discovered, undefined);
+
+	// Answered: pinned, even if ~/.t3 shows up later.
+	const pinned = discoverer(sibling);
+	const second = await monitor({ discoverHome: pinned.fn });
+	await second.m.refresh();
+	assert.equal(second.m.snapshot.connection.kind, "ok");
+	pinned.answer = () => "default";
+	const before = pinned.calls;
+	await second.m.refresh();
+	await second.m.refresh();
+	assert.equal(pinned.calls, before, "pinned: not looked up again");
+	assert.equal(second.m.location.home, SIBLING);
+	m.stop();
+	second.m.stop();
+});
+
+test("monitor: no answer (none, several, or a failed lookup) keeps the current home and logs the failure", discovery, async () => {
+	const d = discoverer(() => undefined);
+	const logs: string[] = [];
+	const { m } = await monitor({ discoverHome: d.fn, beforeStart: (m) => m.on("log", (l) => logs.push(l)) });
+	await m.refresh();
+	assert.equal(m.location.home, DEFAULT_HOME);
+	d.answer = () => {
+		throw new Error("EACCES");
+	};
+	await m.refresh();
+	assert.equal(m.location.home, DEFAULT_HOME);
+	assert.ok(logs.some((l) => /looking for T3 home next to ~\/.t3 failed: EACCES/.test(l)), logs.join("\n"));
+	// Still looked for on later polls: a build's folder may appear.
+	d.answer = sibling;
+	await m.refresh();
+	assert.equal(m.location.home, SIBLING);
+	m.stop();
+});
+
+test("monitor: a lookup that hangs gives up after 2 s and is shared, not repeated", discovery, async () => {
+	let release!: (v: T3Location | "default" | undefined) => void;
+	const d = discoverer(() => new Promise((resolve) => (release = resolve)));
+	const { m } = await monitor({ discoverHome: d.fn });
+	const startedAt = Date.now();
+	await Promise.all([m.located(), m.located()]);
+	assert.ok(Date.now() - startedAt >= 1900, "waited for the timeout");
+	assert.equal(m.location.home, DEFAULT_HOME);
+	assert.equal(d.calls, 1, "start, the first poll and both callers share one lookup");
+	// An answer nobody waits for any more is dropped; the next lookup asks again.
+	release(sibling(m.location));
+	await settle();
+	d.answer = sibling;
+	await m.located();
+	assert.equal(d.calls, 2);
+	assert.equal(m.location.home, SIBLING);
+	m.stop();
+});
+
+test("monitor: T3 home set in the settings is used as is; clearing it looks again; old threads are dropped at once", discovery, async () => {
+	const shell = new FakeShell();
+	const d = discoverer(sibling);
+	const { m, server } = await monitor({ shell, discoverHome: d.fn });
+	server.recent = [summary("a")];
+	await m.refresh();
+	assert.equal(m.location.home, SIBLING);
+	assert.ok(m.snapshot.cards.has("a"));
+	const calls = d.calls;
+
+	m.configure({ t3Home: "/opt/t3" });
+	assert.equal(m.location.home, "/opt/t3");
+	assert.equal(m.location.custom, true);
+	assert.equal(m.snapshot.cards.size, 0, "the old home's threads are gone before the next poll");
+	await m.refresh();
+	assert.equal(d.calls, calls, "a set home isn't looked up");
+	assert.equal(m.location.home, "/opt/t3");
+
+	m.configure({});
+	await m.located();
+	assert.equal(m.location.home, SIBLING, "pin reset: found again");
+	assert.ok(d.calls > calls);
+	m.stop();
+});
+
+test("monitor: a settings change or a restart during a lookup looks up the current home, and polls go there", discovery, async () => {
+	for (const interrupt of ["set and cleared T3 home", "stop and start"] as const) {
+		let calls = 0;
+		const polled: string[] = [];
+		const { tokens } = await store();
+		const m: Monitor = new Monitor({
+			tokens,
+			call: async (name: string): Promise<unknown> => {
+				polled.push(m.location.home);
+				return name === "t3_project_list" ? { projects: [], nextCursor: null } : { threads: [], nextCursor: null };
+			},
+			discoverHome: async (base) => {
+				calls++;
+				await settle(calls === 1 ? 300 : 50);
+				return sibling(base);
+			},
+		});
+		monitors.push(m);
+		m.configure({});
+		m.start(); // the first lookup is in flight
+		if (interrupt === "stop and start") {
+			m.stop();
+			m.start();
+		} else {
+			m.configure({ t3Home: "/opt/x" });
+			m.configure({});
+		}
+		await m.located();
+		assert.equal(m.location.home, SIBLING, interrupt);
+		await settle(50);
+		assert.deepEqual([...new Set(polled)], [SIBLING], `${interrupt}: no poll went to ~/.t3`);
+		m.stop();
+	}
+});
+
+test("monitor: changing only the app bundle id keeps the found home", discovery, async () => {
+	const d = discoverer(sibling);
+	const { m } = await monitor({ discoverHome: d.fn });
+	await m.refresh();
+	m.configure({ t3AppBundleId: "com.example.t3" });
+	assert.equal(m.location.home, SIBLING);
+	assert.equal(m.location.appBundleId, "com.example.t3");
+	m.configure({});
+	assert.equal(m.location.home, SIBLING);
+	assert.equal("appBundleId" in m.location, false);
+	m.stop();
+});
+
+test("monitor: a poll that finishes after T3 home changed doesn't show the old home's threads", async () => {
+	let release!: () => void;
+	let gate: Promise<void> | undefined = new Promise((resolve) => (release = resolve));
+	const { tokens } = await store();
+	const m: Monitor = new Monitor({
+		tokens,
+		now: () => T0,
+		call: async (name: string): Promise<unknown> => {
+			const home: string = m.location.home;
+			await gate;
+			if (name === "t3_project_list") return { projects: [], nextCursor: null };
+			return { threads: [summary(`from-${path.basename(home)}`)], nextCursor: null };
+		},
+	});
+	monitors.push(m);
+	m.configure({ t3Home: "/opt/old" });
+	const seen = new Set<string>();
+	m.on("change", (snap: Monitor["snapshot"]) => {
+		for (const id of snap.cards.keys()) seen.add(id);
+	});
+	m.start();
+	await settle();
+	m.configure({ t3Home: "/opt/new" });
+	gate = undefined;
+	release();
+	await settle(100);
+	await m.refresh();
+	assert.deepEqual([...m.snapshot.cards.keys()], ["from-new"]);
+	assert.equal(seen.has("from-old"), false, "the stale poll's threads never reached the keys");
 	m.stop();
 });
 

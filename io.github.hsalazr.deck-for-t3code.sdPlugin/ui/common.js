@@ -114,7 +114,7 @@ const GLOBALS_HTML = `
   <div class="row"><label>Animation</label><select data-global="animation"><option value="smooth">Blink and spin</option><option value="off">Off (steady colors)</option></select></div>
   <div class="row"><label>Snoozed</label><div class="check"><input type="checkbox" data-global="showSnoozed" id="s"><label for="s">Show snoozed threads</label></div></div>
   <div class="row"><label>Refresh every</label><select data-global="pollSeconds"><option value="2">2 s</option><option value="5">5 s</option><option value="10">10 s</option></select></div>
-  <div class="row"><label>T3 home</label><input type="text" data-global="t3Home" placeholder="~/.t3 (default)"></div>
+  <div class="row"><label>T3 home</label><input type="text" data-global="t3Home" placeholder="~/.t3, or a lone ~/.t3-* folder"></div>
   <div class="row"><label>T3 app bundle id</label><input type="text" data-global="t3AppBundleId" placeholder="Detected (default)" spellcheck="false"></div>
   <div class="hint">Only for a T3 Code build the plugin doesn't find on its own: the app's bundle id, e.g. <code>com.t3tools.t3code</code>.</div>
   <h3>Sign-in</h3>

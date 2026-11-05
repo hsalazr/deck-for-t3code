@@ -82,7 +82,9 @@ jobs:
           sed -i '' "s/^export const PLUGIN_VERSION = \".*\";/export const PLUGIN_VERSION = \"$base+nightly.$RUN\";/" src/version.ts
           grep -q "+nightly.$RUN" src/version.ts
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "Nightly version $version"
+          # What people see: v<major>.<minor>.<patch>, with the nightly as build metadata.
+          echo "semver=v$base+nightly.$RUN" >> "$GITHUB_OUTPUT"
+          echo "Nightly version v$base+nightly.$RUN (manifest $version)"
 
       - if: steps.changed.outputs.build == 'true'
         run: npm run build
@@ -103,11 +105,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
+          SEMVER: ${{ steps.version.outputs.semver }}
         run: |
           set -euo pipefail
           short="${GITHUB_SHA:0:7}"
           {
-            echo "Nightly build of \`main\` at $short (manifest version $VERSION), built $(date -u '+%Y-%m-%d %H:%M UTC')."
+            echo "Nightly build of \`main\` at $short ($SEMVER; Stream Deck shows $VERSION, since its manifest needs four parts), built $(date -u '+%Y-%m-%d %H:%M UTC')."
             echo
             echo "Untested beyond CI and may break. Installing it replaces Deck for T3 Code on your deck; your keys and settings stay. To go back, install the latest stable release from the Releases page."
             echo
@@ -121,4 +124,4 @@ jobs:
           gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
           gh release create nightly dist/*.streamDeckPlugin \
             --prerelease --latest=false --target "$GITHUB_SHA" \
-            --title "Nightly $VERSION" --notes-file notes.md
+            --title "Nightly $SEMVER" --notes-file notes.md

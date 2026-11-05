@@ -114,6 +114,32 @@ test("deep links target the desktop app's thread route", () => {
 	assert.equal(deepLinkFor("not a url", "x"), null);
 });
 
+test("deep links: a /threads/ prefix, the agent-facing form, and links that don't end in the thread", () => {
+	// Custom builds list /threads/<env>/<thread>: the environment is env, not "threads".
+	assert.equal(deepLinkFor("http://127.0.0.1:3773/threads/env-1/t1", "t1"), "t3code://threads/env-1/t1");
+	assert.equal(deepLinkFor("<t3-thread://v2/env-1/t1>", "t1"), "t3code://threads/env-1/t1");
+	assert.equal(deepLinkFor("  <t3-thread://v2/env-1/t1>  ", "t1"), "t3code://threads/env-1/t1", "trimmed");
+	// Ends in the thread id: the environment is the segment just before it.
+	assert.equal(deepLinkFor("http://h/extra/env-1/t1", "t1"), "t3code://threads/env-1/t1");
+	// Doesn't end in the thread id: the first segment (after any threads/).
+	assert.equal(deepLinkFor("http://h/env-1", "t1"), "t3code://threads/env-1/t1");
+	assert.equal(deepLinkFor("http://h/threads/env-1", "t1"), "t3code://threads/env-1/t1");
+	// Nothing left to be the environment.
+	assert.equal(deepLinkFor("http://h/t1", "t1"), null);
+	assert.equal(deepLinkFor("http://h/threads/t1", "t1"), null);
+	assert.equal(deepLinkFor("http://h/threads", "t1"), null);
+	assert.equal(deepLinkFor("http://h/", "t1"), null);
+});
+
+test("deep links: segments are decoded once, and bad percent-encoding is kept as text", () => {
+	assert.equal(deepLinkFor("http://h/env%20one/t1", "t1"), "t3code://threads/env%20one/t1");
+	assert.equal(deepLinkFor("http://h/env%2520one/t1", "t1"), "t3code://threads/env%2520one/t1", "decoded once, not twice");
+	// A percent-encoded thread id still matches the last segment.
+	assert.equal(deepLinkFor("http://h/env/a%3Ab", "a:b"), "t3code://threads/env/a%3Ab");
+	// Not valid percent-encoding: used as is (and encoded), not dropped.
+	assert.equal(deepLinkFor("http://h/env%E0%A4%A/t1", "t1"), "t3code://threads/env%25E0%25A4%25A/t1");
+});
+
 test("wrap keeps to the line budget and ellipsizes", () => {
 	assert.deepEqual(wrap("Fix flaky login test", 12, 3), ["Fix flaky login", "test"]);
 	const long = wrap("Upgrade to Node 24 with extra words and more words", 12, 3);

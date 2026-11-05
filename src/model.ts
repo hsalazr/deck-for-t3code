@@ -263,17 +263,34 @@ export function layoutThreads(
 	};
 }
 
+
+/** `decodeURIComponent`, or the text as it is when it isn't valid percent-encoding. */
+const decodeSegment = (text: string): string => {
+	try {
+		return decodeURIComponent(text);
+	} catch {
+		return text;
+	}
+}
+
 /**
  * `t3code://threads/<environment>/<thread>` from a thread link. Accepts the
- * server's http form (`http://host/<env>/<thread>`) and the agent-facing
- * `<t3-thread://v2/<env>/<thread>>` form.
+ * server's http form (`http://host/<env>/<thread>`), the same with a
+ * `/threads/` prefix (`http://host/threads/<env>/<thread>`), and the 
+ *  agent-facing `<t3-thread://v2/<env>/<thread>>` form. After a leading
+ * `threads` segment is dropped, the environment is the segment before the 
+ *  thread id, or the first segment when the link doesn't end in the thread id.
  */
 export function deepLinkFor(link: string, threadId: string): string | null {
 	try {
 		const url = new URL(link.trim().replace(/^<|>$/g, ""));
-		const env = url.pathname.split("/").filter(Boolean)[0];
+		let parts = url.pathname.split("/").filter(Boolean).map(decodeSegment);
+		if (parts[0] === "threads") parts = parts.slice(1);
+		const endsInThread = parts.at(-1) === threadId;
+		const env = endsInThread ? (parts.length >= 2 ? parts.at(-2) : undefined) : parts[0];
+	
 		if (!env) return null;
-		return `t3code://threads/${encodeURIComponent(decodeURIComponent(env))}/${encodeURIComponent(threadId)}`;
+		return `t3code://threads/${encodeURIComponent(env)}/${encodeURIComponent(threadId)}`;
 	} catch {
 		return null;
 	}

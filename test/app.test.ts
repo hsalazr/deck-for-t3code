@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { test } from "node:test";
 
-import { AppLocator, bundleIdOverride, enclosingApp, liveServerPid, t3AppInstalled, t3BundleIdOf, validBundleId, type AppDeps } from "../src/t3/app.ts";
+import { AppLocator, bundleIdOverride, discoverHome, enclosingApp, liveServerPid, t3AppInstalled, t3BundleIdOf, validBundleId, type AppDeps } from "../src/t3/app.ts";
 import { locate, type T3Location } from "../src/t3/auth.ts";
 
 /** A fake Mac: apps with their Info.plist values, processes, and runtime files. */
@@ -172,4 +175,95 @@ test("AppLocator.openArgs: override, then the running app, then the t3code:// sc
 	// Running from the CLI (no .app): the scheme too.
 	const cli = new AppLocator(fakeMac({ procs: { 900: "/usr/local/bin/node" }, runtime: { [RUNTIME]: { pid: 900 } }, alive: [900] }).deps);
 	assert.deepEqual(await cli.openArgs(loc()), ["t3code://new"]);
+});
+
+/** A fake home folder for discoverHome: folders with owner and mode; anything else is a symlink. */
+function fakeHomes(entries: Record<string, { uid?: number; mode?: number; symlink?: boolean }>, opts: { unreadable?: boolean } = {}) {
+	const ME = 501;
+	const calls: string[] = [];
+	const enoent = () => Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+	const deps = {
+		uid: ME,
+		readdir: async (dir: string) => {
+			calls.push(`readdir ${dir}`);
+			if (opts.unreadable) throw Object.assign(new Error("EACCES"), { code: "EACCES" });
+			return [...new Set(Object.keys(entries).filter((p) => path.dirname(p) === dir).map((p) => path.basename(p)))];
+		},
+		lstat: async (p: string) => {
+			calls.push(`lstat ${p}`);
+			const e = entries[p];
+			if (!e) throw enoent();
+			return { isDirectory: () => !e.symlink, uid: e.uid ?? ME, mode: e.mode ?? 0o40755 };
+		},
+		stat: async (p: string) => {
+			calls.push(`stat ${p}`);
+			if (!entries[p]) throw enoent();
+			return { isDirectory: () => true };
+		},
+	};
+	return { deps, calls };
+}
+
+const base = (extra: Partial<T3Location> = {}): T3Location => ({ home: "/Users/me/.t3", cli: "/Users/me/.t3/bin/t3", custom: false, ...extra });
+const owned = (name: string) => ({ [`/Users/me/${name}`]: {}, [`/Users/me/${name}/userdata`]: {} });
+
+test("discoverHome: a set T3 home, or ~/.t3 in use, is the default; nothing is listed", async () => {
+	const custom = fakeHomes(owned(".t3-custom"));
+	assert.equal(await discoverHome(base({ custom: true }), custom.deps), "default");
+	assert.deepEqual(custom.calls, []);
+	const inUse = fakeHomes({ "/Users/me/.t3/userdata": {}, ...owned(".t3-custom") });
+	assert.equal(await discoverHome(base(), inUse.deps), "default");
+	assert.deepEqual(inUse.calls, ["stat /Users/me/.t3/userdata"]);
+});
+
+test("discoverHome: the one ~/.t3-<name> folder you own is used, with its own CLI", async () => {
+	const { deps } = fakeHomes({ "/Users/me/.t3": {}, ...owned(".t3-custom"), "/Users/me/Documents": {}, ...owned("t3-plain"), ...owned(".t3-") });
+	// `t3-plain` (no dot) and a bare `.t3-` aren't custom homes, so they don't make it "several".
+	assert.deepEqual(await discoverHome(base({ appBundleId: "com.example.t3" }), deps), {
+		home: "/Users/me/.t3-custom",
+		cli: "/Users/me/.t3-custom/bin/t3",
+		custom: false,
+		discovered: true,
+		appBundleId: "com.example.t3",
+	});
+});
+
+test("discoverHome: several candidates, or none, is no answer", async () => {
+	assert.equal(await discoverHome(base(), fakeHomes({ ...owned(".t3-a"), ...owned(".t3-b") }).deps), undefined, "never guesses between two builds");
+	assert.equal(await discoverHome(base(), fakeHomes({ "/Users/me/Documents": {} }).deps), undefined);
+	assert.equal(await discoverHome(base(), fakeHomes(owned(".t3-a"), { unreadable: true }).deps), undefined, "home folder can't be listed");
+});
+
+test("discoverHome: a candidate must be a real folder you own that nobody else can write, with a userdata that is too", async () => {
+	const rejected: Record<string, Record<string, { uid?: number; mode?: number; symlink?: boolean }>> = {
+		"no userdata": { "/Users/me/.t3-x": {} },
+		"symlinked folder": { "/Users/me/.t3-x": { symlink: true }, "/Users/me/.t3-x/userdata": {} },
+		"symlinked userdata": { "/Users/me/.t3-x": {}, "/Users/me/.t3-x/userdata": { symlink: true } },
+		"another owner": { "/Users/me/.t3-x": { uid: 0 }, "/Users/me/.t3-x/userdata": { uid: 0 } },
+		"group-writable": { "/Users/me/.t3-x": { mode: 0o40775 }, "/Users/me/.t3-x/userdata": {} },
+		"world-writable userdata": { "/Users/me/.t3-x": {}, "/Users/me/.t3-x/userdata": { mode: 0o40757 } },
+	};
+	for (const [why, entries] of Object.entries(rejected)) assert.equal(await discoverHome(base(), fakeHomes(entries).deps), undefined, why);
+	// A rejected candidate doesn't count toward "several": the good one still wins.
+	const mixed = fakeHomes({ ...owned(".t3-good"), "/Users/me/.t3-bad": { uid: 0 }, "/Users/me/.t3-bad/userdata": { uid: 0 } });
+	assert.equal(((await discoverHome(base(), mixed.deps)) as T3Location).home, "/Users/me/.t3-good");
+});
+
+test("discoverHome on a real folder: finds the sibling, skips a symlink and a group-writable one", { skip: process.getuid === undefined ? "needs POSIX owners" : false }, async () => {
+	const root = await fs.mkdtemp(path.join(os.tmpdir(), "t3deck-home-"));
+	try {
+		const t3: T3Location = { home: path.join(root, ".t3"), cli: path.join(root, ".t3", "bin", "t3"), custom: false };
+		await fs.mkdir(path.join(root, ".t3-custom", "userdata"), { recursive: true, mode: 0o755 });
+		await fs.chmod(path.join(root, ".t3-custom"), 0o755);
+		await fs.chmod(path.join(root, ".t3-custom", "userdata"), 0o755);
+		await fs.symlink(path.join(root, ".t3-custom"), path.join(root, ".t3-link"));
+		await fs.mkdir(path.join(root, ".t3-loose", "userdata"), { recursive: true });
+		await fs.chmod(path.join(root, ".t3-loose"), 0o775);
+		assert.equal(((await discoverHome(t3)) as T3Location).home, path.join(root, ".t3-custom"));
+		// ~/.t3 comes into use: it wins.
+		await fs.mkdir(path.join(root, ".t3", "userdata"), { recursive: true });
+		assert.equal(await discoverHome(t3), "default");
+	} finally {
+		await fs.rm(root, { recursive: true, force: true });
+	}
 });

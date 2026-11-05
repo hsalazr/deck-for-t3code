@@ -207,3 +207,52 @@ export class AppLocator {
 		return id ? ["-b", id] : [SCHEME_URL];
 	}
 }
+
+/** A custom build's home next to ~/.t3: `.t3-<name>`. */
+const SIBLING_HOME = /^\.t3-[A-Za-z0-9._-]+$/;
+
+/** File system access for `discoverHome`; swapped out in tests. */
+export interface DiscoverDeps {
+	readdir?: (dir: string) => Promise<string[]>;
+	lstat?: (p: string) => Promise<{ isDirectory(): boolean; uid: number; mode: number }>;
+	stat?: (p: string) => Promise<{ isDirectory(): boolean }>;
+	uid?: number;
+}
+
+/**
+ * Where T3 Code keeps its data when no T3 home is set. `"default"`: use `base`
+ * (it is custom, or `<base>/userdata` exists). A location: the one `~/.t3-<name>`
+ * folder next to `base` that, with its `userdata`, is a real folder you own and
+ * nobody else can write to. `undefined`: none, or several (no guessing).
+ */
+export async function discoverHome(base: T3Location, deps: DiscoverDeps = {}): Promise<T3Location | "default" | undefined> {
+	if (base.custom) return "default";
+	const readdir = deps.readdir ?? ((dir: string) => fs.readdir(dir));
+	const lstat = deps.lstat ?? ((p: string) => fs.lstat(p));
+	const stat = deps.stat ?? ((p: string) => fs.stat(p));
+	const uid = deps.uid ?? process.getuid?.() ?? -1;
+	const ownedDir = (dir: string): Promise<boolean> =>
+		lstat(dir).then(
+			(st) => st.isDirectory() && st.uid === uid && (st.mode & 0o022) === 0,
+			() => false,
+		);
+	const inUse = await stat(path.join(base.home, "userdata")).then(
+		(st) => st.isDirectory(),
+		() => false,
+	);
+	if (inUse) return "default";
+	const root = path.dirname(base.home);
+	let names: string[];
+	try {
+		names = (await readdir(root)).filter((name) => SIBLING_HOME.test(name)).sort();
+	} catch {
+		return undefined;
+	}
+	const homes: string[] = [];
+	for (const name of names) {
+		const home = path.join(root, name);
+		if ((await ownedDir(home)) && (await ownedDir(path.join(home, "userdata")))) homes.push(home);
+	}
+	const [home] = homes;
+	return homes.length === 1 && home ? { ...base, home, cli: path.join(home, "bin", "t3"), discovered: true } : undefined;
+}

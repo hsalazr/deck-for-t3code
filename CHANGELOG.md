@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- The nightly pre-release is rebuilt when new plugin code lands on `main`, not on a daily schedule. Docs, site and change log pushes don't rebuild it.
+
 ## [1.1.0] - 2026-11-05
 
 ### Fixed

@@ -1,10 +1,19 @@
 name: Nightly
 
-# Builds main once a day (when it has changed) and publishes it as the rolling
+# Builds main when new plugin code lands on it and publishes it as the rolling
 # `nightly` pre-release. Stable releases stay on `v*` tags (release.yml).
+# No schedule: a push that changes what ships is the only automatic trigger.
+# Docs, site and changelog-only pushes don't rebuild it; run it by hand to force one.
 on:
-  schedule:
-    - cron: "23 8 * * *" # 08:23 UTC
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "*.sdPlugin/**"
+      - "package.json"
+      - "package-lock.json"
+      - "rollup.config.mjs"
+      - ".github/workflows/nightly.yml"
   workflow_dispatch:
 
 permissions:
@@ -21,35 +30,15 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 20
     steps:
-      - name: Skip if main has not changed since the last nightly
-        id: changed
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EVENT: ${{ github.event_name }}
-        run: |
-          set -euo pipefail
-          last=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/nightly" --jq .object.sha 2>/dev/null || true)
-          if [ "$EVENT" = schedule ] && [ "$last" = "$GITHUB_SHA" ]; then
-            echo "The nightly is already built from $GITHUB_SHA."
-            echo "build=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "build=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - if: steps.changed.outputs.build == 'true'
-        uses: actions/checkout@v7
-      - if: steps.changed.outputs.build == 'true'
-        uses: actions/setup-node@v7
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
-      - if: steps.changed.outputs.build == 'true'
-        run: npm ci
-      - if: steps.changed.outputs.build == 'true'
-        run: npm test
+      - run: npm ci
+      - run: npm test
 
       - name: Find the plugin folder
-        if: steps.changed.outputs.build == 'true'
         id: plugin
         run: |
           set -euo pipefail
@@ -61,7 +50,6 @@ jobs:
       # The manifest's fourth part is the build number: nightly 1.0.0.N sorts after
       # stable 1.0.0 (1.0.0.0) and before the next stable release.
       - name: Stamp the nightly version
-        if: steps.changed.outputs.build == 'true'
         id: version
         env:
           PLUGIN_DIR: ${{ steps.plugin.outputs.dir }}
@@ -86,11 +74,9 @@ jobs:
           echo "semver=v$base+nightly.$RUN" >> "$GITHUB_OUTPUT"
           echo "Nightly version v$base+nightly.$RUN (manifest $version)"
 
-      - if: steps.changed.outputs.build == 'true'
-        run: npm run build
+      - run: npm run build
 
       - name: Validate and pack
-        if: steps.changed.outputs.build == 'true'
         env:
           PLUGIN_DIR: ${{ steps.plugin.outputs.dir }}
         run: |
@@ -101,7 +87,6 @@ jobs:
           ls -l dist
 
       - name: Publish the nightly pre-release
-        if: steps.changed.outputs.build == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}

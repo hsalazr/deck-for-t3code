@@ -105,7 +105,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
-          SEMVER: ${{ streps.version.outputs.semver }}
+          SEMVER: ${{ steps.version.outputs.semver }}
         run: |
           set -euo pipefail
           short="${GITHUB_SHA:0:7}"

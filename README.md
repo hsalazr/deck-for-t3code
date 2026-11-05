@@ -147,7 +147,7 @@ Open any key's settings (Property Inspector). The status row at the top says whe
 - **Animation:** blink and spin, or steady colours.
 - **Snoozed:** show snoozed threads.
 - **Refresh every:** 2 (default), 5 or 10 seconds; see [below](#how-it-talks-to-t3-code).
-- **T3 home:** if T3 Code keeps its data somewhere other than `~/.t3`. Must be an absolute path (a leading `~/` is fine). The `T3CODE_HOME` environment variable is honoured too. With neither set and no `~/.t3/userdata`, the plugin uses a custom build's folder next to it (such as `~/.t3-custom`) if there is exactly one. Once ists server has answered, the plugin keeps it until T3 home changes or the plugin restarts. With several, set T3 home.
+- **T3 home:** if T3 Code keeps its data somewhere other than `~/.t3`. Must be an absolute path (a leading `~/` is fine). The `T3CODE_HOME` environment variable is honoured too. With neither set and no `~/.t3/userdata`, the plugin uses a custom build's folder next to it (such as `~/.t3-custom`) if there is exactly one. Once its server has answered, the plugin keeps it until T3 home changes or the plugin restarts. With several, set T3 home.
 - **T3 app bundle id:** only for a T3 Code build the plugin doesn't find on its own. Set it to the app's bundle id (`osascript -e 'id of app "Your T3 App"'` prints it) and the plugin opens that app and skips detection.
 - **Sign out / revoke tokens:** click twice to confirm. Revokes every token the plugin minted and deletes them from your Mac. Nothing is minted again until you press **Sign in again** (the same button) or restart the plugin. The result line says `Signed out`, or `Signed out — N token(s) will be revoked later` when T3 Code was unreachable for some revokes (they are retried when T3 Code is back and each time the plugin starts).
 - **Usage key:** which limit (default: the weekly one) and Bar or Ring.
@@ -193,7 +193,7 @@ t3 auth session revoke <id>
 
 - **Loopback only.** Tokens and requests only go to the server origin from `server-runtime.json`, and only if it is `http` or `https` on `127.0.0.1`, `localhost` or `::1` with no user name or password. Anything else is refused before a token is minted or sent.
 - **T3 home must be absolute** (after expanding a leading `~/`).
-- **A found T3 home is checked.** A `~/.t3-<name>` folder is only used when it is the only one, and only if it and its `userdata` are real folders you own and nobody else can write to. See [SECURITY.md](SECURITY.md)
+- **A found T3 home is checked.** A `~/.t3-<name>` folder is only used when it is the only one, and only if it and its `userdata` are real folders you own and nobody else can write to. See [SECURITY.md](SECURITY.md).
 - **Finding the app runs nothing from it.** The plugin only reads `Info.plist` files (with `plutil`), asks `ps` for the T3 server's executable path, and calls `open`.
 - **The CLI is vetted before it runs.** `<T3 home>/bin/t3` must be a regular, executable file, owned by you or root, that no other user can write to. Otherwise the key says "T3 CLI missing" and nothing runs. (Fix a loose file with `chmod go-w`.)
 - **No redirects.** Requests that carry a token refuse HTTP redirects.

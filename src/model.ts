@@ -264,7 +264,7 @@ export function layoutThreads(
 }
 
 
-//** `decodeURIComponent`, or the text as it is when isn't valid percent-encoding. */
+/** `decodeURIComponent`, or the text as it is when it isn't valid percent-encoding. */
 const decodeSegment = (text: string): string => {
 	try {
 		return decodeURIComponent(text);

@@ -60,21 +60,30 @@ class FakeHost implements DeckHost {
 	switches: string[] = [];
 	opened: string[][] = [];
 	openFails = false;
+	/** `open` fails for these bundle ids, like `open -b` with an app that isn't installed. */
+	missingApps = new Set<string>();
 	warnings: string[] = [];
 	async switchToProfile(deviceId: string, profile?: string, page?: number): Promise<void> {
 		this.switches.push(`${deviceId}:${profile ?? "previous"}:${page ?? ""}`);
 	}
 	/** What the app locator would answer (see test/app.test.ts for the real one). */
 	app: string[] = ["-b", "com.t3tools.t3code"];
+	/** When set, the app lookup waits for this (or fails with it) before answering. */
+	appGate: Promise<void> | undefined;
+	infos: string[] = [];
 	async appArgs(): Promise<string[]> {
+		await this.appGate;
 		return this.app;
 	}
 	async open(args: string[]): Promise<void> {
 		this.opened.push(args);
-		if (this.openFails) throw new Error("no such app");
+		if (this.openFails || (args[0] === "-b" && this.missingApps.has(args[1]!))) throw new Error("no such app");
 	}
 	warn(message: string): void {
 		this.warnings.push(message);
+	}
+	info(message: string): void {
+		this.infos.push(message);
 	}
 }
 
@@ -175,6 +184,76 @@ test("a key-up that never saw its own key-down does nothing", async () => {
 	assert.deepEqual(monitor.calls, []);
 });
 
+test("thread tile: the link goes to the app that runs the T3 server, logged", async () => {
+	const tile = add("thread", fakeAction("tile", 1));
+	host.app = ["-b", "com.t3tools.t3code.custom"];
+	monitor.setCards([card("t1", { state: "done", link: "http://127.0.0.1:3773/threads/env/t1" })]);
+	await press(tile, 100);
+	await flush();
+	assert.deepEqual(host.opened, [["-b", "com.t3tools.t3code.custom", "t3code://threads/env/t1"]]);
+	assert.deepEqual(host.infos, ["open -b com.t3tools.t3code.custom t3code://threads/env/t1"]);
+});
+
+test("thread tile: with no app found (t3code://new), a failed lookup or a slow one, the link opens on its own", async () => {
+	const tile = add("thread", fakeAction("tile", 1));
+	monitor.setCards([card("t1", { state: "done" })]);
+
+	host.app = ["t3code://new"];
+	await press(tile, 100);
+	await flush();
+	assert.deepEqual(host.opened.at(-1), ["t3code://threads/env/t1"], "not t3code://new and the thread");
+
+	host.app = ["-b", "com.t3tools.t3code"];
+	host.appGate = Promise.reject(new Error("ps failed"));
+	host.appGate.catch(() => {});
+	await press(tile, 100);
+	await flush();
+	assert.deepEqual(host.opened.at(-1), ["t3code://threads/env/t1"]);
+
+	let release!: () => void;
+	host.appGate = new Promise((resolve) => (release = resolve));
+	const before = host.opened.length;
+	await press(tile, 100);
+	await advance(400);
+	assert.equal(host.opened.length, before, "still waiting for the app lookup");
+	await advance(150);
+	assert.deepEqual(host.opened.at(-1), ["t3code://threads/env/t1"], "gave up on the lookup after 500 ms");
+	release();
+	await flush();
+	assert.equal(host.opened.length, before + 1, "the late answer doesn't open it again");
+});
+
+test("thread tile: when the app can't be opened, the link opens on its own; if that fails too, an alert", async () => {
+	const tile = add("thread", fakeAction("tile", 1));
+	host.app = ["-b", "com.example.not-installed"];
+	host.missingApps.add("com.example.not-installed");
+	monitor.setCards([card("t1", { state: "done" })]);
+	await press(tile, 100);
+	await flush();
+	assert.deepEqual(host.opened, [["-b", "com.example.not-installed", "t3code://threads/env/t1"], ["t3code://threads/env/t1"]]);
+	assert.equal(host.warnings.length, 1);
+	assert.match(host.warnings[0]!, /opening the link alone/);
+	assert.deepEqual(tile.events, [], "the link opened: no alert");
+
+	host.openFails = true;
+	host.opened = [];
+	await press(tile, 100);
+	await flush();
+	assert.equal(host.opened.length, 2, "tried once more, not in a loop");
+	assert.deepEqual(tile.events, ["alert"]);
+});
+
+test("thread tile without -b: a failed open isn't retried with the same link", async () => {
+	const tile = add("thread", fakeAction("tile", 1));
+	host.app = ["t3code://new"];
+	host.openFails = true;
+	monitor.setCards([card("t1", { state: "done" })]);
+	await press(tile, 100);
+	await flush();
+	assert.deepEqual(host.opened, [["t3code://threads/env/t1"]]);
+	assert.deepEqual(tile.events, ["alert"]);
+});
+
 test("settle held on the actions page, then the key-up lands on the Threads page: nothing opens", async () => {
 	await focusedPage();
 	deck.actionsEnabled = true;
@@ -206,7 +285,7 @@ test("thread tile: tap opens, long press shows a release cue and opens actions o
 	const tile = add("thread", fakeAction("tile", 1));
 	monitor.setCards([card("t1", { state: "done" })]);
 	await press(tile, 100);
-	assert.deepEqual(host.opened, [["t3code://threads/env/t1"]]);
+	assert.deepEqual(host.opened, [["-b", "com.t3tools.t3code", "t3code://threads/env/t1"]]);
 	assert.deepEqual(monitor.calls, ["ack:t1"]);
 
 	deck.keyDown(tile.id);
@@ -290,7 +369,7 @@ test("thread actions off: keys say so, holds and taps send nothing; header and O
 	assert.deepEqual(commands.sent, []);
 	assert.deepEqual(snooze.events, ["alert"]);
 	await press(open, 100);
-	assert.deepEqual(host.opened.at(-1), ["t3code://threads/env/t1"]);
+	assert.deepEqual(host.opened.at(-1), ["-b", "com.t3tools.t3code", "t3code://threads/env/t1"]);
 });
 
 test("a linked machine's thread: actions say so and send nothing, Open still deep-links there", async () => {
@@ -307,7 +386,7 @@ test("a linked machine's thread: actions say so and send nothing, Open still dee
 	assert.deepEqual(commands.sent, []);
 	assert.deepEqual(snooze.events, ["alert"]);
 	await press(open, 100);
-	assert.deepEqual(host.opened.at(-1), ["t3code://threads/env-remote/t1"]);
+	assert.deepEqual(host.opened.at(-1), ["-b", "com.t3tools.t3code", "t3code://threads/env-remote/t1"]);
 });
 
 test("stop: dimmed with nothing running, hold to interrupt when a run is active", async () => {

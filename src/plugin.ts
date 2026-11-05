@@ -127,7 +127,7 @@ streamDeck.actions.registerAction(new ThreadActionKey());
 await streamDeck.connect();
 applyGlobal(await streamDeck.settings.getGlobalSettings<GlobalSettings>());
 monitor.start();
-await monitor.located().catch((error: unknown) => log(`finding T3 home failed: ${describe(error)}`))
+await monitor.located().catch((error: unknown) => log(`finding T3 home failed: ${describe(error)}`));
 shell.start();
 context.start();
 usage.start();

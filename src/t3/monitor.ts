@@ -36,7 +36,6 @@ import { discoverHome } from "./app.ts";
 import { AuthRejectedError, McpClient, ToolError, UnreachableError } from "./mcp.ts";
 import { RemoteEnvironments } from "./remotes.ts";
 import { waitingLabel, type PendingTask, type ShellView } from "./shell-stream.ts";
-import { error } from "node:console";
 
 export type { ConnectionReason };
 
@@ -143,7 +142,7 @@ const REBUILD_DEBOUNCE_MS = 150;
 const RETRY_MIN_MS = 5_000;
 const RETRY_MAX_MS = 30_000;
 
-const DISCOVER_TIMEOUTS_MS = 2_000;
+const DISCOVER_TIMEOUT_MS = 2_000;
 /** Threads not seen for this long are forgotten (and their acks with them). */
 export const SEEN_TTL_MS = 24 * 3600_000;
 
@@ -156,7 +155,8 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 	#base: T3Location = locate();
 	#location: T3Location = this.#base;
 	readonly #discover: MonitorOptions["discoverHome"];
-	#finding: Promise<void> | undefined;
+	/** The lookup in flight, with the base and stop count it was started for. */
+	#finding: { base: T3Location; stops: number; done: Promise<void> } | undefined;
 	#pinned = false;
 	#stops = 0;
 	#stopped = false;
@@ -233,17 +233,17 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 			...(typeof s.t3AppBundleId === "string" && s.t3AppBundleId.trim() ? { t3AppBundleId: s.t3AppBundleId.trim() } : {}),
 		};
 		const rehome = next.t3Home !== this.#settings.t3Home;
-		const relocate = rehome || next.t3Home !== this.#settings.t3Home || next.t3AppBundleId !== this.#settings.t3AppBundleId;
+		const relocate = rehome || next.t3AppBundleId !== this.#settings.t3AppBundleId;
 		const refilter = next.showSnoozed !== this.#settings.showSnoozed;
 		this.#settings = next;
 		if (rehome) {
 			this.#base = locate(next);
 			this.#pinned = false;
 			this.#moveTo(this.#base);
-		}else if (relocate) {
+		} else if (relocate) {
 			this.#base = locate(next);
-			this.#location = {...this.#location, ...(this.#base.appBundleId ? { appBundleId: this.#base.appBundleId } : {}) };
-			if(!this.#base.appBundleId) delete this.#location.appBundleId;
+			this.#location = { ...this.#location, ...(this.#base.appBundleId ? { appBundleId: this.#base.appBundleId } : {}) };
+			if (!this.#base.appBundleId) delete this.#location.appBundleId;
 		}
 		if (relocate || refilter) {
 			this.#needFull = true;
@@ -372,7 +372,8 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 		};
 	}
 
-	located() : Promise<void> {
+	/** Resolves once the T3 home is settled for now (found, kept, or the lookup timed out). */
+	located(): Promise<void> {
 		return this.#findHome();
 	}
 
@@ -442,7 +443,7 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 			await this.#findHome();
 			const full = this.#needFull || startedAt - this.#lastFullAt >= FULL_POLL_MS - 100;
 			this.#needFull = false;
-		
+
 			if (!(await this.#poll(full, startedAt))) return;
 			// A poll that started before a sign-out mustn't report the connection as fine.
 			if (this.#tokens.signedOut) throw new SignedOutError();
@@ -473,8 +474,18 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 	#findHome(): Promise<void> {
 		const discover = this.#discover;
 		if (!discover || this.#pinned || this.#stopped || this.#base.custom) return Promise.resolve();
-		this.#finding ??= this.#lookUpHome(discover).finally(() => (this.#finding = undefined));
-		return this.#finding;
+		// A lookup started for another base, or before a stop, would bow out without looking: start a fresh one.
+		const current = this.#finding;
+		if (current && current.base === this.#base && current.stops === this.#stops) return current.done;
+		const finding = {
+			base: this.#base,
+			stops: this.#stops,
+			done: this.#lookUpHome(discover).finally(() => {
+				if (this.#finding === finding) this.#finding = undefined;
+			}),
+		};
+		this.#finding = finding;
+		return finding.done;
 	}
 
 	async #lookUpHome(discover: NonNullable<MonitorOptions["discoverHome"]>): Promise<void> {
@@ -486,9 +497,9 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 				answer: discover(base)
 					.catch((error: unknown) => {
 						this.emit("log", `looking for T3 home next to ~/.t3 failed: ${(error as Error)?.message ?? String(error)}`);
-						return undefined
+						return undefined;
 					})
-					.finally(()=> {
+					.finally(() => {
 						if (this.#discovering === lookup) this.#discovering = undefined;
 					}),
 			};
@@ -496,13 +507,14 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 		}
 		const pending = this.#discovering.answer;
 		let timer: NodeJS.Timeout | undefined;
-		const timeout = new Promise<undefined>((resolve) => (timer = setTimeout(() => resolve(undefined), DISCOVER_TIMEOUTS_MS)));
-		const found = await Promise.race([pending, timeout]).finally(()=> clearTimeout(timer));
+		const timeout = new Promise<undefined>((resolve) => (timer = setTimeout(() => resolve(undefined), DISCOVER_TIMEOUT_MS)));
+		const found = await Promise.race([pending, timeout]).finally(() => clearTimeout(timer));
 		if (stops !== this.#stops || base !== this.#base || found === undefined) return;
 		if (found === "default") this.#pinned = true;
 		const next = found === "default" ? base : found;
 		if (next.home === this.#location.home) return;
 		this.#moveTo(next);
+		this.#rebuild();
 		this.#shell?.restart?.();
 		this.emit("log", `using T3 home ${next.home}${next.discovered ? " (found next to ~/.t3; set T3 home in the key settings to pin it)" : ""}`);
 	}
@@ -517,8 +529,8 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 		this.#projectsAt = 0;
 		this.#needFull = true;
 		this.#seeded = false;
-		this.#compose;
-	}	
+		this.#compose();
+	}
 
 	/** Tokens whose revoke failed earlier (replaced, or signed out while T3 was away). */
 	#retryRevokes(): void {

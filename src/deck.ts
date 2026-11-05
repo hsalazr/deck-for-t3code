@@ -406,16 +406,15 @@ export class Deck {
 	#open(entry: KeyEntry, card: ThreadCard): void {
 		this.#monitor.ack(card.threadId);
 		const url = deepLinkFor(card.link, card.threadId);
-		if (!url) return this.#openT3(entry) 
-		
+		if (!url) return this.#openT3(entry);
+		// Hand the link to the app that runs the T3 server, if it is found quickly; else to whichever app owns t3code://.
 		let timer: NodeJS.Timeout | undefined;
 		const app = Promise.race([
 			this.#host.appArgs(this.#monitor.location).catch(() => []),
-			new Promise<string[]>((resolve) => (timer = setTimeout(() => resolve ([]), APP_LOOKUP_MS))),
+			new Promise<string[]>((resolve) => (timer = setTimeout(() => resolve([]), APP_LOOKUP_MS))),
 		]).finally(() => clearTimeout(timer));
-		const args = app.then((found)=> (found[0] === "-b" ? [...found, url]: [url]))
-		this.#launch(entry, args);
-		
+		// If that app can't be opened (say, the T3 app bundle id setting names one that isn't installed), the link alone.
+		this.#launch(entry, app.then((found) => (found[0] === "-b" ? [...found, url] : [url])), [url]);
 	}
 
 	/** Brings up T3 Code itself (also what a tap does while T3 is offline). */
@@ -423,14 +422,22 @@ export class Deck {
 		this.#launch(entry, this.#host.appArgs(this.#monitor.location));
 	}
 
-	#launch(entry: KeyEntry, pending: Promise<string[]>): void {
+	/** Runs `open` with `pending`'s arguments; if that fails and `fallback` differs, tries `fallback` once. */
+	#launch(entry: KeyEntry, pending: Promise<string[]>, fallback?: string[]): void {
 		let args: string[] = [];
+		const run = (next: string[]): Promise<void> => {
+			args = next;
+			this.#host.info?.(`open ${args.join(" ")}`);
+			return this.#host.open(args);
+		};
 		pending
-			.then((resolved) => {
-				args = resolved;
-				this.#host.info?.(`open ${args.join(" ")}`)
-				return this.#host.open(args);
-			})
+			.then((resolved) =>
+				run(resolved).catch((error: unknown) => {
+					if (!fallback || fallback.join("\0") === resolved.join("\0")) throw error;
+					this.#host.warn(`open ${resolved.join(" ")} failed, opening the link alone: ${(error as Error)?.message ?? String(error)}`);
+					return run(fallback);
+				}),
+			)
 			.catch((error: unknown) => {
 				this.#host.warn(`open ${args.join(" ")} failed: ${(error as Error)?.message ?? String(error)}`);
 				return entry.action.showAlert();

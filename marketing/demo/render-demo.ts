@@ -34,7 +34,7 @@
  *   docs/assets/demo.mp4          1440×810 H.264 (site)
  *   docs/assets/demo.webm         1440×810 VP9 (site; skipped if libvpx-vp9 is missing)
  *   docs/assets/demo-poster.png   1440×810, the first frame
- *   docs/assets/demo.gif          800×450, 15 fps (README)
+ *   docs/assets/demo.gif          800×450, 12 fps (README)
  *   marketing/gallery-video.mp4   1920×1080 H.264 (Elgato Marketplace)
  *
  * FORMAT=square renders the same loop for phones instead: a 1080×1080 frame
@@ -1299,11 +1299,14 @@ function encode(): void {
 	} else console.warn("libvpx-vp9 not available: skipped docs/assets/demo.webm");
 	console.log("writing docs/assets/demo-poster.png");
 	ffmpeg(["-i", join(FRAMES, "f0000.png"), "-vf", "scale=1440:810:flags=lanczos", "-frames:v", "1", "-map_metadata", "-1", "-fflags", "+bitexact", join(ASSETS, "demo-poster.png")]);
-	console.log("encoding docs/assets/demo.gif (800×450, 15 fps)");
+	console.log("encoding docs/assets/demo.gif (800×450, 12 fps)");
+	// No dithering and 12 fps keep the README GIF near 5.7 MB (8.1 MB with Bayer
+	// dithering at 15 fps): the keys are flat colour, so dithering only added noise
+	// that LZW can't compress. The cost is faint banding in the background vignette.
 	ffmpeg([
 		...input,
 		"-vf",
-		"fps=15,scale=800:450:flags=lanczos,split[a][b];[a]palettegen=max_colors=192:stats_mode=full:reserve_transparent=0[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle",
+		"fps=12,scale=800:450:flags=lanczos,split[a][b];[a]palettegen=max_colors=192:stats_mode=full:reserve_transparent=0[p];[b][p]paletteuse=dither=none:diff_mode=rectangle",
 		"-loop", "0", "-map_metadata", "-1", "-fflags", "+bitexact", "-threads", "4",
 		join(ASSETS, "demo.gif"),
 	]);

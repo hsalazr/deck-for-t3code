@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>T3 Machine</title><link rel="stylesheet" href="style.css"></head>
+<body>
+  <h3>This key</h3>
+  <div class="row"><label>Show</label><select id="stat">
+    <option value="summary">Summary: CPU, memory, disk</option>
+    <option value="cpu">CPU</option>
+    <option value="memory">Memory pressure</option>
+    <option value="disk">Disk space</option>
+  </select></div>
+  <div class="row"><label>Style</label><select id="style"><option value="detailed">Detailed: numbers and details</option><option value="glance">Glance: one big number, readable from across your desk</option></select></div>
+  <div class="row" id="pathRow"><label>Disk</label><input type="text" id="path" placeholder="/" spellcheck="false" autocomplete="off"></div>
+  <div class="hint" id="hint"></div>
+  <div id="globals"></div>
+  <script src="common.js"></script>
+  <script>
+    const stat = document.getElementById("stat");
+    const path = document.getElementById("path");
+    const pathRow = document.getElementById("pathRow");
+    const hint = document.getElementById("hint");
+    const style = document.getElementById("style");
+    const HINTS = {
+      summary: "This Mac's CPU, memory in use and disk used, with green, amber or red bars. Tap to open Activity Monitor.",
+      cpu: "How busy the performance cores were over the last 30 seconds (all cores on a Mac without efficiency cores). The bar is split into P and E cores, each as wide as its share of the cores. Amber from 70%, red from 90%. The efficiency cores and the 5-minute load average are shown for reference. Tap to open Activity Monitor.",
+      memory: "Memory in use, coloured by macOS's own memory pressure (the green, yellow and red in Activity Monitor). Shows swap once it's in use. Tap to open Activity Monitor.",
+      disk: "Space used on the disk that holds this folder. Amber from 90% used or under 25 GB free, red from 95% or under 10 GB. Tap to open it in Finder.",
+    };
+    function show() {
+      const s = stat.value;
+      pathRow.style.display = s === "cpu" || s === "memory" ? "none" : "";
+      hint.innerHTML = HINTS[s] + (s === "summary" || s === "disk" ? " Leave <b>Disk</b> blank for the startup disk, or type a folder such as <code>/Volumes/Backup</code>." : "") + ' <a href="#" id="how">How these are measured</a>';
+      document.getElementById("how").addEventListener("click", (e) => { e.preventDefault(); PI.send("openUrl", { url: "https://hsalazr.github.io/deck-for-t3code/#machine" }); });
+    }
+    PI.onSettings = () => {
+      // "load" is what the CPU stat was called before it measured CPU use.
+      stat.value = PI.settings.stat === "load" ? "cpu" : ["summary", "cpu", "memory", "disk"].includes(PI.settings.stat) ? PI.settings.stat : "summary";
+      style.value = PI.settings.style === "glance" ? "glance" : "detailed";
+      if (document.activeElement !== path) path.value = PI.settings.path ?? "";
+      show();
+    };
+    stat.addEventListener("change", () => { PI.setSettings({ stat: stat.value }); show(); });
+    style.addEventListener("change", () => PI.setSettings({ style: style.value }));
+    path.addEventListener("change", () => PI.setSettings({ path: path.value.trim() || undefined }));
+    show();
+    mountStatus();
+    mountGlobals();
+  </script>
+</body>
+</html>

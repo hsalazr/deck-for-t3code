@@ -59,7 +59,7 @@ test("every tracked SVG is well-formed", () => {
 test("the plugin's icons are the ones the asset script produced", () => {
 	const P = "io.github.hsalazr.deck-for-t3code.sdPlugin/imgs";
 	const pairs: [string, string][] = [[`${P}/plugin/category.svg`, "marketing/icon/category.svg"]];
-	for (const n of ["back", "overview", "thread", "usage"]) pairs.push([`${P}/actions/${n}/icon.svg`, `marketing/icon/${n}.svg`]);
+	for (const n of ["back", "machine", "overview", "thread", "updates", "usage"]) pairs.push([`${P}/actions/${n}/icon.svg`, `marketing/icon/${n}.svg`]);
 	for (const [a, b] of pairs) assert.equal(readFileSync(join(ROOT, a), "utf8"), readFileSync(join(ROOT, b), "utf8"), a);
 });
 

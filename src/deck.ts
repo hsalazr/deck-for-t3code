@@ -18,11 +18,14 @@ import {
 	overviewState,
 	renderActionKey,
 	renderBackKey,
+	renderMachineKey,
 	renderOverview,
 	renderThreadKey,
+	renderUpdatesKey,
 	renderUsageKey,
 	toDataUrl,
 	type AnimationMode,
+	type KeyStyle,
 	type ThreadActionName,
 } from "./render.ts";
 import { tomorrowAt9, type ThreadCommands } from "./t3/commands.ts";
@@ -30,14 +33,26 @@ import { AppLocator } from "./t3/app.ts";
 import type { T3Location } from "./t3/auth.ts";
 import type { Monitor, Snapshot } from "./t3/monitor.ts";
 import type { UsageMonitor } from "./t3/usage-monitor.ts";
+import type { UpdatesMonitor } from "./t3/updates-monitor.ts";
+import { MachineMonitor, machineStatOf, normalizeDiskPath, type MachineStat } from "./machine.ts";
 import { metricsOf, pace, pickMetric } from "./usage.ts";
+import { pendingUpdates } from "./updates.ts";
 
 export { DEFAULT_MESSAGES } from "./model.ts";
 
-/** Usage keys: which limit window and style. Thread Actions keys (bundled page): which action. */
-export type KeySettings = { metric?: string; style?: "bar" | "ring"; action?: ThreadActionName; index?: number };
+/**
+ * Usage keys: which limit window and style. Machine keys: which stat and which disk.
+ * Thread Actions keys (bundled page): which action.
+ */
+export type KeySettings = { metric?: string; style?: "bar" | "ring" | KeyStyle; stat?: MachineStat | "load"; path?: string; action?: ThreadActionName; index?: number };
 
-export type KeyKind = "thread" | "overview" | "usage" | "back" | "action";
+export type KeyKind = "thread" | "overview" | "usage" | "machine" | "updates" | "back" | "action";
+
+const machineStat = (s: KeySettings): MachineStat => machineStatOf(s.stat);
+/** Machine and Updates keys: the big, glanceable look, or the detailed one (default). */
+const keyStyle = (s: KeySettings): KeyStyle => (s.style === "glance" ? "glance" : "detailed");
+
+const ACTIVITY_MONITOR = ["-b", "com.apple.ActivityMonitor"];
 
 /**
  * Bundled profiles (manifest `Profiles`), one per device type: page 0 is
@@ -117,6 +132,8 @@ export class Deck {
 	readonly #monitor: Monitor;
 	readonly #usage: UsageMonitor;
 	readonly #commands: ThreadCommands;
+	readonly #machine: MachineMonitor;
+	readonly #updates: UpdatesMonitor | undefined;
 	readonly #host: DeckHost;
 	readonly #keys = new Map<string, KeyEntry>();
 	/** Display order of threads; survives across polls so tiles only slide to close gaps. */
@@ -134,18 +151,24 @@ export class Deck {
 	#messages: QuickMessage[] = parseQuickMessages(undefined);
 	#animation: AnimationMode = "smooth";
 	#showLabels = false;
+	/** Thread and Overview keys: detailed (default) or glance. */
+	#threadStyle: KeyStyle = "detailed";
 	/** Thread actions (stop, snooze, settle, send) need an explicit opt-in in settings. */
 	#actionsEnabled = false;
 	#ticker: NodeJS.Timeout | undefined;
 	#tickAt: number | undefined;
 
-	constructor(monitor: Monitor, usage: UsageMonitor, commands: ThreadCommands, host: DeckHost = defaultHost) {
+	constructor(monitor: Monitor, usage: UsageMonitor, commands: ThreadCommands, host: DeckHost = defaultHost, machine: MachineMonitor = new MachineMonitor(), updates?: UpdatesMonitor) {
 		this.#monitor = monitor;
 		this.#usage = usage;
 		this.#commands = commands;
+		this.#machine = machine;
+		this.#updates = updates;
 		this.#host = host;
 		monitor.on("change", () => this.#relayout());
 		usage.on("change", () => this.#render());
+		machine.on("change", () => this.#render((e) => e.kind === "machine"));
+		updates?.on("change", () => this.#render((e) => e.kind === "updates"));
 	}
 
 	set animation(mode: AnimationMode) {
@@ -163,6 +186,11 @@ export class Deck {
 		this.#render();
 	}
 
+	set threadStyle(style: KeyStyle) {
+		this.#threadStyle = style;
+		this.#render();
+	}
+
 	/** Quick messages for the Thread Actions page, one per line in settings (`Label | text` allowed). */
 	set messages(value: string | undefined) {
 		this.#messages = parseQuickMessages(value);
@@ -172,6 +200,7 @@ export class Deck {
 	add(kind: KeyKind, action: KeyAction<KeySettings>, settings: KeySettings = {}): void {
 		this.#keys.set(action.id, { id: action.id, kind, action, settings, imageSeq: 0 });
 		this.#syncUsage();
+		this.#syncMachine();
 		this.#relayout();
 	}
 
@@ -180,6 +209,7 @@ export class Deck {
 		clearTimeout(entry?.holdTimer);
 		this.#keys.delete(id);
 		this.#syncUsage();
+		this.#syncMachine();
 		this.#relayout();
 	}
 
@@ -187,6 +217,7 @@ export class Deck {
 		const entry = this.#keys.get(id);
 		if (!entry) return;
 		entry.settings = settings;
+		if (entry.kind === "machine") this.#syncMachine();
 		this.#render();
 	}
 
@@ -197,6 +228,14 @@ export class Deck {
 
 	#syncUsage(): void {
 		this.#usage.setWanted([...this.#keys.values()].some((k) => k.kind === "usage"));
+		this.#updates?.setWanted([...this.#keys.values()].some((k) => k.kind === "updates"));
+	}
+
+	/** Sample this Mac only while a Machine key is on a deck, and only the disks those keys show. */
+	#syncMachine(): void {
+		const keys = [...this.#keys.values()].filter((k) => k.kind === "machine");
+		const paths = new Set(keys.filter((k) => machineStat(k.settings) !== "cpu" && machineStat(k.settings) !== "memory").map((k) => normalizeDiskPath(k.settings.path)));
+		this.#machine.setWanted(keys.length > 0, paths);
 	}
 
 	/** Thread shown on a key right now. */
@@ -329,6 +368,16 @@ export class Deck {
 			case "usage":
 				this.#usage.refresh();
 				return entry.action.showOk();
+			case "updates": {
+				// Updates waiting: T3 Code is where they're installed. Otherwise check again now.
+				const pending = this.#updates ? pendingUpdates(this.#updates.snapshot) : [];
+				if (pending.length > 0) return this.#openT3(entry);
+				this.#updates?.refresh();
+				return entry.action.showOk();
+			}
+			case "machine":
+				// A disk key shows that folder in Finder; the others open Activity Monitor.
+				return this.#launch(entry, Promise.resolve(machineStat(entry.settings) === "disk" ? [normalizeDiskPath(entry.settings.path)] : ACTIVITY_MONITOR));
 			case "overview": {
 				// A tap never dismisses anything; that takes a hold.
 				if (!this.#online) return this.#openT3(entry);
@@ -540,6 +589,12 @@ export class Deck {
 					}),
 				};
 			}
+			case "updates":
+				return { markup: renderUpdatesKey(this.#updates?.snapshot ?? { ok: false, detail: "Loading…", providers: [], fetchedAt: 0 }, keyStyle(entry.settings)) };
+			case "machine":
+				return {
+					markup: renderMachineKey({ stat: machineStat(entry.settings), sample: this.#machine.snapshot, path: normalizeDiskPath(entry.settings.path), style: keyStyle(entry.settings) }),
+				};
 			case "overview": {
 				const counts = countStates(snapshot);
 				const holding = entry.holdable && !entry.held && pressedFor !== undefined;
@@ -551,6 +606,7 @@ export class Deck {
 					animation,
 					now,
 					hold: cue ? pressedFor / CONFIRM_HOLD_MS : undefined,
+					style: this.#threadStyle,
 				});
 				const next = holding ? (cue ? progressFrame(entry.downAt!, now) : entry.downAt! + HOLD_CUE_MS) : nextOverviewFrame(overviewState(counts), animation, now);
 				return { markup, next };
@@ -592,9 +648,10 @@ export class Deck {
 					primary: this.#primary.has(entry.id),
 					releaseCue: armed && online && card ? (DECK_PROFILE[entry.action.device.type] ? "open" : "clear") : undefined,
 					now,
+					style: this.#threadStyle,
 				});
 				const next = earliest(
-					online ? nextThreadFrame(card, animation, now) : undefined,
+					online ? nextThreadFrame(card, animation, now, this.#threadStyle) : undefined,
 					pressedFor !== undefined && !armed && online && card ? entry.downAt! + LONG_PRESS_MS : undefined,
 				);
 				return { markup, next };

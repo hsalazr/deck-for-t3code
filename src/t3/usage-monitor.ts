@@ -115,7 +115,7 @@ export class UsageMonitor extends EventEmitter<{ change: [UsageSnapshot]; log: [
 }
 
 /** One RPC request on a fresh socket; resolves with the Exit value. */
-function rpcOnce(ws: WebSocket, tag: string, payload: unknown): Promise<unknown> {
+export function rpcOnce(ws: WebSocket, tag: string, payload: unknown): Promise<unknown> {
 	return new Promise((resolve, reject) => {
 		const timer = setTimeout(() => finish(new Error(`${tag} timed out`)), RPC_TIMEOUT_MS);
 		let done = false;

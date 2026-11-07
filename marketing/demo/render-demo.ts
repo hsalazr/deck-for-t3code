@@ -4,14 +4,19 @@
  *
  *   nice -n 10 node --experimental-strip-types marketing/demo/render-demo.ts
  *
- * Four acts, one seamless loop:
- *   1. "Start with two keys": your own XL profile, other apps' keys dimmed,
- *      plus an Overview key and a Usage ring.
- *   2. "Tap for every thread": tap Overview, the T3 Threads page fills in.
+ * Five acts, one seamless loop:
+ *   1. "Start with a few keys": your own XL profile, other apps' keys dimmed,
+ *      plus Overview, Usage, Machine and Updates keys.
+ *   2. "Tap for every thread": tap Overview, the T3 Threads page fills in;
+ *      tap the thread that just finished and T3 Code opens on it, on the Mac.
  *   3. "Hold for actions": hold a thread, release, send a quick message,
  *      compact, snooze (it leaves, the rest slide up), Back home.
- *   4. "One key, every state": zoom into one key, drawn large from the same
- *      SVG, and step through its states; zoom back out to act 1.
+ *   4. "One key, every state": zoom into the Overview key's spot, drawn large
+ *      from the same SVG in both looks side by side (Detailed and Glance), and
+ *      step through the Overview and a thread's states; zoom back out.
+ *   5. "Your Mac, at a glance": zoom into the Machine key and step through
+ *      its stats and the Updates key, again in both looks; zoom back out to
+ *      act 1.
  *
  * Every plugin key image comes from src/render.ts, fed invented data (acme-*
  * projects, made-up titles). The Thread Actions page follows the bundled XL
@@ -57,14 +62,18 @@ import {
 	isBackgroundOnly,
 	renderActionKey,
 	renderBackKey,
+	renderMachineKey,
 	renderOverview,
 	renderThreadKey,
+	renderUpdatesKey,
 	renderUsageKey,
 	type ActionKeyInput,
 } from "../../src/render.ts";
+import type { MachineSnapshot } from "../../src/machine.ts";
 import { pace, type UsageMetric } from "../../src/usage.ts";
 import { waitingLabel } from "../../src/t3/shell-stream.ts";
 import { PROFILES } from "../../scripts/build-profile.mjs";
+import { soften } from "../screen-colors.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SCRATCH = process.env.DEMO_SCRATCH ?? join(tmpdir(), "t3deck-demo");
@@ -76,9 +85,6 @@ const FRAMES = join(SCRATCH, SQUARE ? "frames-square" : "frames");
 // ---------------------------------------------------------------- timing
 
 const FPS = 30;
-/** Loop length. A multiple of 1000/15 ms too, so the 15 fps GIF loops on a whole frame. */
-const DURATION = 39_600;
-const FRAME_COUNT = (DURATION * FPS) / 1000;
 
 /** Same as src/deck.ts. */
 const LONG_PRESS_MS = 500;
@@ -100,30 +106,38 @@ const FINGER_A = { in: 5900, out: 7050 };
 const TAP_OVERVIEW = { down: 6500, up: 6620 };
 const T_TO_THREADS = TAP_OVERVIEW.up + 30;
 const T_FINISHES = 8800; // a working tile turns solid green
+// …tap it: T3 Code opens on that thread, on the Mac, and the key's highlight clears.
+const FINGER_C = { in: 9300, out: 10_700 };
+const TAP_FLAKY = { down: 9800, up: 9920 };
+const T_OPENED = TAP_FLAKY.up + 30;
+const MAC_IN = [T_OPENED + 80, T_OPENED + 650] as const;
+const MAC_OUT = [13_700, 14_200] as const;
+/** Everything after the T3 Code window moved this much later when it was added. */
+const OPEN = 3600;
 // Act 3: hold for actions.
-const ACT3 = 11_000;
-const FINGER_B = { in: 11_200, out: 19_100 };
-const HOLD_THREAD = { down: 11_700, up: 12_700 }; // release cue at +500 ms
+const ACT3 = 11_000 + OPEN;
+const FINGER_B = { in: 11_200 + OPEN, out: 19_100 + OPEN };
+const HOLD_THREAD = { down: 11_700 + OPEN, up: 12_700 + OPEN }; // release cue at +500 ms
 const T_TO_ACTIONS = HOLD_THREAD.up;
-const HOLD_MSG = { down: 13_500, up: 14_450 };
-const HOLD_COMPACT = { down: 15_100, up: 16_050 };
-const T_COMPACTED = 16_400; // the header's context bar drops after /compact
-const TAP_SNOOZE = { down: 16_750, up: 16_870 };
+const HOLD_MSG = { down: 13_500 + OPEN, up: 14_450 + OPEN };
+const HOLD_COMPACT = { down: 15_100 + OPEN, up: 16_050 + OPEN };
+const T_COMPACTED = 16_400 + OPEN; // the header's context bar drops after /compact
+const TAP_SNOOZE = { down: 16_750 + OPEN, up: 16_870 + OPEN };
 const T_SNOOZE_OK = TAP_SNOOZE.up + 30;
-const T_TO_THREADS_AGAIN = 17_250;
-const T_GONE = 17_700; // the next poll drops the snoozed thread…
-const SLIDE = [17_800, 18_250] as const; // …and the rest slide up
-const TAP_BACK = { down: 18_800, up: 18_920 };
+const T_TO_THREADS_AGAIN = 17_250 + OPEN;
+const T_GONE = 17_700 + OPEN; // the next poll drops the snoozed thread…
+const SLIDE = [17_800 + OPEN, 18_250 + OPEN] as const; // …and the rest slide up
+const TAP_BACK = { down: 18_800 + OPEN, up: 18_920 + OPEN };
 const T_TO_PROFILE = TAP_BACK.up + 30;
 // Act 4: one key, every state.
-const ACT4 = 19_600;
-const ZOOM_IN = [19_800, 20_850] as const;
+const ACT4 = 19_600 + OPEN;
+const ZOOM_IN = [19_800 + OPEN, 20_850 + OPEN] as const;
 /**
  * How long each state holds the big key. The blinking ones get whole blink
  * cycles from src/render.ts (needs you 900 ms, failed 1400 ms), starting lit
  * and ending dark, so no blink is cut short.
  */
-const STATE_MS = { working: 1600, subagents: 2100, background: 1800, input: 3 * 900, done: 1800, failed: 2 * 1400, paused: 1800, context: 2400 };
+const STATE_MS = { overview: 3 * 900, working: 1600, subagents: 2100, background: 1800, input: 3 * 900, done: 1800, failed: 2 * 1400, paused: 1800, context: 2400 };
 const STATE_AT = (() => {
 	let at = ZOOM_IN[1];
 	const out: Record<string, number> = {};
@@ -135,7 +149,25 @@ const STATE_AT = (() => {
 	return out as Record<keyof typeof STATE_MS | "end", number>;
 })();
 const ZOOM_OUT = [STATE_AT.end, STATE_AT.end + 1050] as const;
-const ACT1_AGAIN = STATE_AT.end + 150;
+// Act 5: your Mac, at a glance.
+const ACT5 = ZOOM_OUT[1] + 300;
+const ZOOM5_IN = [ACT5 + 200, ACT5 + 1250] as const;
+const MACHINE_MS = { summary: 1900, cpu: 2400, memory: 2000, disk: 1800, updates: 1900 };
+const MACHINE_AT = (() => {
+	let at = ZOOM5_IN[1];
+	const out: Record<string, number> = {};
+	for (const [k, ms] of Object.entries(MACHINE_MS)) {
+		out[k] = at;
+		at += ms;
+	}
+	out.end = at;
+	return out as Record<keyof typeof MACHINE_MS | "end", number>;
+})();
+const ZOOM5_OUT = [MACHINE_AT.end, MACHINE_AT.end + 1050] as const;
+const ACT1_AGAIN = MACHINE_AT.end + 150;
+/** Loop length: a beat after the last zoom-out, rounded up to 200 ms so the 15 fps GIF loops on a whole frame too. */
+const DURATION = Math.ceil((ZOOM5_OUT[1] + 600) / 200) * 200;
+const FRAME_COUNT = (DURATION * FPS) / 1000;
 
 // ---------------------------------------------------------------- layout (CSS px, 1920×1080 master)
 
@@ -163,11 +195,16 @@ const slotCenter = (slot: number): { x: number; y: number } => {
 };
 const slotDist = (a: number, b: number): number => Math.hypot((a % COLS) - (b % COLS), Math.floor(a / COLS) - Math.floor(b / COLS));
 
-/** Act 4: the key drawn 3× (432 px) left of centre, its label to the right; square: 4.5× (648 px), label below. */
-const ZOOM = SQUARE ? 4.5 : 3;
+/**
+ * Acts 4 and 5: the key drawn large twice, Detailed and Glance side by side,
+ * 2.6× (374 px) with the label to the right; square: 3.1× (446 px), label below.
+ * BIG_CENTER is the Detailed key's centre; the Glance twin sits TWIN_DX to its right.
+ */
+const ZOOM = SQUARE ? 3.1 : 2.6;
 const BIG = KEY * ZOOM;
-const BIG_CENTER = SQUARE ? { x: 540, y: 560 } : { x: 660, y: 650 };
-const LABEL_X = BIG_CENTER.x + BIG / 2 + 84;
+const TWIN_DX = BIG + (SQUARE ? 34 : 40);
+const BIG_CENTER = SQUARE ? { x: Math.round(540 - TWIN_DX / 2), y: 560 } : { x: 450, y: 650 };
+const LABEL_X = BIG_CENTER.x + TWIN_DX + BIG / 2 + 72;
 
 // ---------------------------------------------------------------- square: the camera
 
@@ -182,8 +219,8 @@ const ANCHOR = { x: 540, y: 690 };
 const COL_X = (col: number): number => DECK_X + PAD + KEY / 2 + col * (KEY + GAP);
 const ROW_Y = (row: number): number => DECK_Y + PAD + KEY / 2 + row * (KEY + GAP);
 const SHOT = {
-	/** Act 1 and act 4: the Overview and Usage keys, with a ring of other apps' keys. */
-	home: { fx: COL_X(3.5), fy: ROW_Y(1), s: 2.1 },
+	/** Acts 1, 4 and 5: the Machine, Overview and Usage keys, with a ring of other apps' keys. */
+	home: { fx: COL_X(3), fy: ROW_Y(1), s: 2.1 },
 	/** Act 2: the first threads, with the amber and the green one. */
 	threads: { fx: COL_X(1.55), fy: ROW_Y(0.8), s: 1.8 },
 	/** Act 3: the held thread. */
@@ -200,12 +237,12 @@ const SHOT = {
 /** Camera moves: from each start time the camera eases to the shot over `ms`. */
 const MOVES: { at: number; ms: number; to: Shot }[] = [
 	{ at: 6650, ms: 900, to: SHOT.threads },
-	{ at: 10_900, ms: 700, to: SHOT.held },
-	{ at: 12_750, ms: 600, to: SHOT.messages },
-	{ at: 14_650, ms: 450, to: SHOT.bottom },
-	{ at: 17_300, ms: 500, to: SHOT.slide },
-	{ at: 18_300, ms: 420, to: SHOT.back },
-	{ at: 19_000, ms: 600, to: SHOT.home },
+	{ at: 10_900 + OPEN, ms: 700, to: SHOT.held },
+	{ at: 12_750 + OPEN, ms: 600, to: SHOT.messages },
+	{ at: 14_650 + OPEN, ms: 450, to: SHOT.bottom },
+	{ at: 17_300 + OPEN, ms: 500, to: SHOT.slide },
+	{ at: 18_300 + OPEN, ms: 420, to: SHOT.back },
+	{ at: 19_000 + OPEN, ms: 600, to: SHOT.home },
 ];
 function cameraAt(t: number): Shot {
 	let shot: Shot = SHOT.home;
@@ -264,7 +301,13 @@ const THREADS: Spec[] = [
 	S("node", "Upgrade to Node 24", "acme-api", "working", { subagents: 2, ctx: 48 }),
 	S("i18n", "Add i18n to the signup page", "acme-web", "working", { subagents: 1, ctx: 34 }),
 
-	S("flaky", "Fix flaky login test", "acme-web", "working", { ctx: 44, events: [[T_FINISHES, { state: "done", own: "completed", run: false }]] }),
+	S("flaky", "Fix flaky login test", "acme-web", "working", {
+		ctx: 44,
+		events: [
+			[T_FINISHES, { state: "done", own: "completed", run: false }],
+			[T_OPENED, { state: "idle", own: "completed" }], // opening a thread clears its highlight
+		],
+	}),
 	S("smoke", "Add browser smoke tests", "acme-web", "working", { ctx: 55 }),
 	S("audit", "Add an audit log", "acme-api", "working", { ctx: 31 }),
 	S("csv", "Add CSV export to reports", "acme-web", "working", { ctx: 88, events: [[T_COMPACTED, { ctx: 14 }]] }),
@@ -281,6 +324,8 @@ const THREADS: Spec[] = [
 	S("coldstart", "Reduce cold start time", "acme-infra", "idle"),
 ];
 const FOCUS = "csv"; // held, compacted, snoozed
+/** The thread that finishes in act 2 and is tapped open: its key on the Threads page (Back takes slot 0). */
+const SLOT_FLAKY = 1 + THREADS.findIndex((s) => s.id === "flaky");
 
 function cardOf(id: string, title: string, project: string, s: ThreadState, extra: Partial<ThreadCard> = {}): ThreadCard {
 	return {
@@ -336,9 +381,11 @@ const SLOT_FOCUS = 1 + THREADS.findIndex((s) => s.id === FOCUS); // on the Threa
 
 // ---------------------------------------------------------------- act 1: your own profile
 
-/** Where the two plugin keys sit on your profile. */
+/** Where the plugin keys sit on your profile. */
+const SLOT_MACHINE = 10;
 const SLOT_OVERVIEW = 11;
 const SLOT_USAGE = 12;
+const SLOT_UPDATES = 13;
 
 /** Other apps' keys: generic outline glyphs on a 24-unit grid. No real app's artwork. */
 const GLYPHS: Record<string, string> = {
@@ -363,10 +410,10 @@ const appKey = (glyph: string): string =>
 	`<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144"><rect width="144" height="144" fill="#121418"/>` +
 	`<g transform="translate(46 46) scale(2.1667)" fill="none" stroke="#5C636F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${GLYPHS[glyph]}</g></svg>`;
 const OFF_KEY = `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144"><rect width="144" height="144" fill="#0B0C0E"/></svg>`;
-/** Your profile, row by row: other apps' keys, empty slots (""), and the two plugin keys. */
+/** Your profile, row by row: other apps' keys, empty slots (""), and the plugin keys. */
 const PROFILE_LAYOUT = [
 	["play", "pause", "volume", "mic", "", "sun", "moon", "bulb"],
-	["folder", "terminal", "globe", "OVERVIEW", "USAGE", "calendar", "", "lock"],
+	["folder", "terminal", "MACHINE", "OVERVIEW", "USAGE", "UPDATES", "", "lock"],
 	["camera", "note", "", "chat", "timer", "", "", ""],
 	["", "", "", "", "", "", "", ""],
 ].flat();
@@ -376,6 +423,8 @@ function profileTiles(t: number): Tile[] {
 	return PROFILE_LAYOUT.map((key, slot) => {
 		if (key === "OVERVIEW") return tile(`pf-${slot}`, slot, renderOverview({ connection: ok, counts: countStates(visibleAt(t)), overflow: 0, animation: "smooth", now }));
 		if (key === "USAGE") return tile(`pf-${slot}`, slot, usageRing(t));
+		if (key === "MACHINE") return tile(`pf-${slot}`, slot, renderMachineKey({ stat: "summary", sample: machineAt(t), path: "/", style: "glance" }));
+		if (key === "UPDATES") return tile(`pf-${slot}`, slot, renderUpdatesKey(UPDATES_ONE, "glance"));
 		return tile(`pf-${slot}`, slot, key ? appKey(key) : OFF_KEY);
 	});
 }
@@ -394,6 +443,7 @@ interface Session {
 }
 const SESSIONS: Session[] = [
 	{ ...FINGER_A, presses: [{ ...TAP_OVERVIEW, slot: SLOT_OVERVIEW }] },
+	{ ...FINGER_C, presses: [{ ...TAP_FLAKY, slot: SLOT_FLAKY }] },
 	{
 		...FINGER_B,
 		presses: [
@@ -636,32 +686,81 @@ interface StarState {
 	color: string;
 	title: string;
 	sub: string;
-	/** The key at `local` ms into this state. */
+	/** The key at `local` ms into this state: the detailed look. */
 	svg: (local: number) => string;
+	/** The same key in the glance look. */
+	glance: (local: number) => string;
 }
-const keyAt = (card: ThreadCard, local: number): string => renderThreadKey({ card, projectName: card.projectId, connection: ok, animation: "smooth", now: BASE + local });
+const keyAt = (card: ThreadCard, local: number, style: "detailed" | "glance" = "detailed"): string =>
+	renderThreadKey({ card, projectName: card.projectId, connection: ok, animation: "smooth", now: BASE + local, style });
+/** One thread state in both looks. */
+const both = (c: () => ThreadCard | ((l: number) => ThreadCard)) => {
+	const at = (l: number): ThreadCard => {
+		const v = c();
+		return typeof v === "function" ? v(l) : v;
+	};
+	return { svg: (l: number) => keyAt(at(l), l), glance: (l: number) => keyAt(at(l), l, "glance") };
+};
+const OVERVIEW_COUNTS = { input: 2, failed: 0, done: 1, working: 6, background: 2, idle: 3 };
+const overviewAt = (local: number, style: "detailed" | "glance"): string =>
+	renderOverview({ connection: ok, counts: OVERVIEW_COUNTS, overflow: 0, animation: "smooth", now: BASE + local, style });
 const STATES: StarState[] = [
-	{ id: "working", from: ZOOM_IN[0], to: STATE_AT.subagents, color: PALETTE.working, title: "Working", sub: "A blue spinner while the agent runs.", svg: (l) => keyAt(star({}), l) },
 	{
-		id: "subagents", from: STATE_AT.subagents, to: STATE_AT.background, color: PALETTE.working, title: "Subagents", sub: "Folded into the same key. A badge counts them.",
-		svg: (l) => keyAt(star({ subagents: l < 600 ? 1 : l < 1200 ? 2 : 3 }), l),
+		id: "overview", from: ZOOM_IN[0], to: STATE_AT.working, color: PALETTE.input, title: "Overview", sub: "Who needs you, who works, who's done.",
+		svg: (l) => overviewAt(l, "detailed"), glance: (l) => overviewAt(l, "glance"),
+	},
+	{ id: "working", from: STATE_AT.working, to: STATE_AT.subagents, color: PALETTE.working, title: "Working", sub: "A spinner, or a stroke round the border.", ...both(() => star({})) },
+	{ id: "subagents", from: STATE_AT.subagents, to: STATE_AT.background, color: PALETTE.working, title: "Subagents", sub: "Folded into the same key.", ...both(() => (l: number) => star({ subagents: l < 600 ? 1 : l < 1200 ? 2 : 3 })) },
+	{ id: "background", from: STATE_AT.background, to: STATE_AT.input, color: PALETTE.background, title: "Waiting on CI", sub: "White: only background work is left.", ...both(() => star({ own: "completed", run: false, background: 1, waitingOn: PR_WAIT })) },
+	{ id: "input", from: STATE_AT.input, to: STATE_AT.done, color: PALETTE.input, title: "Needs you", sub: "Amber blink: your turn.", ...both(() => star({ state: "input", own: "waiting" })) },
+	{ id: "done", from: STATE_AT.done, to: STATE_AT.failed, color: PALETTE.done, title: "Done", sub: "Solid green until you look.", ...both(() => star({ state: "done", own: "completed", run: false })) },
+	{ id: "failed", from: STATE_AT.failed, to: STATE_AT.paused, color: PALETTE.failed, title: "Failed", sub: "Red blink.", ...both(() => star({ state: "failed", own: "failed", run: false })) },
+	{
+		id: "paused", from: STATE_AT.paused, to: STATE_AT.context, color: PALETTE.paused, title: "Usage limit", sub: "Dimmed and dashed.",
+		...both(() => (l: number) => star({ state: "paused", own: "idle", run: false }, { pausedUntil: BASE + l + 2 * 3_600_000 + 10 * 60_000 + 30_000 })),
 	},
 	{
-		id: "background", from: STATE_AT.background, to: STATE_AT.input, color: PALETTE.background, title: "Waiting on CI", sub: "A white spinner: only background work is left.",
-		svg: (l) => keyAt(star({ own: "completed", run: false, background: 1, waitingOn: PR_WAIT }), l),
-	},
-	{ id: "input", from: STATE_AT.input, to: STATE_AT.done, color: PALETTE.input, title: "Needs you", sub: "Amber blink and a “!”: your turn.", svg: (l) => keyAt(star({ state: "input", own: "waiting" }), l) },
-	{ id: "done", from: STATE_AT.done, to: STATE_AT.failed, color: PALETTE.done, title: "Done", sub: "Solid green and a ✓ until you look.", svg: (l) => keyAt(star({ state: "done", own: "completed", run: false }), l) },
-	{ id: "failed", from: STATE_AT.failed, to: STATE_AT.paused, color: PALETTE.failed, title: "Failed", sub: "Red blink and a ✕.", svg: (l) => keyAt(star({ state: "failed", own: "failed", run: false }), l) },
-	{
-		id: "paused", from: STATE_AT.paused, to: STATE_AT.context, color: PALETTE.paused, title: "Usage limit", sub: "Dimmed and dashed, with when it resumes.",
-		svg: (l) => keyAt(star({ state: "paused", own: "idle", run: false }, { pausedUntil: BASE + l + 2 * 3_600_000 + 10 * 60_000 + 30_000 }), l),
-	},
-	{
-		id: "context", from: STATE_AT.context, to: ZOOM_OUT[1], color: PALETTE.context, title: "Context window", sub: "The bottom bar fills: grey, then amber, then red.",
-		svg: (l) => keyAt(star({ state: "idle", own: "idle", run: false, ctx: Math.round(lerp(30, 92, easeInOut(ramp(l, 200, 1900)))) }), l),
+		id: "context", from: STATE_AT.context, to: ZOOM_OUT[1], color: PALETTE.context, title: "Context window", sub: "Detailed: the bottom bar fills, grey to red.",
+		...both(() => (l: number) => star({ state: "idle", own: "idle", run: false, ctx: Math.round(lerp(30, 92, easeInOut(ramp(l, 200, 1900)))) })),
 	},
 ];
+// ---------------------------------------------------------------- act 5: your Mac, at a glance
+
+/** Invented readings for this Mac. On the profile the CPU climbs a little when a thread starts working. */
+const GB = 1e9;
+function mac(cpuP: number, cpuE: number, memUsed: number, pressure: number, diskFree: number): MachineSnapshot {
+	return {
+		at: 0,
+		load: [6.2, 5.1, 4.4],
+		cpu: { chip: "M4 Pro", windowMs: 30_000, clusters: [{ kind: "P", cores: 10, busy: cpuP }, { kind: "E", cores: 4, busy: cpuE }] },
+		memory: { freePercent: 100 - memUsed, pressure, totalBytes: 48 * 2 ** 30, swapUsedBytes: 0 },
+		disks: new Map([["/", { totalBytes: 994 * GB, freeBytes: diskFree * GB }]]),
+	};
+}
+const machineAt = (t: number): MachineSnapshot => mac(Math.round(lerp(18, 31, easeInOut(ramp(t, T_STARTS, T_STARTS + 1500)))), 46, 41, 1, 412);
+const UPDATES_ONE = { ok: true, fetchedAt: 1, t3: { name: "T3 Code", current: "0.1.7", latest: "0.1.8", available: true }, providers: [] };
+const UPDATES_TWO = { ...UPDATES_ONE, providers: [{ name: "Claude", current: "2.1.319", latest: "2.1.320", available: true }] };
+const machineKey = (stat: "summary" | "cpu" | "memory" | "disk", sample: MachineSnapshot, style: "glance" | "detailed" = "glance"): string =>
+	renderMachineKey({ stat, sample, path: "/", style });
+/** One Machine stat in both looks. */
+const looks = (stat: "summary" | "cpu" | "memory" | "disk", sample: (l: number) => MachineSnapshot) => ({
+	svg: (l: number) => machineKey(stat, sample(l), "detailed"),
+	glance: (l: number) => machineKey(stat, sample(l), "glance"),
+});
+const MACHINE_STATES: StarState[] = [
+	{ id: "m-summary", from: ZOOM5_IN[0], to: MACHINE_AT.cpu, color: PALETTE.done, title: "Your Mac", sub: "CPU, memory and disk on one key.", ...looks("summary", () => machineAt(Infinity)) },
+	{
+		id: "m-cpu", from: MACHINE_AT.cpu, to: MACHINE_AT.memory, color: PALETTE.input, title: "CPU", sub: "Performance cores, over 30 s. Amber at 70%, red at 90%.",
+		...looks("cpu", (l) => mac(Math.round(lerp(34, 94, easeInOut(ramp(l, 250, 1900)))), 100, 41, 1, 412)),
+	},
+	{ id: "m-memory", from: MACHINE_AT.memory, to: MACHINE_AT.disk, color: PALETTE.done, title: "Memory pressure", sub: "82% in use, and still green: there's room.", ...looks("memory", () => mac(31, 46, 82, 1, 412)) },
+	{ id: "m-disk", from: MACHINE_AT.disk, to: MACHINE_AT.updates, color: PALETTE.failed, title: "Disk", sub: "Space left on the disk you pick.", ...looks("disk", () => mac(31, 46, 41, 1, 21)) },
+	{
+		id: "m-updates", from: MACHINE_AT.updates, to: ZOOM5_OUT[1], color: PALETTE.input, title: "Updates", sub: "T3 Code or a provider CLI has a new version.",
+		svg: () => renderUpdatesKey(UPDATES_TWO, "detailed"), glance: () => renderUpdatesKey(UPDATES_TWO, "glance"),
+	},
+];
+
 /**
  * A state change dips through the key's dark background: the old image fades
  * out, then the new one fades in. Cross-fading two keys with different text
@@ -671,7 +770,7 @@ const DIP_OUT = 130;
 const DIP_IN = 170;
 const KEY_BG = `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144"><rect width="144" height="144" fill="#0E1013"/></svg>`;
 /** A state's own clock: it starts when its image starts to show, so a blink always opens lit. */
-const stateClock = (i: number, t: number): number => Math.max(0, t - STATES[i]!.from - (i === 0 ? 0 : DIP_OUT));
+const stateClock = (states: StarState[], i: number, t: number): number => Math.max(0, t - states[i]!.from - (i === 0 ? 0 : DIP_OUT));
 
 interface Big {
 	x: number;
@@ -679,17 +778,33 @@ interface Big {
 	scale: number;
 	opacity: number;
 	layers: { svg: string; opacity: number }[];
+	/** The Glance twin, TWIN_DX to the right once zoomed; it fades in at the end of the zoom. */
+	twin: { x: number; opacity: number; layers: { svg: string; opacity: number }[] };
 }
-/** 0 = the deck as is, 1 = zoomed all the way into the Overview key. */
-function zoomAt(t: number): number {
-	if (t < ZOOM_IN[0] || t >= ZOOM_OUT[1]) return 0;
-	if (t < ZOOM_IN[1]) return easeInOut(ramp(t, ZOOM_IN[0], ZOOM_IN[1]));
-	if (t < ZOOM_OUT[0]) return 1;
-	return 1 - easeInOut(ramp(t, ZOOM_OUT[0], ZOOM_OUT[1]));
+/** A zoom into one key: act 4 the Overview key's spot (thread states), act 5 the Machine key. */
+interface Zoom {
+	slot: number;
+	in: readonly [number, number];
+	out: readonly [number, number];
+	states: StarState[];
+	/** Zooms out into the loop's opening state. */
+	loops: boolean;
+}
+const ZOOMS: Zoom[] = [
+	{ slot: SLOT_OVERVIEW, in: ZOOM_IN, out: ZOOM_OUT, states: STATES, loops: false },
+	{ slot: SLOT_MACHINE, in: ZOOM5_IN, out: ZOOM5_OUT, states: MACHINE_STATES, loops: true },
+];
+/** The zoom under way at `t` (or the first, idle), and how far: 0 = the deck as is, 1 = all the way into its key. */
+function zoomAt(t: number): { p: number; z: Zoom } {
+	const z = ZOOMS.find((k) => t >= k.in[0] && t < k.out[1]);
+	if (!z) return { p: 0, z: ZOOMS[0]! };
+	if (t < z.in[1]) return { p: easeInOut(ramp(t, z.in[0], z.in[1])), z };
+	if (t < z.out[0]) return { p: 1, z };
+	return { p: 1 - easeInOut(ramp(t, z.out[0], z.out[1])), z };
 }
 /** Where the zoomed key's centre is, and how big (1 = a deck key, ZOOM = the big key). */
-function zoomFrame(p: number): { cx: number; cy: number; s: number } {
-	const c = slotCenter(SLOT_OVERVIEW);
+function zoomFrame(p: number, z: Zoom): { cx: number; cy: number; s: number } {
+	const c = slotCenter(z.slot);
 	if (SQUARE) {
 		// Act 4 starts and ends on the home shot.
 		const from = onScreen(SHOT.home, c.x, c.y);
@@ -697,29 +812,44 @@ function zoomFrame(p: number): { cx: number; cy: number; s: number } {
 	}
 	return { cx: lerp(c.x, BIG_CENTER.x, p), cy: lerp(c.y, BIG_CENTER.y, p), s: lerp(1, ZOOM, p) };
 }
-function bigAt(t: number, p: number): Big | undefined {
+function bigAt(t: number, p: number, z: Zoom): Big | undefined {
 	const opacity = easeInOut(ramp(p, 0.35, 0.8));
 	if (opacity <= 0) return undefined;
+	const STATES = z.states;
 	const i = Math.max(0, STATES.findIndex((s) => t >= s.from && t < s.to));
 	const cur = STATES[i]!;
-	const layers: Big["layers"] = [];
 	const away = i === 0 ? 1 : easeInOut(ramp(t, cur.from, cur.from + DIP_OUT));
 	const shown = i === 0 ? 1 : easeInOut(ramp(t, cur.from + DIP_OUT, cur.from + DIP_OUT + DIP_IN));
-	if (shown < 1) {
-		layers.push({ svg: KEY_BG, opacity: 1 });
-		if (away < 1) layers.push({ svg: STATES[i - 1]!.svg(stateClock(i - 1, t)), opacity: 1 - away });
-	}
-	if (shown > 0) layers.push({ svg: cur.svg(stateClock(i, t)), opacity: shown });
-	const { cx, cy, s } = zoomFrame(p);
-	return { x: cx - BIG / 2, y: cy - BIG / 2, scale: s / ZOOM, opacity, layers };
+	const layersOf = (look: "svg" | "glance"): Big["layers"] => {
+		const layers: Big["layers"] = [];
+		if (shown < 1) {
+			layers.push({ svg: KEY_BG, opacity: 1 });
+			if (away < 1) layers.push({ svg: STATES[i - 1]![look](stateClock(STATES, i - 1, t)), opacity: 1 - away });
+		}
+		if (shown > 0) layers.push({ svg: cur[look](stateClock(STATES, i, t)), opacity: shown });
+		return layers;
+	};
+	const { cx, cy, s } = zoomFrame(p, z);
+	const scale = s / ZOOM;
+	const x = cx - BIG / 2;
+	return {
+		x,
+		y: cy - BIG / 2,
+		scale,
+		opacity,
+		layers: layersOf("svg"),
+		twin: { x: x + TWIN_DX * scale, opacity: opacity * easeInOut(ramp(p, 0.7, 1)), layers: layersOf("glance") },
+	};
 }
 /** State labels beside the big key: the old one fades out, then the new one fades in with its key. */
-function labelsAt(t: number, p: number): { id: string; opacity: number; dy: number }[] {
-	const shown = easeInOut(ramp(p, 0.75, 1));
-	return STATES.map((s, i) => {
-		const inn = i === 0 ? 1 : easeOut(ramp(t, s.from + DIP_OUT, s.from + DIP_OUT + 320));
-		const out = i === STATES.length - 1 ? 0 : easeInOut(ramp(t, s.to, s.to + DIP_OUT));
-		return { id: `lab-${s.id}`, opacity: Math.min(inn, 1 - out) * shown, dy: (1 - inn) * 12 };
+function labelsAt(t: number, p: number, active: Zoom): { id: string; opacity: number; dy: number }[] {
+	return ZOOMS.flatMap((z) => {
+		const shown = z === active ? easeInOut(ramp(p, 0.75, 1)) : 0;
+		return z.states.map((s, i) => {
+			const inn = i === 0 ? 1 : easeOut(ramp(t, s.from + DIP_OUT, s.from + DIP_OUT + 320));
+			const out = i === z.states.length - 1 ? 0 : easeInOut(ramp(t, s.to, s.to + DIP_OUT));
+			return { id: `lab-${s.id}`, opacity: Math.min(inn, 1 - out) * shown, dy: (1 - inn) * 12 };
+		});
 	});
 }
 
@@ -732,20 +862,24 @@ interface Caption {
 	from: number;
 	to: number;
 }
-const ACT1_TITLE = "Start with two keys";
-const ACT1_SUB = "Your own profile, plus an Overview key and a Usage key.";
+const ACT1_TITLE = "Start with a few keys";
+const ACT1_SUB = "Your profile, plus Overview, Usage, Machine and Updates.";
 const CAPTIONS: Caption[] = [
 	{ id: "t1", kind: "title", text: ACT1_TITLE, from: -Infinity, to: ACT2 },
 	{ id: "s1", kind: "sub", text: ACT1_SUB, from: -Infinity, to: ACT2 },
 	{ id: "t2", kind: "title", text: "Tap for every thread", from: ACT2, to: ACT3 },
-	{ id: "s2", kind: "sub", text: "Tap Overview: every T3 Code thread gets a key.", from: ACT2, to: ACT3 },
+	{ id: "s2", kind: "sub", text: "Tap Overview: every T3 Code thread gets a key.", from: ACT2, to: TAP_FLAKY.down - 450 },
+	{ id: "s2b", kind: "sub", text: "Tap a thread: T3 Code opens on it, on your Mac.", from: TAP_FLAKY.down - 450, to: ACT3 },
 	{ id: "t3", kind: "title", text: "Hold for actions", from: ACT3, to: ACT4 },
 	{ id: "s3a", kind: "sub", text: "Hold a thread, then let go.", from: ACT3, to: HOLD_MSG.down - 450 },
 	{ id: "s3b", kind: "sub", text: "Hold a quick message to send it.", from: HOLD_MSG.down - 450, to: HOLD_COMPACT.down - 450 },
 	{ id: "s3c", kind: "sub", text: "Hold Compact to compact the context.", from: HOLD_COMPACT.down - 450, to: TAP_SNOOZE.down - 450 },
 	{ id: "s3d", kind: "sub", text: "Tap Snooze: the thread leaves the deck.", from: TAP_SNOOZE.down - 450, to: TAP_BACK.down - 450 },
 	{ id: "s3e", kind: "sub", text: "Back returns to your profile.", from: TAP_BACK.down - 450, to: ACT4 },
-	{ id: "t4", kind: "title", text: "One key, every state", from: ACT4, to: ACT1_AGAIN },
+	{ id: "t4", kind: "title", text: "One key, every state", from: ACT4, to: ACT5 },
+	{ id: "s4", kind: "sub", text: "Detailed, or Glance to read it from across your desk.", from: ACT4, to: ACT5 },
+	{ id: "t5", kind: "title", text: "Your Mac, at a glance", from: ACT5, to: ACT1_AGAIN },
+	{ id: "s5", kind: "sub", text: "CPU, memory, disk and updates, in either look.", from: ACT5, to: ACT1_AGAIN },
 	{ id: "t1b", kind: "title", text: ACT1_TITLE, from: ACT1_AGAIN, to: Infinity },
 	{ id: "s1b", kind: "sub", text: ACT1_SUB, from: ACT1_AGAIN, to: Infinity },
 ];
@@ -768,37 +902,95 @@ interface Frame {
 	deck: { tx: number; ty: number; s: number; opacity: number };
 	big?: Big;
 	finger?: Finger;
+	/** The T3 Code window on the Mac, opened by the tap in act 2. */
+	mac: { opacity: number; scale: number; dy: number };
 	captions: { id: string; opacity: number; dy: number }[];
 	labels: { id: string; opacity: number; dy: number }[];
 }
 const r2 = (v: number): number => +v.toFixed(2);
 const r3 = (v: number): number => +v.toFixed(3);
+/** The T3 Code window pops up after the tap, holds, then goes, before act 3. */
+function macAt(t: number): Frame["mac"] {
+	const inn = easeOut(ramp(t, MAC_IN[0], MAC_IN[1]));
+	const out = easeInOut(ramp(t, MAC_OUT[0], MAC_OUT[1]));
+	const opacity = Math.min(inn, 1 - out);
+	return { opacity, scale: 0.94 + 0.06 * inn - 0.03 * out, dy: (1 - inn) * 24 + out * 12 };
+}
+
 function frameAt(t: number): Frame {
-	const p = zoomAt(t);
-	// While zooming out, the deck underneath is already the opening state, on its own clock (t − DURATION).
+	const { p, z } = zoomAt(t);
+	// While the last zoom backs out, the deck underneath is already the opening state, on its own clock (t − DURATION).
 	const deckOpacity = 1 - easeInOut(ramp(p, 0.5, 1));
-	const tiles = deckOpacity > 0 ? deckTiles(t >= ZOOM_OUT[0] ? t - DURATION : t) : [];
-	const { cx, cy, s } = zoomFrame(p);
-	const c = slotCenter(SLOT_OVERVIEW);
-	const big = bigAt(t, p);
+	const tiles = deckOpacity > 0 ? deckTiles(z.loops && t >= z.out[0] ? t - DURATION : t) : [];
+	const { cx, cy, s } = zoomFrame(p, z);
+	const c = slotCenter(z.slot);
+	const big = bigAt(t, p, z);
 	// Square, outside the zoom: the camera frames the deck.
 	const cam = SQUARE && p === 0 ? cameraAt(t) : undefined;
 	const deck = cam
 		? { tx: r2(ANCHOR.x - cam.s * cam.fx), ty: r2(ANCHOR.y - cam.s * cam.fy), s: +cam.s.toFixed(4), opacity: r3(deckOpacity) }
 		: { tx: r2(cx - s * c.x), ty: r2(cy - s * c.y), s: +s.toFixed(4), opacity: r3(deckOpacity) };
 	const finger = fingerAt(t);
-	const roundTile = (tl: Tile): Tile => ({ ...tl, x: r2(tl.x), y: r2(tl.y), scale: +tl.scale.toFixed(4), opacity: r3(tl.opacity), dim: r3(tl.dim), layers: tl.layers.map((l) => ({ svg: l.svg, opacity: r3(l.opacity) })) });
+	// Keys in the softer screen colours: they read like light from a real key (see marketing/screen-colors.ts).
+	const roundTile = (tl: Tile): Tile => ({ ...tl, x: r2(tl.x), y: r2(tl.y), scale: +tl.scale.toFixed(4), opacity: r3(tl.opacity), dim: r3(tl.dim), layers: tl.layers.map((l) => ({ svg: soften(l.svg), opacity: r3(l.opacity) })) });
+	const softBig = (b: Big): Big => ({ ...b, layers: b.layers.map((l) => ({ ...l, svg: soften(l.svg) })), twin: { ...b.twin, layers: b.twin.layers.map((l) => ({ ...l, svg: soften(l.svg) })) } });
 	const round = <T>(o: T): T => JSON.parse(JSON.stringify(o, (_k, v) => (typeof v === "number" ? r3(v) : v)));
 	const fades = (list: { id: string; opacity: number; dy: number }[]) => list.map((x) => ({ id: x.id, opacity: r3(x.opacity), dy: r2(x.dy) }));
 	return {
 		tiles: tiles.filter((tl) => tl.opacity > 0.001).map(roundTile),
 		deck,
-		big: big ? round(big) : undefined,
+		big: big ? round(softBig(big)) : undefined,
 		finger: finger && finger.opacity > 0.001 ? round(finger) : undefined,
+		mac: round(macAt(t)),
 		captions: fades(captionsAt(t)),
-		labels: fades(labelsAt(t, p)),
+		labels: fades(labelsAt(t, p, z)),
 	};
 }
+
+
+/**
+ * The T3 Code window: a plain app window drawn here (no T3 artwork), with a
+ * thread list and the tapped thread open. Invented content.
+ */
+const MAC_SIDEBAR: [string, string, boolean?][] = [
+	["Paginate the orders endpoint", PALETTE.working],
+	["Add retry to checkout flow", PALETTE.input],
+	["Migrate docs to new wiki", PALETTE.working],
+	["Fix flaky login test", PALETTE.done, true],
+	["Add browser smoke tests", PALETTE.working],
+	["Add an audit log", PALETTE.working],
+	["Trim Docker image size", "#5C636F"],
+];
+const MAC_W = SQUARE ? 760 : 980;
+const MAC_H = SQUARE ? 500 : 600;
+const MAC_POS = SQUARE ? { x: 300, y: 420 } : { x: 860, y: 300 };
+function macHtml(): string {
+	const side = MAC_SIDEBAR.map(([title, color, on]) => `<div class="it${on ? " on" : ""}"><i style="background:${color}"></i>${title}</div>`).join("");
+	return `<div id="mac"><div class="bar"><i></i><i></i><i></i><span>T3 Code</span></div><div class="body"><div class="side"><div class="sh">Threads</div>${side}</div>` +
+		`<div class="main"><div class="th">Fix flaky login test<span>acme-web</span></div>` +
+		`<div class="msg me">The login test fails about one run in ten. Find out why and fix it.</div>` +
+		`<div class="msg">It waited a fixed 200 ms for the session cookie, which is sometimes too short. I now wait for the cookie itself. 50 runs in a row pass.</div>` +
+		`<div class="chip">✓ Done</div></div></div></div>`;
+}
+const macCss = (): string => `
+#mac{position:absolute;left:${MAC_POS.x}px;top:${MAC_POS.y}px;width:${MAC_W}px;height:${MAC_H}px;z-index:7;opacity:0;transform-origin:30% 50%;
+  border-radius:14px;overflow:hidden;background:#15171b;box-shadow:0 0 0 1px #ffffff1f,0 40px 120px #000,0 10px 30px #000c;font-family:${SANS}}
+#mac .bar{height:44px;display:flex;align-items:center;gap:8px;padding:0 16px;background:#1d2026;border-bottom:1px solid #ffffff12}
+#mac .bar i{width:13px;height:13px;border-radius:50%;background:#3a3f47}
+#mac .bar span{margin-left:12px;font-size:15px;font-weight:600;color:#a3a3a3}
+#mac .body{display:flex;height:${MAC_H - 44}px}
+#mac .side{width:${SQUARE ? 250 : 300}px;padding:14px 10px;background:#111317;border-right:1px solid #ffffff10}
+#mac .sh{font:600 12px/1 ${MONO};letter-spacing:.1em;text-transform:uppercase;color:#6b7280;padding:4px 10px 12px}
+#mac .it{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;font-size:${SQUARE ? 15 : 16}px;color:#c9ced6;white-space:nowrap;overflow:hidden}
+#mac .it i{flex:none;width:9px;height:9px;border-radius:50%}
+#mac .it.on{background:#2a3242;color:#fff}
+#mac .main{flex:1;padding:26px 30px;display:flex;flex-direction:column;gap:18px;min-width:0}
+#mac .th{font-size:${SQUARE ? 24 : 28}px;font-weight:700;letter-spacing:-.01em;color:#f5f5f5}
+#mac .th span{margin-left:12px;font-size:16px;font-weight:500;color:#8b93a1}
+#mac .msg{max-width:88%;padding:14px 18px;border-radius:14px;background:#1f232a;color:#d8dce3;font-size:${SQUARE ? 16 : 18}px;line-height:1.45}
+#mac .msg.me{align-self:flex-end;background:#2d4a86;color:#fff}
+#mac .chip{align-self:flex-start;padding:7px 14px;border-radius:999px;background:#3dd68c26;color:#3dd68c;font-weight:700;font-size:16px}
+`;
 
 // ---------------------------------------------------------------- the page
 
@@ -813,7 +1005,7 @@ const SQUARE_CSS = `
 .cap.title{top:78px;font-size:84px}
 .cap.sub{top:184px;font-size:40px;line-height:1.25}
 .scrim{position:absolute;left:0;top:0;width:${W}px;height:400px;z-index:5;background:linear-gradient(180deg,#000 0%,#000 66%,#0000 100%)}
-#big,.lab,.finger{z-index:6}
+#big,#big2,.lab,.finger{z-index:6}
 .lab{left:0;width:${W}px;top:${BIG_CENTER.y + BIG / 2 + 26}px;text-align:center}
 .lab .lt{font-size:60px}
 .lab .ls{margin-top:8px;font-size:34px}
@@ -826,7 +1018,7 @@ function pageHtml(): string {
 		return `<div class="well" style="left:${p.x - 5}px;top:${p.y - 5}px"></div>`;
 	}).join("");
 	const captions = CAPTIONS.map((c) => `<div class="cap ${c.kind}" id="${c.id}">${c.text}</div>`).join("");
-	const labels = STATES.map((s) => `<div class="lab" id="lab-${s.id}"><div class="lt" style="color:${s.color}">${s.title}</div><div class="ls">${s.sub}</div></div>`).join("");
+	const labels = [...STATES, ...MACHINE_STATES].map((s) => `<div class="lab" id="lab-${s.id}"><div class="lt" style="color:${s.color}">${s.title}</div><div class="ls">${s.sub}</div></div>`).join("");
 	const r = 17 * ZOOM;
 	return `<!doctype html><html><head><meta charset="utf-8"><style>
 *{box-sizing:border-box}
@@ -855,11 +1047,12 @@ html,body{margin:0;width:${W}px;height:${H}px;overflow:hidden;background:#000;co
 .face svg{display:block}
 .face>.shade{position:absolute;inset:0;background:#000;opacity:0}
 .face>.gloss{position:absolute;inset:0;border-radius:17px;background:linear-gradient(162deg,#ffffff16 0%,#ffffff05 30%,transparent 46%);box-shadow:inset 0 1px 0 #ffffff1c,inset 0 0 0 1px #ffffff08}
-#big{position:absolute;left:0;top:0;width:${BIG}px;height:${BIG}px;transform-origin:50% 50%;z-index:4;opacity:0;border-radius:${r}px;
+#big,#big2{position:absolute;left:0;top:0;width:${BIG}px;height:${BIG}px;transform-origin:50% 50%;z-index:4;opacity:0;border-radius:${r}px;
   box-shadow:0 0 0 ${ZOOM * 5}px #040405,0 0 0 ${ZOOM * 5 + 1}px #ffffff14,0 40px 110px #000}
-#big>.face{border-radius:${r}px}
-#big>.face>.gloss{border-radius:${r}px;box-shadow:inset 0 2px 0 #ffffff1c,inset 0 0 0 2px #ffffff08}
-#big svg{width:${BIG}px;height:${BIG}px}
+#big>.face,#big2>.face{border-radius:${r}px}
+#big>.face>.gloss,#big2>.face>.gloss{border-radius:${r}px;box-shadow:inset 0 2px 0 #ffffff1c,inset 0 0 0 2px #ffffff08}
+#big svg,#big2 svg{width:${BIG}px;height:${BIG}px}
+.look{position:absolute;left:0;right:0;top:-${SQUARE ? 52 : 46}px;text-align:center;font:600 ${SQUARE ? 24 : 18}px/1 ${MONO};letter-spacing:.12em;text-transform:uppercase;color:#a3a3a3}
 .lab{position:absolute;left:${LABEL_X}px;top:${BIG_CENTER.y - 70}px;width:${W - LABEL_X - 120}px;opacity:0;z-index:4}
 .lab .lt{font-size:64px;font-weight:700;letter-spacing:-.02em;line-height:1.05}
 .lab .ls{margin-top:16px;font-size:32px;line-height:1.3;color:#a3a3a3}
@@ -869,6 +1062,7 @@ html,body{margin:0;width:${W}px;height:${H}px;overflow:hidden;background:#000;co
   box-shadow:0 10px 28px #000a,0 0 0 1px #0000004d}
 .finger>.ripple{position:absolute;inset:0;border-radius:50%;border:3px solid #ffffff;opacity:0}
 .note{position:absolute;left:0;width:${W}px;top:${DECK_Y + DECK_H + 44}px;text-align:center;font-size:17px;color:#a3a3a3;opacity:.7}
+${macCss()}
 ${SQUARE ? SQUARE_CSS : ""}</style></head><body>
 <div class="glow"></div>
 <div class="eyebrow">Deck for T3 Code</div>
@@ -880,17 +1074,22 @@ ${wells}
 <div id="tiles"></div>
 <div class="sheen"></div>
 </div>${SQUARE ? `<div class="scrim"></div>` : ""}
-<div id="big"><div class="face"><div class="gloss"></div></div></div>
+<div id="big"><div class="face"><div class="gloss"></div></div><div class="look">Detailed</div></div>
+<div id="big2"><div class="face"><div class="gloss"></div></div><div class="look">Glance</div></div>
 ${labels}
 <div class="finger" id="finger"><div class="ripple"></div><div class="core"></div></div>
+${macHtml()}
 <div class="note">Example data</div>
 <script>
 const host = document.getElementById("tiles");
 const deck = document.getElementById("deck");
 const big = document.getElementById("big");
 big._face = big.children[0]; big._layers = [];
+const big2 = document.getElementById("big2");
+big2._face = big2.children[0]; big2._layers = [];
 const tiles = new Map();
 const finger = document.getElementById("finger");
+const mac = document.getElementById("mac");
 const fades = new Map([...document.querySelectorAll(".cap,.lab")].map((el) => [el.id, el]));
 function make() {
   const el = document.createElement("div");
@@ -931,7 +1130,14 @@ window.apply = (s) => {
     big.style.opacity = s.big.opacity;
     big.style.transform = "translate(" + s.big.x + "px," + s.big.y + "px)" + (s.big.scale === 1 ? "" : " scale(" + s.big.scale + ")");
     setLayers(big, s.big.layers, big._face.lastChild);
-  } else big.style.display = "none";
+    big2.style.display = "";
+    big2.style.opacity = s.big.twin.opacity;
+    big2.style.transform = "translate(" + s.big.twin.x + "px," + s.big.y + "px)" + (s.big.scale === 1 ? "" : " scale(" + s.big.scale + ")");
+    setLayers(big2, s.big.twin.layers, big2._face.lastChild);
+  } else { big.style.display = "none"; big2.style.display = "none"; }
+  mac.style.opacity = s.mac.opacity;
+  mac.style.display = s.mac.opacity > 0 ? "" : "none";
+  mac.style.transform = s.mac.opacity > 0 ? "translateY(" + s.mac.dy + "px) scale(" + s.mac.scale + ")" : "";
   const f = s.finger;
   if (f) {
     finger.style.opacity = f.opacity;

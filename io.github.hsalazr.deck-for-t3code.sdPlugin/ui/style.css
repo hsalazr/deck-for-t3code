@@ -17,3 +17,4 @@ code { font: 11px ui-monospace, Menlo, monospace; color: #cfcfcf; }
 .result.ok { color: #3dd68c; } .result.bad { color: #f0524f; }
 button { background: #3d3d3d; color: #eee; border: 1px solid #555; border-radius: 3px; padding: 3px 10px; font: inherit; cursor: pointer; }
 button:disabled { opacity: .6; cursor: default; }
+a { color: #6fb3ff; }

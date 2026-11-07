@@ -4,8 +4,17 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **Machine** key for this Mac's CPU, memory pressure and free disk space: all three on one key (Summary), or one per key with more detail. CPU is busy time over the last 30 seconds, with performance and efficiency cores apart (found from the hardware, so any M-series chip lays out right); the colour follows the performance cores. Memory follows macOS's own pressure level. Pick a disk by folder. Tap for Activity Monitor (a Disk space key opens its folder in Finder). Read from macOS every 5 seconds while a Machine key is shown, so it works with T3 Code closed. The README and the site explain where each number comes from and why the thresholds sit where they do.
+- **Glance** look for Thread and Overview keys (a shared setting, *Thread keys*). Thread keys: just the title in large type; colour, blinking and a stroke running round the border (blue working, white waiting) carry the state. Overview: the count in the most urgent state, big, then `/` all threads, smaller and fainter (`1/2`); no spinner. Same colours and blinking as the detailed look, which stays the default.
+- **Glance** style for Machine and Updates keys, to read from across your desk: a ring the size of the Usage key's with the number in the middle (three tall columns for the Machine summary; a check or count in a disc for Updates). The detailed look stays the default.
+- The site has a "Two looks" section with a Glance/Detailed switch over the Thread and Overview keys, a Machine and Updates section with its own switch and an explainer of how each number is measured, and a section on why memory is shown as pressure rather than "used". In the demo animation a tap on a finished thread opens it in T3 Code on the Mac, the zoomed-in keys show both looks side by side, act 4 opens on the Overview key, and a fifth act, "Your Mac, at a glance", steps through the Machine and Updates keys.
+- **Updates** key: whether T3 Code (against the newest stable or nightly release, matching what you run) or a provider CLI such as Claude or Codex has an update waiting. Checked every 30 minutes while the key is shown; tap to open T3 Code.
+
 ### Changed
 
+- Green, red and blue are more saturated on the keys, because a Stream Deck's screen washes colours out. The site and the demo animation keep the softer shades, which look more like light from a real key.
 - The nightly pre-release is rebuilt when new plugin code lands on `main`, not on a daily schedule. Docs, site and change log pushes don't rebuild it.
 
 ## [1.1.0] - 2026-11-05

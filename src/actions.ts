@@ -59,6 +59,26 @@ export class ThreadActionKey extends T3KeyAction {
 	protected readonly kind = "action";
 }
 
+/** This Mac's load, memory or disk space. Reads the OS, not T3 Code. */
+@action({ UUID: "io.github.hsalazr.deck-for-t3code.machine" })
+export class MachineKey extends T3KeyAction {
+	protected readonly kind = "machine";
+
+	override onDidReceiveSettings(ev: DidReceiveSettingsEvent<KeySettings>): void {
+		runtime.deck?.updateSettings(ev.action.id, ev.payload.settings);
+	}
+}
+
+/** T3 Code and provider CLI updates, from this Mac's T3 Code server. */
+@action({ UUID: "io.github.hsalazr.deck-for-t3code.updates" })
+export class UpdatesKey extends T3KeyAction {
+	protected readonly kind = "updates";
+
+	override onDidReceiveSettings(ev: DidReceiveSettingsEvent<KeySettings>): void {
+		runtime.deck?.updateSettings(ev.action.id, ev.payload.settings);
+	}
+}
+
 @action({ UUID: "io.github.hsalazr.deck-for-t3code.usage" })
 export class UsageKey extends T3KeyAction {
 	protected readonly kind = "usage";

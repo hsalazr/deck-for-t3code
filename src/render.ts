@@ -7,7 +7,9 @@
  * tracks keep 3:1 against the background.
  */
 import type { CardState, ThreadCard } from "./model.ts";
+import { coreLayout, cpuLevel, diskLevel, diskTitle, formatBytes, formatLoadShort, mainCluster, memoryLevel, usedPercent, type CpuStats, type DiskStats, type Level, type MachineSnapshot, type MachineStat, type MemoryStats } from "./machine.ts";
 import { formatDuration, type Pace, type UsageMetric } from "./usage.ts";
+import { displayVersion, pendingUpdates, type UpdatesSnapshot } from "./updates.ts";
 import type { Connection } from "./t3/monitor.ts";
 
 const SIZE = 144;
@@ -35,9 +37,9 @@ interface Palette {
 
 const PALETTE: Record<CardState, Palette> = {
 	input: { accent: "#F5A524", label: "NEEDS YOU" },
-	failed: { accent: "#F0524F", label: "FAILED" },
-	done: { accent: "#3DD68C", label: "DONE" },
-	working: { accent: "#5B9CFF", label: "WORKING" },
+	failed: { accent: "#FF242F", label: "FAILED" },
+	done: { accent: "#00E069", label: "DONE" },
+	working: { accent: "#297EFF", label: "WORKING" },
 	paused: { accent: "#8B93A1", label: "PAUSED" },
 	idle: { accent: "#6B7280", label: "IDLE" },
 };
@@ -77,6 +79,8 @@ export interface ThreadKeyInput {
 	primary?: boolean;
 	/** Held past the long-press threshold: "Release to open" (actions page) or "to clear" (no page on this deck). */
 	releaseCue?: "open" | "clear";
+	/** "glance": a big state glyph and a two-line title in large type, no project or status word. */
+	style?: KeyStyle;
 }
 
 export function isAnimated(state: CardState | undefined, animation: AnimationMode): boolean {
@@ -113,19 +117,20 @@ function spins(card: ThreadCard): boolean {
  * (spinner step, blink edge, a paused countdown's minute), or undefined if it
  * is static. The deck re-renders only those keys, at exactly those times.
  */
-export function nextThreadFrame(card: ThreadCard | undefined, animation: AnimationMode, now: number): number | undefined {
+export function nextThreadFrame(card: ThreadCard | undefined, animation: AnimationMode, now: number, style: KeyStyle = "detailed"): number | undefined {
 	if (!card) return undefined;
 	let next: number | undefined;
 	const at = (t: number): void => {
 		if (next === undefined || t < next) next = t;
 	};
 	if (card.state === "paused") {
-		if (card.pausedUntil && card.pausedUntil > now) at(now + ((card.pausedUntil - now) % 60_000) + 1);
+		// The glance look shows no countdown, so nothing to tick.
+		if (style !== "glance" && card.pausedUntil && card.pausedUntil > now) at(now + ((card.pausedUntil - now) % 60_000) + 1);
 		return next;
 	}
 	if (animation === "off") return undefined;
 	if (FLASH[card.state]) at(nextFlashEdge(card.state, now));
-	if (spins(card)) at(nextBoundary(now, SPIN_STEP_MS));
+	if (spins(card)) at(nextBoundary(now, style === "glance" ? ORBIT_STEP_MS : SPIN_STEP_MS));
 	return next;
 }
 
@@ -156,13 +161,14 @@ export function renderThreadKey(input: ThreadKeyInput): string {
 	if (connection.kind !== "ok") return input.primary === false ? renderEmpty() : renderMessage(connectionText(connection), SOFT);
 	if (!card) return renderEmpty();
 	const cue = input.releaseCue ? releaseCue(input.releaseCue) : "";
-	if (card.state === "paused") return overlay(renderPaused(card, now, input.showLabel), cue);
+	if (card.state === "paused") return overlay(input.style === "glance" ? renderPausedGlance(card) : renderPaused(card, now, input.showLabel), cue);
 
 	const state = card.state;
 	const { accent, label } = PALETTE[state];
 	// DONE is a steady solid tile; only NEEDS YOU and FAILED blink.
 	const lit = state === "done" || (animation !== "off" && flashLit(state, now));
 	const steady = animation === "off" && FLASH[state] !== undefined;
+	if (input.style === "glance") return overlay(renderThreadGlance(card, lit, steady, animation, now), cue);
 
 	const bg = lit ? accent : steady ? mix(accent, BG, 0.72) : BG;
 	const fg = lit ? INK : WHITE;
@@ -289,7 +295,7 @@ function waitingChip(label: string, lit: boolean): string {
 export const contextPercent = (c: { used: number; max: number }): number => Math.min(100, Math.round((100 * c.used) / c.max));
 const contextColor = (c: { used: number; max: number }): string => {
 	const pct = contextPercent(c);
-	return pct >= 85 ? "#F0524F" : pct >= 70 ? "#F5A524" : DIM;
+	return pct >= 85 ? "#FF242F" : pct >= 70 ? "#F5A524" : DIM;
 };
 
 /** Thin bar along the bottom edge: how full the context window is. */
@@ -312,6 +318,8 @@ export interface OverviewInput {
 	now: number;
 	/** Being held: show "Hold to clear all" with this much progress (0–1). */
 	hold?: number;
+	/** "glance": one big count of the most urgent state. */
+	style?: KeyStyle;
 }
 
 export type OverviewState = "failed" | "input" | "done" | "working" | "background" | "idle";
@@ -347,7 +355,7 @@ export function renderOverview(input: OverviewInput): string {
 	const { connection, counts, now, animation } = input;
 	if (input.hold !== undefined) return renderHoldCue(["Hold to", "clear all"], input.hold, "T3 CODE");
 	// Offline and signed out aren't errors: grey, not red.
-	if (connection.kind !== "ok") return renderMessage(connectionText(connection), connection.kind === "error" && connection.reason !== "signed-out" ? "#F0524F" : SOFT, "T3 CODE");
+	if (connection.kind !== "ok") return renderMessage(connectionText(connection), connection.kind === "error" && connection.reason !== "signed-out" ? "#FF242F" : SOFT, "T3 CODE");
 
 	const state = overviewState(counts);
 	const accent = state === "background" ? BACKGROUND_ORBIT : PALETTE[state].accent;
@@ -356,6 +364,7 @@ export function renderOverview(input: OverviewInput): string {
 	const steady = animation === "off" && (state === "failed" || state === "input");
 	const bg = lit ? accent : steady ? mix(accent, BG, 0.72) : BG;
 	const fg = lit ? INK : WHITE;
+	if (input.style === "glance") return renderOverviewGlance(state, counts, lit, bg, accent);
 
 	const parts: string[] = [`<rect width="${SIZE}" height="${SIZE}" fill="${bg}"/>`];
 	if (state === "working" || state === "background") parts.push(spinner(accent, animation === "off" ? 0 : now));
@@ -383,6 +392,137 @@ export function renderOverview(input: OverviewInput): string {
 	if (input.overflow > 0) {
 		parts.push(text(130, 132, `+${input.overflow}`, { size: 14, weight: 700, fill: lit ? INK : DIM, anchor: "end" }));
 	}
+	return svg(parts.join(""));
+}
+
+/** The blink's dark phase keeps a coloured ring round the key, as in the detailed look. */
+const blinkRing = (accent: string): string => `<rect x="3" y="3" width="138" height="138" rx="20" fill="none" stroke="${accent}" stroke-width="3" opacity="0.9"/>`;
+
+/**
+ * The glance title: 26 px, left-aligned, centred top to bottom. Too long for
+ * four lines: the last is cut with "…". A single word too long for a line is
+ * cut the same way rather than split across lines.
+ */
+const GLANCE_TITLE = { size: 26, lineHeight: 31, room: 116, lines: 4 };
+
+function glanceTitle(title: string, fill: string): string {
+	const { size, lineHeight, room, lines: max } = GLANCE_TITLE;
+	const units = room / (size * EM);
+	const words = sanitize(title)
+		.split(/\s+/)
+		.filter(Boolean)
+		.map((w) => (textWidth(w) > units ? truncate(w, units) : w))
+		.join(" ");
+	const lines = wrapWidths(words, Array.from({ length: max }, () => units)).filter(Boolean);
+	const top = 72 + size * 0.36 - ((lines.length - 1) * lineHeight) / 2;
+	return lines.map((line, i) => text(14, Math.round(top + i * lineHeight), line, { size, weight: 750, fill })).join("");
+}
+
+/** The border orbit: a bright stroke running round the tile's edge, one lap in 2.4 s. */
+const ORBIT_PERIOD_MS = 2400;
+const ORBIT_FRAMES = 16;
+export const ORBIT_STEP_MS = ORBIT_PERIOD_MS / ORBIT_FRAMES;
+const ORBIT_PATH = { x: 4, y: 4, w: 136, h: 136, r: 20 };
+const ORBIT_LENGTH = 2 * (ORBIT_PATH.w + ORBIT_PATH.h - 4 * ORBIT_PATH.r) + 2 * Math.PI * ORBIT_PATH.r;
+
+function orbit(color: string, now: number): string {
+	const frame = Math.floor(((now % ORBIT_PERIOD_MS) / ORBIT_PERIOD_MS) * ORBIT_FRAMES);
+	const offset = -(frame / ORBIT_FRAMES) * ORBIT_LENGTH;
+	const { x, y, w, h, r } = ORBIT_PATH;
+	const rect = `x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="none"`;
+	const comet = 70;
+	return (
+		`<g id="orbit"><rect ${rect} stroke="${color}" stroke-width="2" opacity="0.22"/>` +
+		`<rect ${rect} stroke="${color}" stroke-width="4" stroke-linecap="round" opacity="0.35" ` +
+		`stroke-dasharray="${comet + 30} ${(ORBIT_LENGTH - comet - 30).toFixed(1)}" stroke-dashoffset="${(offset + 30).toFixed(1)}"/>` +
+		`<rect ${rect} stroke="${color}" stroke-width="4" stroke-linecap="round" ` +
+		`stroke-dasharray="${comet} ${(ORBIT_LENGTH - comet).toFixed(1)}" stroke-dashoffset="${offset.toFixed(1)}"/></g>`
+	);
+}
+
+/**
+ * Thread key, glance style: only the title, in big type. Colour and motion
+ * carry the state: amber blinks (needs you), red blinks (failed), solid
+ * green (done), a blue stroke orbiting the border (working), a white one
+ * (only background work left). No icons, numbers, project or context bar.
+ */
+function renderThreadGlance(card: ThreadCard, lit: boolean, steady: boolean, animation: AnimationMode, now: number): string {
+	const state = card.state;
+	const { accent } = PALETTE[state];
+	const bg = lit ? accent : steady ? mix(accent, BG, 0.72) : BG;
+	const parts: string[] = [`<rect width="${SIZE}" height="${SIZE}" fill="${bg}"/>`];
+	if (spins(card)) {
+		const color = lit ? INK : state !== "working" ? accent : isBackgroundOnly(card) ? BACKGROUND_ORBIT : PALETTE.working.accent;
+		parts.push(orbit(color, animation === "off" ? 0 : now));
+	} else if ((state === "input" || state === "failed") && !lit) parts.push(blinkRing(accent));
+	parts.push(glanceTitle(card.title, lit ? INK : state === "idle" ? SOFT : WHITE));
+	return svg(parts.join(""));
+}
+
+/** Paused by a usage limit, glance style: the dashed border and the title, dimmed. */
+function renderPausedGlance(card: ThreadCard): string {
+	return svg(
+		`<rect width="${SIZE}" height="${SIZE}" fill="${BG}"/>` +
+			`<rect x="3" y="3" width="138" height="138" rx="20" fill="none" stroke="${DIM}" stroke-width="2" stroke-dasharray="5 6"/>` +
+			glanceTitle(card.title, DIM),
+	);
+}
+
+/** Overview glance: the label and colour of each state it can lead with (waiting = only background work left). */
+const OVERVIEW_HEADS = {
+	failed: { label: "FAILED", color: PALETTE.failed.accent },
+	input: { label: "NEED YOU", color: PALETTE.input.accent },
+	done: { label: "DONE", color: PALETTE.done.accent },
+	working: { label: "WORKING", color: PALETTE.working.accent },
+	background: { label: "WAITING", color: BACKGROUND_ORBIT },
+} as const;
+
+/**
+ * Overview, glance style: how many threads are in the most urgent state, as
+ * one big number, then "/" and how many threads there are in all, smaller and
+ * fainter, on the same baseline ("1/2": one of two is done). "T3 THREADS" on
+ * top, like the Machine and Updates keys; what the number counts at the bottom. What the big number counts sits on top in small type.
+ * Colour and blinking carry the state (red blinks: failed; amber blinks:
+ * needs you; solid green: done; blue: working; white: waiting). No spinner.
+ */
+function renderOverviewGlance(state: OverviewState, counts: OverviewInput["counts"], lit: boolean, bg: string, accent: string): string {
+	const parts: string[] = [`<rect width="${SIZE}" height="${SIZE}" fill="${bg}"/>`];
+	if ((state === "failed" || state === "input") && !lit) parts.push(blinkRing(accent));
+	const counted = {
+		failed: counts.failed,
+		input: counts.input,
+		done: counts.done,
+		working: Math.max(0, counts.working - counts.background),
+		background: counts.background,
+		idle: counts.idle,
+	};
+	const total = counts.input + counts.failed + counts.done + counts.working + counts.idle;
+	const head = state === "idle" ? undefined : OVERVIEW_HEADS[state];
+	const n = counted[state];
+	const ink = lit ? INK : head ? head.color : QUIET;
+	// Titled like the Machine and Updates keys; what the big number counts sits at the bottom.
+	parts.push(text(72, 22, "T3 THREADS", { size: 14, weight: 800, fill: lit ? INK : DIM, anchor: "middle", spacing: 0.3 }));
+	parts.push(text(72, 132, head ? head.label : "IDLE", { size: 14, weight: 800, fill: lit ? INK : head ? head.color : DIM, anchor: "middle", spacing: 1 }));
+
+	const big = String(Math.min(MAX_COUNT, n));
+	const bigSize = big.length >= 3 ? 50 : 66;
+	const rest = total > n ? `/${Math.min(MAX_COUNT, total)}` : "";
+	const restSize = 30;
+	if (!rest) {
+		parts.push(text(72, 96, big, { size: bigSize, weight: 800, fill: ink, anchor: "middle" }));
+		return svg(parts.join(""));
+	}
+	// The count ends and "/N" starts at one point, whatever font draws them, so the
+	// gap between them never depends on a width estimate; only the centring does.
+	// Digits share one width in these fonts, so a final "1" leaves empty space on its right: tuck "/N" into it.
+	const tuck = big.endsWith("1") ? Math.round(bigSize * 0.13) : 0;
+	const bigWidth = pxWidth(big, bigSize) * 1.04 - tuck;
+	const restWidth = pxWidth(rest, restSize) * 1.04;
+	// A small gap between the count and "/N".
+	const gap = 4;
+	const join = Math.round(72 - (bigWidth + gap + restWidth) / 2 + bigWidth);
+	parts.push(text(join + tuck, 96, big, { size: bigSize, weight: 800, fill: ink, anchor: "end" }));
+	parts.push(text(join + gap, 96, rest, { size: restSize, weight: 700, fill: lit ? LIT_DIM : QUIET }));
 	return svg(parts.join(""));
 }
 
@@ -674,7 +814,7 @@ export interface UsageKeyInput {
 	style?: "bar" | "ring";
 }
 
-const PACE_COLOR = { ahead: "#F5A524", over: "#F0524F", on: "#5B9CFF", under: "#3DD68C", unknown: DIM };
+const PACE_COLOR = { ahead: "#F5A524", over: "#FF242F", on: "#297EFF", under: "#00E069", unknown: DIM };
 const STALE = QUIET;
 const STALE_FILL = DIM;
 
@@ -738,6 +878,332 @@ export function renderUsageKey(input: UsageKeyInput): string {
 	}
 	parts.push(text(12, 113, paceText, { size: 15, weight: 700, fill: paceColor }));
 	if (pace.resetsInMs !== null) parts.push(text(12, 133, fit(`resets in ${formatDuration(pace.resetsInMs)}`, 120, 14), { size: 14, weight: 550, fill: DIM }));
+	return svg(parts.join(""));
+}
+
+// ---------- Updates ----------
+
+/**
+ * Updates key: "Up to date" with the versions in use, or how many updates
+ * are waiting and for what. Names T3 Code first, then provider CLIs.
+ */
+export function renderUpdatesKey(s: UpdatesSnapshot, style: KeyStyle = "detailed"): string {
+	if (!s.t3 && s.providers.length === 0) {
+		const message = s.fetchedAt === 0 && !s.ok && s.detail === "Loading…" ? "Loading…" : s.ok ? "No update info" : "T3 offline";
+		return renderMessage(message, SOFT, "UPDATES");
+	}
+	const stale = !s.ok;
+	const pending = pendingUpdates(s);
+	if (style === "glance") return renderUpdatesGlance(pending.length, stale);
+	const parts = [`<rect width="${SIZE}" height="${SIZE}" fill="${BG}"/>`];
+	parts.push(text(12, 26, stale ? "UPDATES · STALE" : "UPDATES", { size: 14, weight: 800, fill: DIM, spacing: 0.3 }));
+	let lines: { text: string; fill: string }[];
+	if (pending.length === 0) {
+		parts.push(text(12, 64, "✓ Up to date", { size: 20, weight: 800, fill: stale ? STALE : PACE_COLOR.under }));
+		lines = [...(s.t3 ? [s.t3] : []), ...s.providers].map((u) => ({ text: `${shortName(u.name)} ${displayVersion(u.current)}`, fill: DIM }));
+	} else {
+		const ink = stale ? STALE : PACE_COLOR.ahead;
+		const n = String(pending.length);
+		parts.push(text(12, 68, n, { size: 40, weight: 800, fill: ink }));
+		parts.push(text(12 + n.length * 23 + 6, 68, pending.length === 1 ? "update" : "updates", { size: 16, weight: 700, fill: ink }));
+		lines = pending.map((u) => ({ text: `${shortName(u.name)} ${displayVersion(u.latest)}`, fill: stale ? STALE : WHITE }));
+	}
+	const room = 3;
+	const shown = lines.length > room ? [...lines.slice(0, room - 1), { text: `+${lines.length - room + 1} more`, fill: DIM }] : lines;
+	shown.forEach((l, i) => parts.push(text(12, 98 + i * 19, fit(l.text, 120, 14), { size: 14, weight: 650, fill: l.fill })));
+	return svg(parts.join(""));
+}
+
+/** "T3 Code" → "T3": room for a nightly version on one line. */
+const shortName = (name: string): string => (name === "T3 Code" ? "T3" : name);
+
+// ---------- Machine ----------
+
+export interface MachineKeyInput {
+	stat: MachineStat;
+	/** Undefined until the first sample. */
+	sample: MachineSnapshot | undefined;
+	/** Normalised disk path this key shows (summary and disk). */
+	path: string;
+	/** "detailed" (default): numbers and detail lines. "glance": one big number and a ring, readable from across your desk. */
+	style?: KeyStyle;
+}
+
+/** Green headroom, amber tight, red act now: the same colours as usage pace. */
+const LEVEL_COLOR: Record<Level, string> = { ok: PACE_COLOR.under, busy: PACE_COLOR.ahead, high: PACE_COLOR.over };
+const levelInk = (level: Level): string => (level === "ok" ? WHITE : LEVEL_COLOR[level]);
+const CPU_TEXT: Record<Level, string> = { ok: "● headroom", busy: "▲ busy", high: "■ maxed out" };
+/** Shorter, to fit after "P-cores". */
+const P_TEXT: Record<Level, string> = { ok: "● P-cores free", busy: "▲ P-cores busy", high: "■ P-cores maxed" };
+
+/**
+ * This Mac at a glance. Summary: CPU, memory and disk as three rows with
+ * bars. One stat: label, big number, bar, and two lines of detail.
+ */
+export function renderMachineKey(input: MachineKeyInput): string {
+	const { sample, stat, path } = input;
+	const heading = stat === "summary" ? "THIS MAC" : stat === "disk" ? diskTitle(path) : stat.toUpperCase();
+	if (!sample) return renderMessage("Loading…", SOFT, heading);
+	if (input.style === "glance") return renderMachineGlance(stat, sample, path, heading);
+	switch (stat) {
+		case "cpu":
+			return sample.cpu ? renderCpuKey(sample.cpu, sample.load) : renderMessage("Measuring…", SOFT, heading);
+		case "memory":
+			return sample.memory ? renderMemoryKey(sample.memory) : renderMessage("Can't read memory", SOFT, heading);
+		case "disk": {
+			const disk = sample.disks.get(path);
+			if (!disk) return renderMessage("Loading…", SOFT, heading);
+			return "error" in disk ? renderMessage(disk.error, SOFT, heading) : renderDiskKey(disk, path);
+		}
+		default:
+			return renderMachineSummary(sample, path);
+	}
+}
+
+interface BarPart {
+	/** Share of the track this part takes (core count for CPU clusters). */
+	weight: number;
+	/** 0-1. */
+	fill: number;
+	color: string;
+}
+
+/** A bar split into parts (P cores | E cores), each filled on its own; one part is a plain bar. */
+function partsBar(y: number, parts: BarPart[], height = 10): string {
+	const x0 = 12;
+	const width = 120;
+	const gap = parts.length > 1 ? 4 : 0;
+	const total = parts.reduce((s, p) => s + p.weight, 0) || 1;
+	const usable = width - gap * (parts.length - 1);
+	const out: string[] = [];
+	let x = x0;
+	for (const p of parts) {
+		const w = (usable * p.weight) / total;
+		const r = Math.min(height / 2, w / 2);
+		out.push(`<rect x="${x.toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="${height}" rx="${r.toFixed(1)}" fill="${TRACK}"/>`);
+		const f = Math.max(0, Math.min(1, p.fill));
+		const fw = f > 0 ? Math.max(Math.min(w, height * 0.4), w * f) : 0;
+		if (fw > 0) out.push(`<rect x="${x.toFixed(1)}" y="${y}" width="${fw.toFixed(1)}" height="${height}" rx="${Math.min(r, fw / 2).toFixed(1)}" fill="${p.color}"/>`);
+		x += w + gap;
+	}
+	return out.join("");
+}
+
+/** CPU bar: one part per cluster, as wide as its share of the cores. */
+const cpuBar = (cpu: CpuStats, y: number, height?: number): string =>
+	partsBar(y, cpu.clusters.map((c) => ({ weight: c.cores, fill: c.busy / 100, color: LEVEL_COLOR[cpuLevel(c.busy)] })), height);
+
+/** Title, a big value with an optional unit, a bar, and two detail lines: the Usage key's layout. */
+function statTile(o: { title: string; value: string; unit?: string; level: Level; bar: string; line1: string; line1Color: string; line2?: string }): string {
+	const ink = levelInk(o.level);
+	const size = o.value.length >= 5 ? 34 : 40;
+	const parts = [`<rect width="${SIZE}" height="${SIZE}" fill="${BG}"/>`];
+	parts.push(text(12, 26, fit(o.title, 128, 14, 0.3), { size: 14, weight: 800, fill: DIM, spacing: 0.3 }));
+	parts.push(text(12, 68, o.value, { size, weight: 800, fill: ink }));
+	if (o.unit) parts.push(text(12 + o.value.length * 23 + 2, 68, o.unit, { size: 20, weight: 700, fill: ink }));
+	parts.push(o.bar);
+	parts.push(text(12, 113, fit(o.line1, 120, 15), { size: 15, weight: 700, fill: o.line1Color }));
+	if (o.line2) parts.push(text(12, 133, fit(o.line2, 120, 14), { size: 14, weight: 550, fill: DIM }));
+	return svg(parts.join(""));
+}
+
+/**
+ * CPU: the big number is how busy the P cores were (all cores on a Mac
+ * without E cores) over the last 30 s; the E cores and the 5-minute load
+ * average sit underneath.
+ */
+function renderCpuKey(cpu: CpuStats, load: readonly number[]): string {
+	const main = mainCluster(cpu)!;
+	const e = cpu.clusters.find((c) => c.kind === "E");
+	const level = cpuLevel(main.busy);
+	const busy = Math.round(main.busy);
+	return statTile({
+		// "M1 MAX · 8P+2E"; a Mac with one kind of core says its count underneath instead.
+		title: e ? `${cpu.chip.toUpperCase()} · ${coreLayout(cpu)}` : cpu.chip.toUpperCase(),
+		value: String(busy),
+		unit: "%",
+		level,
+		bar: cpuBar(cpu, 80),
+		line1: (e ? P_TEXT : CPU_TEXT)[level],
+		line1Color: LEVEL_COLOR[level],
+		line2: e ? `E ${Math.round(e.busy)}% · load ${formatLoadShort(load[1] ?? 0)}` : `${main.cores} cores · load ${formatLoadShort(load[1] ?? 0)}`,
+	});
+}
+
+const PRESSURE_TEXT: Record<Level, string> = { ok: "● normal", busy: "▲ pressure", high: "■ critical" };
+
+function renderMemoryKey(m: MemoryStats): string {
+	const level = memoryLevel(m);
+	const used = Math.round(100 - m.freePercent);
+	const swap = m.swapUsedBytes && m.swapUsedBytes >= 1e8 ? `swap ${formatBytes(m.swapUsedBytes)}` : `of ${formatBytes(m.totalBytes)}`;
+	return statTile({
+		title: "MEMORY",
+		value: String(used),
+		unit: "%",
+		level,
+		bar: partsBar(80, [{ weight: 1, fill: used / 100, color: LEVEL_COLOR[level] }]),
+		line1: PRESSURE_TEXT[level],
+		line1Color: LEVEL_COLOR[level],
+		line2: swap,
+	});
+}
+
+function renderDiskKey(d: DiskStats, path: string): string {
+	const level = diskLevel(d);
+	const used = Math.round(usedPercent(d));
+	return statTile({
+		title: diskTitle(path),
+		value: String(used),
+		unit: "%",
+		level,
+		bar: partsBar(80, [{ weight: 1, fill: used / 100, color: LEVEL_COLOR[level] }]),
+		line1: `${formatBytes(d.freeBytes)} free`,
+		line1Color: level === "ok" ? SOFT : LEVEL_COLOR[level],
+		line2: `of ${formatBytes(d.totalBytes)}`,
+	});
+}
+
+/** Three rows: CPU, MEM, DISK, each a label, a value and a thin bar. A row it can't read shows "—". */
+function renderMachineSummary(s: MachineSnapshot, path: string): string {
+	const rows: { label: string; value: string; level?: Level; bar: (y: number) => string }[] = [];
+	const empty = (y: number) => partsBar(y, [{ weight: 1, fill: 0, color: TRACK }], 8);
+	const one = (fill: number, level: Level) => (y: number) => partsBar(y, [{ weight: 1, fill, color: LEVEL_COLOR[level] }], 8);
+	const main = s.cpu ? mainCluster(s.cpu) : undefined;
+	if (s.cpu && main) {
+		const cpu = s.cpu;
+		rows.push({ label: "CPU", value: `${Math.round(main.busy)}%`, level: cpuLevel(main.busy), bar: (y) => cpuBar(cpu, y, 8) });
+	} else rows.push({ label: "CPU", value: "…", bar: empty });
+	if (s.memory) {
+		const used = Math.round(100 - s.memory.freePercent);
+		const level = memoryLevel(s.memory);
+		rows.push({ label: "MEM", value: `${used}%`, level, bar: one(used / 100, level) });
+	} else rows.push({ label: "MEM", value: "—", bar: empty });
+	const disk = s.disks.get(path);
+	const diskLabel = diskTitle(path);
+	if (disk && !("error" in disk)) {
+		const used = Math.round(usedPercent(disk));
+		const level = diskLevel(disk);
+		rows.push({ label: diskLabel, value: `${used}%`, level, bar: one(used / 100, level) });
+	} else rows.push({ label: diskLabel, value: "—", bar: empty });
+
+	const parts = [`<rect width="${SIZE}" height="${SIZE}" fill="${BG}"/>`];
+	rows.forEach((r, i) => {
+		const y = 30 + i * 44;
+		const ink = r.level ? levelInk(r.level) : QUIET;
+		parts.push(text(12, y, fit(r.label, 64, 14, 0.3), { size: 14, weight: 800, fill: DIM, spacing: 0.3 }));
+		parts.push(text(132, y, r.value, { size: 18, weight: 800, fill: ink, anchor: "end" }));
+		parts.push(r.bar(y + 9));
+	});
+	return svg(parts.join(""));
+}
+
+// ---------- Glance style ----------
+
+/** Machine and Updates keys: "detailed" packs in numbers and lines of detail; "glance" shows one big reading. */
+export type KeyStyle = "detailed" | "glance";
+
+/** A ring split into parts (P | E cores), the Usage ring's size, clockwise from the top; each part as long as its weight and filled on its own. */
+function partsRing(parts: BarPart[]): string {
+	const gap = parts.length > 1 ? RING.gapDeg : 0;
+	const total = parts.reduce((n, p) => n + p.weight, 0) || 1;
+	const out: string[] = [];
+	let start = gap / 2;
+	for (const p of parts) {
+		const span = (360 * p.weight) / total - gap;
+		out.push(arc(start, start + span, TRACK));
+		const f = Math.max(0, Math.min(1, p.fill));
+		if (f > 0) out.push(arc(start, start + Math.max(span * f, 3), p.color));
+		start += span + gap;
+	}
+	return out.join("");
+}
+
+/** Laid out like the Usage key's ring: the title on top, the number in the middle with a small "%". */
+function glanceTile(value: string, title: string, ink: string, ring: string): string {
+	const digits = value.length;
+	const size = digits >= 3 ? 26 : 32;
+	return svg(
+		`<rect width="${SIZE}" height="${SIZE}" fill="${BG}"/>` +
+			text(72, 22, fit(title, 132, 14, 0.3), { size: 14, weight: 800, fill: DIM, anchor: "middle", spacing: 0.3 }) +
+			ring +
+			text(RING.cx - 4, RING.cy + size * 0.36, value, { size, weight: 800, fill: ink, anchor: "middle" }) +
+			text(RING.cx - 4 + digits * size * 0.29 + 2, RING.cy + size * 0.36, "%", { size: 15, weight: 700, fill: DIM }),
+	);
+}
+
+function renderMachineGlance(stat: MachineStat, s: MachineSnapshot, path: string, heading: string): string {
+	switch (stat) {
+		case "cpu": {
+			if (!s.cpu) return renderMessage("Measuring…", SOFT, heading);
+			const main = mainCluster(s.cpu)!;
+			const level = cpuLevel(main.busy);
+			const parts = s.cpu.clusters.map((c) => ({ weight: c.cores, fill: c.busy / 100, color: LEVEL_COLOR[cpuLevel(c.busy)] }));
+			return glanceTile(String(Math.round(main.busy)), s.cpu.clusters.length > 1 ? "P-CORES" : "CPU", levelInk(level), partsRing(parts));
+		}
+		case "memory": {
+			if (!s.memory) return renderMessage("Can't read memory", SOFT, heading);
+			const level = memoryLevel(s.memory);
+			const used = Math.round(100 - s.memory.freePercent);
+			return glanceTile(String(used), "MEMORY", levelInk(level), partsRing([{ weight: 1, fill: used / 100, color: LEVEL_COLOR[level] }]));
+		}
+		case "disk": {
+			const disk = s.disks.get(path);
+			if (!disk) return renderMessage("Loading…", SOFT, heading);
+			if ("error" in disk) return renderMessage(disk.error, SOFT, heading);
+			const level = diskLevel(disk);
+			const used = Math.round(usedPercent(disk));
+			return glanceTile(String(used), diskTitle(path), levelInk(level), partsRing([{ weight: 1, fill: used / 100, color: LEVEL_COLOR[level] }]));
+		}
+		default:
+			return renderSummaryGlance(s, path);
+	}
+}
+
+/** Three tall columns, CPU (P cores), memory, disk: a big number over each, colour says it all. */
+function renderSummaryGlance(s: MachineSnapshot, path: string): string {
+	const main = s.cpu ? mainCluster(s.cpu) : undefined;
+	const disk = s.disks.get(path);
+	const cols: { label: string; value?: number; level?: Level }[] = [
+		{ label: "CPU", value: main?.busy, level: main ? cpuLevel(main.busy) : undefined },
+		{ label: "MEM", value: s.memory ? 100 - s.memory.freePercent : undefined, level: s.memory ? memoryLevel(s.memory) : undefined },
+		disk && !("error" in disk) ? { label: "DISK", value: usedPercent(disk), level: diskLevel(disk) } : { label: "DISK" },
+	];
+	const parts = [`<rect width="${SIZE}" height="${SIZE}" fill="${BG}"/>`];
+	const width = 34;
+	const top = 40;
+	const bottom = 116;
+	cols.forEach((c, i) => {
+		const x = 10 + i * 45;
+		const mid = x + width / 2;
+		parts.push(`<rect x="${x}" y="${top}" width="${width}" height="${bottom - top}" rx="6" fill="${TRACK}"/>`);
+		if (c.value !== undefined && c.level) {
+			const h = Math.max(6, ((bottom - top) * Math.min(100, c.value)) / 100);
+			parts.push(`<rect x="${x}" y="${(bottom - h).toFixed(1)}" width="${width}" height="${h.toFixed(1)}" rx="6" fill="${LEVEL_COLOR[c.level]}"/>`);
+		}
+		const value = c.value === undefined ? "—" : String(Math.round(c.value));
+		parts.push(text(mid, 31, value, { size: value.length >= 3 ? 19 : 24, weight: 800, fill: c.level ? levelInk(c.level) : QUIET, anchor: "middle" }));
+		parts.push(text(mid, 136, c.label, { size: 14, weight: 800, fill: DIM, anchor: "middle" }));
+	});
+	return svg(parts.join(""));
+}
+
+/** A green disc with a check, or an amber one with the count, as big as the Usage ring; what it means on top. */
+function renderUpdatesGlance(count: number, stale: boolean): string {
+	const color = stale ? STALE_FILL : count > 0 ? PACE_COLOR.ahead : PACE_COLOR.under;
+	const r = RING.r + RING.width / 2;
+	const { cx, cy } = RING;
+	const caption = stale ? "STALE" : count === 0 ? "UP TO DATE" : count === 1 ? "UPDATE" : "UPDATES";
+	const parts = [
+		`<rect width="${SIZE}" height="${SIZE}" fill="${BG}"/>`,
+		text(72, 22, caption, { size: 14, weight: 800, fill: stale ? SOFT : color, anchor: "middle", spacing: 0.3 }),
+		`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}"/>`,
+	];
+	if (count > 0) {
+		const n = count > 9 ? "9+" : String(count);
+		parts.push(text(cx, cy + 18, n, { size: 50, weight: 800, fill: INK, anchor: "middle" }));
+	} else {
+		parts.push(`<path d="M${cx - 24} ${cy + 1} ${cx - 7} ${cy + 18} ${cx + 24} ${cy - 16}" fill="none" stroke="${INK}" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>`);
+	}
 	return svg(parts.join(""));
 }
 

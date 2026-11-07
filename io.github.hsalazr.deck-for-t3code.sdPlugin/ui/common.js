@@ -39,7 +39,7 @@ window.connectElgatoStreamDeckSocket = (port, uuid, registerEvent, _info, action
 };
 
 const DEFAULT_MESSAGES = ["continue", "summarize where you are", "run the tests and report", "explain the last change", "what's left to do?", "write a handoff note"];
-const DEFAULTS = { pollSeconds: 2, recentHours: 8, showSnoozed: false, flashOnDone: true, flashOnFailed: true, animation: "smooth", showLabels: false, t3Home: "", t3AppBundleId: "",
+const DEFAULTS = { pollSeconds: 2, recentHours: 8, showSnoozed: false, flashOnDone: true, flashOnFailed: true, animation: "smooth", showLabels: false, threadStyle: "detailed", t3Home: "", t3AppBundleId: "",
   actionsEnabled: false, messages: DEFAULT_MESSAGES.join("\n") };
 
 // ---------- Connection status (top of every inspector) ----------
@@ -111,6 +111,7 @@ const GLOBALS_HTML = `
     <div class="check"><input type="checkbox" data-global="flashOnFailed" id="f"><label for="f">A run fails (blinks red)</label></div>
   </div></div>
   <div class="row"><label>Status label</label><div class="check"><input type="checkbox" data-global="showLabels" id="sl"><label for="sl">Show WORKING / DONE / … above the title</label></div></div>
+  <div class="row"><label>Thread keys</label><select data-global="threadStyle"><option value="detailed">Detailed: title, project, status</option><option value="glance">Glance: big state and title</option></select></div>
   <div class="row"><label>Animation</label><select data-global="animation"><option value="smooth">Blink and spin</option><option value="off">Off (steady colors)</option></select></div>
   <div class="row"><label>Snoozed</label><div class="check"><input type="checkbox" data-global="showSnoozed" id="s"><label for="s">Show snoozed threads</label></div></div>
   <div class="row"><label>Refresh every</label><select data-global="pollSeconds"><option value="2">2 s</option><option value="5">5 s</option><option value="10">10 s</option></select></div>

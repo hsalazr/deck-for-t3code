@@ -1,4 +1,4 @@
-/* GitHub star badge. Hidden by default; shown only when the repo has more than 100 stars.
+/* GitHub star badge. Hidden until the count is known; shown once the repo has at least one star.
    One unauthenticated request to the public GitHub API, cached in localStorage for 6 hours.
    Fails silently. No other requests, no tracking.
    Testing only: add ?stars=150 to the page URL to show a fake count without any request. */
@@ -7,7 +7,7 @@
   var API = 'https://api.github.com/repos/hsalazr/deck-for-t3code';
   var KEY = 'deck-for-t3code:stars';
   var TTL = 6 * 60 * 60 * 1000;
-  var MIN = 100;
+  var MIN = 0; // show from the first star
 
   function show(count) {
     if (typeof count !== 'number' || !isFinite(count) || count <= MIN) return;

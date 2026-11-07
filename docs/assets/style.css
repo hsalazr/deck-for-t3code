@@ -68,7 +68,7 @@ section { padding: 128px 0 0; }
 .ico-lp { color: #f6c915; }
 .btn .ico { width: 18px; height: 18px; }
 .foot a:has(.ico) { display: inline-flex; align-items: center; gap: 8px; }
-/* GitHub star count: hidden until stars.js sees more than 100 stars */
+/* GitHub star count: hidden until stars.js has fetched the count (shown from the first star) */
 .stars { display: inline-flex; align-items: center; gap: 5px; margin-left: 2px; padding-left: 10px; border-left: 1px solid var(--line-strong); font-size: .88em; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--muted); }
 .stars[hidden] { display: none; }
 .stars .ico { width: 14px; height: 14px; color: #e3b341; }

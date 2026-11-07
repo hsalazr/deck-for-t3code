@@ -6,6 +6,9 @@ on:
 
 permissions:
   contents: write
+  # Build provenance attestations: sign with the workflow's OIDC identity, store the attestation.
+  id-token: write
+  attestations: write
 
 jobs:
   release:
@@ -54,7 +57,15 @@ jobs:
           npx streamdeck validate --no-update-check "$PLUGIN_DIR"
           mkdir -p dist
           npx streamdeck pack --no-update-check --output dist "$PLUGIN_DIR"
+          (cd dist && shasum -a 256 *.streamDeckPlugin > SHA256SUMS.txt && cat SHA256SUMS.txt)
           ls -l dist
+
+      # Lets anyone check a download came from this workflow:
+      # gh attestation verify <file> --repo hsalazr/deck-for-t3code
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: dist/*.streamDeckPlugin
 
       - name: Create the GitHub release
         env:
@@ -70,7 +81,7 @@ jobs:
             on { print }
           ' CHANGELOG.md > notes.md
           if [ -s notes.md ]; then
-            gh release create "$TAG" dist/*.streamDeckPlugin --title "$TAG" --notes-file notes.md
+            gh release create "$TAG" dist/*.streamDeckPlugin dist/SHA256SUMS.txt --title "$TAG" --notes-file notes.md
           else
-            gh release create "$TAG" dist/*.streamDeckPlugin --title "$TAG" --generate-notes
+            gh release create "$TAG" dist/*.streamDeckPlugin dist/SHA256SUMS.txt --title "$TAG" --generate-notes
           fi

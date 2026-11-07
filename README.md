@@ -64,6 +64,8 @@ See who's working, who needs you, who's done. Glance, tap, move on.
 
 **From a release:** download the `.streamDeckPlugin` file from [GitHub Releases](https://github.com/hsalazr/deck-for-t3code/releases) and double-click it.
 
+To check a download was built by this repo's release workflow, run `gh attestation verify <file> --repo hsalazr/deck-for-t3code` (needs the [GitHub CLI](https://cli.github.com)), or compare its SHA-256 with `SHA256SUMS.txt` on the same release (`shasum -a 256 <file>`).
+
 **Nightly:** the [`nightly` pre-release](https://github.com/hsalazr/deck-for-t3code/releases/tag/nightly) is rebuilt from `main` whenever new plugin code lands there, so fixes land there before the next release. It installs over the stable plugin (same keys and settings) and has the higher version (`1.0.0.N` after `1.0.0`); install a stable release over it to go back. It has passed CI, nothing more.
 
 **From source** (Node 24):

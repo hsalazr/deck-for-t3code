@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-06
+
 ### Added
 
 - **Machine** key for this Mac's CPU, memory pressure and free disk space: all three on one key (Summary), or one per key with more detail. CPU is busy time over the last 30 seconds, with performance and efficiency cores apart (found from the hardware, so any M-series chip lays out right); the colour follows the performance cores. Memory follows macOS's own pressure level. Pick a disk by folder. Tap for Activity Monitor (a Disk space key opens its folder in Finder). Read from macOS every 5 seconds while a Machine key is shown, so it works with T3 Code closed. The README and the site explain where each number comes from and why the thresholds sit where they do.
@@ -64,6 +66,7 @@ First public release (manifest version 1.0.0.0). Repeated identical log lines fr
 - Credentials only go to a loopback origin; the T3 home must be an absolute path; the T3 CLI must be a regular file owned by you (or root) and not writable by others before it runs.
 - Log lines are redacted of anything that looks like a token. No telemetry.
 
-[Unreleased]: https://github.com/hsalazr/deck-for-t3code/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/hsalazr/deck-for-t3code/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/hsalazr/deck-for-t3code/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/hsalazr/deck-for-t3code/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/hsalazr/deck-for-t3code/releases/tag/v1.0.0

@@ -3,9 +3,11 @@
  * memory pressure and free disk space (plus the load average, for reference).
  * Nothing here talks to T3 Code; it reads the OS.
  *
- * Why CPU % and not the load average: on macOS the load average also counts
- * threads that are waiting rather than running, so it can sit at 40+ while
- * the CPUs are mostly idle. Busy time per core is what the CPUs actually did.
+ * Why CPU % and not the load average: the load average counts threads that
+ * are running or queued for a CPU (XNU samples that count every 5 s into
+ * 1/5/15-minute averages; unlike Linux, threads blocked on I/O aren't in it).
+ * Being an average it lags: after a burst it can sit at 40+ while the CPUs
+ * are mostly idle. Busy time per core is what the CPUs actually did.
  *
  * Apple silicon mixes performance (P) and efficiency (E) cores. macOS puts
  * background work on the E cores, so they often look busy while the P cores,

@@ -18,6 +18,9 @@ on:
 
 permissions:
   contents: write
+  # Build provenance attestations: sign with the workflow's OIDC identity, store the attestation.
+  id-token: write
+  attestations: write
 
 concurrency:
   group: nightly
@@ -84,7 +87,15 @@ jobs:
           npx streamdeck validate --no-update-check "$PLUGIN_DIR"
           mkdir -p dist
           npx streamdeck pack --no-update-check --output dist "$PLUGIN_DIR"
+          (cd dist && shasum -a 256 *.streamDeckPlugin > SHA256SUMS.txt && cat SHA256SUMS.txt)
           ls -l dist
+
+      # Lets anyone check a download came from this workflow:
+      # gh attestation verify <file> --repo hsalazr/deck-for-t3code
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: dist/*.streamDeckPlugin
 
       - name: Publish the nightly pre-release
         env:
@@ -107,6 +118,6 @@ jobs:
             ' CHANGELOG.md
           } > notes.md
           gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
-          gh release create nightly dist/*.streamDeckPlugin \
+          gh release create nightly dist/*.streamDeckPlugin dist/SHA256SUMS.txt \
             --prerelease --latest=false --target "$GITHUB_SHA" \
             --title "Nightly $SEMVER" --notes-file notes.md

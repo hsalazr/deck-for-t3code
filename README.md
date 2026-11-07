@@ -1,4 +1,13 @@
+<div align="center">
+
+<br>
+
+<a href="https://hsalazr.github.io/deck-for-t3code/"><img src="docs/assets/icon-256.png" width="128" height="128" alt="Deck for T3 Code icon"></a>
+
 # Deck for T3 Code
+
+**Every [T3 Code](https://t3.codes) thread on a Stream Deck key.**<br>
+See who's working, who needs you, who's done. Glance, tap, move on.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/hsalazr/deck-for-t3code/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/hsalazr/deck-for-t3code/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/hsalazr/deck-for-t3code?label=release&color=f5a524)](https://github.com/hsalazr/deck-for-t3code/releases/latest)
@@ -9,15 +18,24 @@
 [![GitHub stars](https://img.shields.io/github/stars/hsalazr/deck-for-t3code?style=flat&color=yellow)](https://github.com/hsalazr/deck-for-t3code/stargazers)
 [![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/hsalazr)
 
-Every [T3 Code](https://t3.codes) thread on a Stream Deck key. See who's working, who needs you, who's done. Glance, tap, move on.
+<h3><a href="https://hsalazr.github.io/deck-for-t3code/">hsalazr.github.io/deck-for-t3code</a></h3>
+
+<br>
 
 ![Deck for T3 Code on a Stream Deck XL: start with two keys, tap for every thread, hold for actions, one key in every state. Example data.](docs/assets/demo.gif)
 
+<br>
+
 **macOS only.** Needs [T3 Code](https://t3.codes) installed and running on the same Mac.
 
-> Not affiliated with or endorsed by T3 Tools Inc. T3 Code is a trademark of its respective owner.
+[Website](https://hsalazr.github.io/deck-for-t3code/) · [Download](https://github.com/hsalazr/deck-for-t3code/releases/latest) · [Report a bug](https://github.com/hsalazr/deck-for-t3code/issues) · [Discussions](https://github.com/hsalazr/deck-for-t3code/discussions) · [Sponsor](https://github.com/sponsors/hsalazr)
 
-[Website](https://hsalazr.github.io/deck-for-t3code/) · [Releases](https://github.com/hsalazr/deck-for-t3code/releases) · [Report a bug](https://github.com/hsalazr/deck-for-t3code/issues) · [Discussions](https://github.com/hsalazr/deck-for-t3code/discussions) · [Sponsor](https://github.com/sponsors/hsalazr)
+<sub>Not affiliated with or endorsed by T3 Tools Inc. T3 Code is a trademark of its respective owner.</sub>
+
+<br>
+<br>
+
+</div>
 
 ## Features
 

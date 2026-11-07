@@ -1,5 +1,14 @@
 # Deck for T3 Code
 
+[![CI](https://img.shields.io/github/actions/workflow/status/hsalazr/deck-for-t3code/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/hsalazr/deck-for-t3code/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/hsalazr/deck-for-t3code?label=release&color=f5a524)](https://github.com/hsalazr/deck-for-t3code/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/hsalazr/deck-for-t3code/total?color=3ddc84)](https://github.com/hsalazr/deck-for-t3code/releases)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
+[![macOS 13+](https://img.shields.io/badge/macOS-13%2B-000000?logo=apple&logoColor=white)](#requirements)
+[![Stream Deck 7.1+](https://img.shields.io/badge/Stream%20Deck-7.1%2B-1f1f1f?logo=elgato&logoColor=white)](#requirements)
+[![GitHub stars](https://img.shields.io/github/stars/hsalazr/deck-for-t3code?style=flat&color=yellow)](https://github.com/hsalazr/deck-for-t3code/stargazers)
+[![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/hsalazr)
+
 Every [T3 Code](https://t3.codes) thread on a Stream Deck key. See who's working, who needs you, who's done. Glance, tap, move on.
 
 ![Deck for T3 Code on a Stream Deck XL: start with two keys, tap for every thread, hold for actions, one key in every state. Example data.](docs/assets/demo.gif)

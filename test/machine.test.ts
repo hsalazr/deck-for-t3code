@@ -339,7 +339,8 @@ test("the real reader works on this Mac", { skip: process.platform !== "darwin" 
 	const topo = await systemReader.topology();
 	const cores = topo.clusters.reduce((n, c) => n + c.cpus.length, 0);
 	assert.equal(cores, systemReader.cpuTimes().length);
-	if (process.arch === "arm64") assert.deepEqual(topo.clusters.map((c) => c.kind), ["P", "E"]);
+	// Apple silicon reports P and E cores; Intel and virtual machines (CI runners) report one cluster.
+	assert.ok(["P,E", "CPU"].includes(topo.clusters.map((c) => c.kind).join()), `clusters: ${topo.clusters.map((c) => c.kind)}`);
 	const m = await systemReader.memory();
 	assert.ok(m.freePercent >= 0 && m.freePercent <= 100 && m.totalBytes > 0);
 	const d = await systemReader.disk("/");

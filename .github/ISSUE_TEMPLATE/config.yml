@@ -1,5 +1,11 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Ask a question
+    url: https://github.com/hsalazr/deck-for-t3code/discussions/categories/q-a
+    about: Setup help and "how do I…" questions go in Discussions, where answers stay findable.
+  - name: Talk through an idea
+    url: https://github.com/hsalazr/deck-for-t3code/discussions/categories/ideas
+    about: Not sure it's a feature request yet? Start a discussion first.
   - name: Report a security problem privately
     url: https://github.com/hsalazr/deck-for-t3code/security/advisories/new
     about: Please don't open a public issue for vulnerabilities. Use a private security advisory instead.

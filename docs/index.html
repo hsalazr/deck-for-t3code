@@ -33,6 +33,8 @@
     <a class="brand" href="#top"><img src="assets/icon-256.png" alt="" width="28" height="28"><span>Deck for T3 Code</span></a>
     <nav class="nav" aria-label="Main">
       <a href="#keys">Keys</a>
+      <a href="#looks">Glance</a>
+      <a href="#machine">Machine</a>
       <a href="#how">How it works</a>
       <a href="#install">Install</a>
       <a href="#faq">FAQ</a>
@@ -44,6 +46,7 @@
 
 <main id="main">
   <div class="hero wrap" id="top">
+    <a class="pill pill-new" href="#looks"><span class="soon">New</span> A Glance look for every key, plus Machine and Updates keys</a>
     <h1>Your agents, <em>on a key.</em></h1>
     <p class="sub">Every <a class="t3-link" href="https://t3.codes" rel="noopener">T3 Code</a> thread on your Stream Deck. See who's working, who needs you, who's done.</p>
     <div class="cta">
@@ -65,7 +68,7 @@
     <div class="wrap">
       <h2 class="visually-hidden" id="why-h">At a glance</h2>
       <div class="grid three">
-        <div class="card"><h3>Start with two keys</h3><p>An Overview key and a Usage key. Nothing to pair.</p></div>
+        <div class="card"><h3>Start with two keys</h3><p>An Overview key and a Usage key. Nothing to pair. Add a <a href="#machine">Machine key</a> to watch your Mac.</p></div>
         <div class="card"><h3>Tap for every thread</h3><p>Overview fills the deck with threads. Tap one to open it.</p></div>
         <div class="card"><h3>Hold for actions</h3><p>Hold a thread key to message, compact, snooze or stop it.</p></div>
       </div>
@@ -110,6 +113,60 @@
               <li><strong>+N and +N more:</strong> <span>threads that don't fit on this deck's Thread keys.</span></li>
               <li><strong>Highlights:</strong> <span>done and failed clear when you open the thread, from the key or from T3 Code. Having it open while the run finishes doesn't count.</span></li>
               <li><strong>When T3 Code isn't reachable:</strong> <span>the first Thread key says why (<em>Install T3 Code</em>, <em>Open T3 Code</em>, <em>T3 CLI missing</em>, <em>Sign-in failed</em>, <em>Signed out</em> or <em>T3 error</em>) and the rest go blank rather than show stale state.</span></li>
+            </ul>
+          </div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <section id="looks" aria-labelledby="looks-h">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">New · Two looks</p>
+        <h2 id="looks-h">Read it from across your desk.</h2>
+        <p>Every key comes in two looks. <strong>Detailed</strong> packs in the title, project, context and status. <strong>Glance</strong> keeps only what you can read from across your desk: the title in large type, with colour and motion telling you the state. Pick it under <strong>Thread keys</strong> in the settings; Machine and Updates keys have their own Style.</p>
+      </div>
+      <div class="styles">
+        <input type="radio" name="looks" id="lk-glance" class="visually-hidden" checked>
+        <input type="radio" name="looks" id="lk-detailed" class="visually-hidden">
+        <div class="seg" role="presentation"><label for="lk-glance">Glance</label><label for="lk-detailed">Detailed</label></div>
+        <div class="style-keys six">
+          <figure>
+            <div class="pair"><img class="g" src="assets/keys/looks-overview-glance.png" width="288" height="288" alt="Glance Overview key: NEED YOU on top, a big 2 and a smaller, fainter /12, on amber" loading="lazy"><img class="d" src="assets/keys/looks-overview.png" width="288" height="288" alt="Detailed Overview key: T3 Code, 2 need you, 6 working, 1 done, on amber" loading="lazy"></div>
+            <figcaption>Overview</figcaption>
+          </figure>
+          <figure>
+            <div class="pair"><img class="g" src="assets/keys/looks-input-glance.png" width="288" height="288" alt="Glance thread key: Add retry to checkout flow in large type, on amber" loading="lazy"><img class="d" src="assets/keys/looks-input.png" width="288" height="288" alt="Detailed thread key: a needs-you glyph, Add retry to checkout flow, acme-web, on amber" loading="lazy"></div>
+            <figcaption>Needs you</figcaption>
+          </figure>
+          <figure>
+            <div class="pair"><img class="g" src="assets/keys/looks-working-glance.png" width="288" height="288" alt="Glance thread key: Paginate the orders endpoint in large type, a blue stroke running round the border" loading="lazy"><img class="d" src="assets/keys/looks-working.png" width="288" height="288" alt="Detailed thread key: Paginate the orders endpoint, a blue spinner in the corner, acme-api, 23 percent context" loading="lazy"></div>
+            <figcaption>Working</figcaption>
+          </figure>
+          <figure>
+            <div class="pair"><img class="g" src="assets/keys/looks-waiting-glance.png" width="288" height="288" alt="Glance thread key: Upgrade to Node 24 in large type, a white stroke running round the border" loading="lazy"><img class="d" src="assets/keys/looks-waiting.png" width="288" height="288" alt="Detailed thread key: Upgrade to Node 24, a white spinner and a PR #42 CI chip" loading="lazy"></div>
+            <figcaption>Waiting on CI</figcaption>
+          </figure>
+          <figure>
+            <div class="pair"><img class="g" src="assets/keys/looks-done-glance.png" width="288" height="288" alt="Glance thread key: Fix flaky login test in large type, on green" loading="lazy"><img class="d" src="assets/keys/looks-done.png" width="288" height="288" alt="Detailed thread key: a done check, Fix flaky login test, acme-web, on green" loading="lazy"></div>
+            <figcaption>Done</figcaption>
+          </figure>
+          <figure>
+            <div class="pair"><img class="g" src="assets/keys/looks-failed-glance.png" width="288" height="288" alt="Glance thread key: Cache build artifacts in CI in large type, on red" loading="lazy"><img class="d" src="assets/keys/looks-failed.png" width="288" height="288" alt="Detailed thread key: a failed cross, Cache build artifacts in CI, acme-infra, on red" loading="lazy"></div>
+            <figcaption>Failed</figcaption>
+          </figure>
+        </div>
+      </div>
+      <div class="disclosures">
+        <details>
+          <summary><span class="s-text"><span class="s-title">Reading the Glance look</span></span></summary>
+          <div class="d-body">
+            <ul class="checks">
+              <li><strong>Colour and motion:</strong> <span>amber blinks when a thread needs you, red blinks when it failed, solid green when it's done, a blue stroke runs round the border while it works, a white one while only background work (CI, a subagent) is left, and a dashed border when a usage limit paused it.</span></li>
+              <li><strong>Title:</strong> <span>26 px, up to four lines; a long one ends in "…". No icons, numbers, project name or context bar.</span></li>
+              <li><strong>Overview:</strong> <span>how many threads are in the most urgent state, big (failed first, then needs you, done, working, waiting), then "/" and how many threads there are in all, smaller. What it counts sits on top.</span></li>
+              <li><strong>Machine and Updates:</strong> <span>a ring the size of the Usage ring with the number in the middle, or a disc with a check or a count. <a href="#machine">See them</a>.</span></li>
             </ul>
           </div>
         </details>
@@ -190,7 +247,7 @@
               </table>
             </div>
             <ul class="checks">
-              <li><strong>Other models:</strong> <span>decks like the Stream Deck + have no bundled pages. Thread, Overview and Usage keys still work, Overview jumps to the most urgent thread, and a hold on a Thread key clears its highlight.</span></li>
+              <li><strong>Other models:</strong> <span>decks like the Stream Deck + have no bundled pages. Thread, Overview, Usage, Machine and Updates keys still work, Overview jumps to the most urgent thread, and a hold on a Thread key clears its highlight.</span></li>
               <li><strong>Holds:</strong> <span>opening the page takes half a second. Risky keys (Compact, Settle, Stop and quick messages) fire after 0.8 s; a tap only shows "Hold to confirm", so a stray tap does nothing.</span></li>
               <li><strong>Quick messages:</strong> <span>your own lines, sent as if you'd typed them. Write <code>Label | full text</code> for a short label on the key.</span></li>
               <li><strong>Compact:</strong> <span>sends <code>/compact</code>.</span></li>
@@ -230,6 +287,105 @@
           </div>
         </details>
       </div>
+    </div>
+  </section>
+
+  <section id="machine" aria-labelledby="machine-h">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">New · Machine and Updates keys</p>
+        <h2 id="machine-h">Know your Mac has room.</h2>
+        <p>CPU, memory and disk for this Mac, with performance and efficiency cores apart, and a key that says when T3 Code or a provider CLI has an update waiting. Pick one big number you can read from across your desk, or the detailed look.</p>
+      </div>
+      <div class="styles">
+        <input type="radio" name="keystyle" id="ks-glance" class="visually-hidden" checked>
+        <input type="radio" name="keystyle" id="ks-detailed" class="visually-hidden">
+        <div class="seg" role="presentation"><label for="ks-glance">Glance</label><label for="ks-detailed">Detailed</label></div>
+        <div class="style-keys">
+          <figure>
+            <div class="pair"><img class="g" src="assets/keys/machine-summary-glance.png" width="288" height="288" alt="Glance summary: three tall columns, CPU 22, memory 36, disk 59, all green" loading="lazy"><img class="d" src="assets/keys/machine-summary.png" width="288" height="288" alt="Detailed summary: CPU 22 percent with a bar split into performance and efficiency cores, memory 36 percent, disk 59 percent" loading="lazy"></div>
+            <figcaption>Summary</figcaption>
+          </figure>
+          <figure>
+            <div class="pair"><img class="g" src="assets/keys/machine-cpu-busy-glance.png" width="288" height="288" alt="Glance CPU: a red ring with 93 in the middle, labelled P-cores" loading="lazy"><img class="d" src="assets/keys/machine-cpu-busy.png" width="288" height="288" alt="Detailed CPU: M4 Pro, 10 performance and 4 efficiency cores, performance cores 93 percent busy, efficiency cores 100 percent, load 25" loading="lazy"></div>
+            <figcaption>CPU, busy</figcaption>
+          </figure>
+          <figure>
+            <div class="pair"><img class="g" src="assets/keys/machine-memory-glance.png" width="288" height="288" alt="Glance memory: a green ring at 36 percent, labelled memory" loading="lazy"><img class="d" src="assets/keys/machine-memory.png" width="288" height="288" alt="Detailed memory: 36 percent in use, pressure normal, of 52 GB" loading="lazy"></div>
+            <figcaption>Memory</figcaption>
+          </figure>
+          <figure>
+            <div class="pair"><img class="g" src="assets/keys/machine-disk-glance.png" width="288" height="288" alt="Glance disk: a red ring at 98 percent, labelled disk" loading="lazy"><img class="d" src="assets/keys/machine-disk.png" width="288" height="288" alt="Detailed disk: 98 percent used, 21 GB free of 994 GB" loading="lazy"></div>
+            <figcaption>Disk</figcaption>
+          </figure>
+          <figure>
+            <div class="pair"><img class="g" src="assets/keys/updates-waiting-glance.png" width="288" height="288" alt="Glance updates: a big amber circle with the number 2, labelled updates" loading="lazy"><img class="d" src="assets/keys/updates-waiting.png" width="288" height="288" alt="Detailed updates: 2 updates, T3 0.1.8 and Claude 2.1.320" loading="lazy"></div>
+            <figcaption>Updates</figcaption>
+          </figure>
+        </div>
+      </div>
+      <div class="disclosures">
+        <details>
+          <summary><span class="s-text"><span class="s-title">How the Machine key measures</span></span></summary>
+          <div class="d-body">
+            <ul class="checks">
+              <li><strong>CPU:</strong> <span>how busy the cores were over the last 30 seconds, from the busy and idle time macOS counts for each core. Amber from 70%, red from 90%. Thirty seconds keeps a short compile burst from flashing red while still catching sustained load.</span></li>
+              <li><strong>P and E cores:</strong> <span>Apple silicon has fast performance (P) cores and slower efficiency (E) cores, and macOS sends background work to the E cores, so they often look busy while the P cores, where builds and agents run, are free. The big number and the colour follow the P cores; the bar or ring is split into a P part and an E part, each as long as its share of the cores. The plugin reads which core is which from the hardware, so it fits any M-series chip; Intel Macs show all cores as one.</span></li>
+              <li><strong>Why not the load average:</strong> <span>on macOS it also counts threads that are waiting, not just those running, so it can read 40 while the CPUs sit mostly idle. The detailed look still shows it, small, for reference.</span></li>
+              <li><strong>Memory:</strong> <span>coloured by macOS's own memory pressure, not by how full memory looks. <a href="#memory">Why pressure?</a></span></li>
+              <li><strong>Disk:</strong> <span>space you can still write on the disk holding the folder you pick (the startup disk by default), in decimal units like Finder. Amber from 90% used or under 25 GB free, red from 95% or under 10 GB. Purgeable space isn't counted as free.</span></li>
+              <li><strong>When:</strong> <span>every 5 seconds, only while a Machine key is on a deck. All from macOS, so it works with T3 Code closed. Tap for Activity Monitor; a disk key opens its folder in Finder.</span></li>
+            </ul>
+          </div>
+        </details>
+        <details>
+          <summary><span class="s-text"><span class="s-title">How the Updates key checks</span></span></summary>
+          <div class="d-body">
+            <ul class="checks">
+              <li><strong>T3 Code:</strong> <span>compared with the newest release on its own channel: stable, or nightly if you run a nightly build. T3 Code's server looks this up; the plugin never goes online.</span></li>
+              <li><strong>Provider CLIs:</strong> <span>Claude, Codex and the rest come from T3 Code's own update checks, so leave <strong>Check for provider updates</strong> on in T3 Code's settings.</span></li>
+              <li><strong>When:</strong> <span>every 30 minutes while the key is on a deck. Tap to open T3 Code when an update is waiting, or to check again.</span></li>
+            </ul>
+          </div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <section id="memory" aria-labelledby="memory-h">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">Why memory pressure</p>
+        <h2 id="memory-h">A full Mac isn't a struggling Mac.</h2>
+        <p>macOS puts spare memory to work as cache, so "memory used" sits near the top on a perfectly healthy Mac. The Machine key colours memory by <strong>pressure</strong> instead: how hard macOS has to work to find room.</p>
+      </div>
+      <div class="mem-demo">
+        <div class="mem-panel">
+          <p class="mem-kicker">What most meters show</p>
+          <p class="mem-figure"><span class="mem-num warn">94%</span> used</p>
+          <div class="mem-bar" role="img" aria-label="A 32 GB memory bar, 94 percent used: apps 12 GB, system 4 GB, compressed 2 GB, cache 12 GB, free 2 GB. When an app needs more, the cache part shrinks and the app part grows, and the bar stays just as full.">
+            <span class="seg-app"></span><span class="seg-wired"></span><span class="seg-comp"></span><span class="seg-cache"><em>cache</em></span><span class="seg-free"></span>
+          </div>
+          <ul class="mem-legend" aria-hidden="true">
+            <li><i class="seg-app"></i>Apps</li><li><i class="seg-wired"></i>System</li><li><i class="seg-comp"></i>Compressed</li><li><i class="seg-cache"></i>Cache, given back on demand</li><li><i class="seg-free"></i>Free</li>
+          </ul>
+          <p class="mem-verdict warn">Looks almost full. It isn't.</p>
+        </div>
+        <div class="mem-panel">
+          <p class="mem-kicker">What the Machine key shows</p>
+          <p class="mem-figure"><span class="mem-num ok">Normal</span> pressure</p>
+          <div class="gauge" role="img" aria-label="A pressure gauge with green, yellow and red zones; the marker sits in green, normal.">
+            <span class="z-ok">Normal</span><span class="z-warn">Warning</span><span class="z-crit">Critical</span><i class="needle"></i>
+          </div>
+          <div class="mem-keys"><img src="assets/keys/machine-memory-glance.png" width="288" height="288" alt="Glance memory key: a green ring" loading="lazy"><img src="assets/keys/machine-memory.png" width="288" height="288" alt="Detailed memory key: 36 percent in use, pressure normal" loading="lazy"></div>
+          <p class="mem-verdict ok">Plenty of room: apps get memory the moment they ask.</p>
+        </div>
+      </div>
+      <ol class="mem-steps">
+        <li class="card"><span class="step">1</span><h3>Spare memory is wasted memory</h3><p>macOS fills it with files and data you used recently, so they open instantly next time.</p></li>
+        <li class="card"><span class="step">2</span><h3>Cache steps aside at once</h3><p>When an app needs room, macOS drops cache in a moment. Nothing slows down, and "used" stays high.</p></li>
+        <li class="card"><span class="step">3</span><h3>Pressure is what you feel</h3><p>It rises only when macOS has to compress memory or swap to disk, which is when a Mac slows down. The key turns amber at warning and red at critical: the same levels as Activity Monitor's memory graph.</p></li>
+      </ol>
     </div>
   </section>
 

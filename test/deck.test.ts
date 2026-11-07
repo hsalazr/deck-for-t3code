@@ -9,6 +9,9 @@ import type { ThreadCard } from "../src/model.ts";
 import type { ThreadCommands } from "../src/t3/commands.ts";
 import type { Connection, Monitor, Snapshot } from "../src/t3/monitor.ts";
 import type { UsageMonitor } from "../src/t3/usage-monitor.ts";
+import type { MachineMonitor, MachineSnapshot } from "../src/machine.ts";
+import type { UpdatesMonitor } from "../src/t3/updates-monitor.ts";
+import type { UpdatesSnapshot } from "../src/updates.ts";
 
 const card = (id: string, extra: Partial<ThreadCard> = {}): ThreadCard => ({
 	threadId: id, projectId: "p", title: `Thread ${id}`, link: `http://127.0.0.1:3773/env/${id}`, state: "idle", ownStatus: "completed",
@@ -545,4 +548,96 @@ test("context watching covers the focused thread of the Thread Actions page, on 
 	mock.timers.tick(CONFIRM_HOLD_MS);
 	await flush();
 	assert.deepEqual(monitor.deckThreads, []);
+});
+
+class FakeMachine extends EventEmitter {
+	snapshot: MachineSnapshot | undefined;
+	wanted: [boolean, string[]][] = [];
+	setWanted(wanted: boolean, paths: ReadonlySet<string> = new Set()): void {
+		this.wanted.push([wanted, [...paths].sort()]);
+	}
+}
+
+test("machine keys: sampled only while shown, with the disks they show; taps open Activity Monitor or the disk", async () => {
+	const machine = new FakeMachine();
+	const d = new Deck(monitor as unknown as Monitor, new FakeUsage() as unknown as UsageMonitor, commands as unknown as ThreadCommands, host, machine as unknown as MachineMonitor);
+	try {
+		const summary = fakeAction("m1", 1);
+		const load = fakeAction("m2", 2);
+		const disk = fakeAction("m3", 3);
+		d.add("machine", summary as never, {});
+		d.add("machine", load as never, { stat: "load", path: "/Volumes/Ignored" }); // the old name for the CPU stat
+		d.add("machine", disk as never, { stat: "disk", path: "/Volumes/Backup" });
+		assert.deepEqual(machine.wanted.at(-1), [true, ["/", "/Volumes/Backup"]], "a CPU key reads no disk");
+		await flush();
+		assert.match(summary.last(), />Loading…</);
+
+		machine.snapshot = { at: 0, load: [2, 2, 2], cpu: { chip: "M2", windowMs: 30_000, clusters: [{ kind: "P", cores: 4, busy: 10 }, { kind: "E", cores: 4, busy: 40 }] }, memory: { freePercent: 70, pressure: 1, totalBytes: 16e9 }, disks: new Map([["/", { totalBytes: 500e9, freeBytes: 100e9 }]]) };
+		machine.emit("change", machine.snapshot);
+		await flush();
+		assert.match(summary.last(), />80%</);
+		assert.match(load.last(), />M2 · 4P\+4E</);
+		assert.match(disk.last(), />Loading…</, "its disk isn't in the sample yet");
+
+		d.keyDown("m1");
+		await d.keyUp("m1");
+		d.keyDown("m3");
+		await d.keyUp("m3");
+		await flush();
+		assert.deepEqual(host.opened, [["-b", "com.apple.ActivityMonitor"], ["/Volumes/Backup"]]);
+
+		d.updateSettings("m3", { stat: "memory" });
+		assert.deepEqual(machine.wanted.at(-1), [true, ["/"]]);
+		for (const id of ["m1", "m2", "m3"]) d.remove(id);
+		assert.deepEqual(machine.wanted.at(-1), [false, []]);
+	} finally {
+		d.dispose();
+	}
+});
+
+class FakeUpdates extends EventEmitter {
+	snapshot: UpdatesSnapshot = { ok: false, detail: "Loading…", providers: [], fetchedAt: 0 };
+	wanted: boolean[] = [];
+	refreshes = 0;
+	setWanted(on: boolean): void {
+		this.wanted.push(on);
+	}
+	refresh(): void {
+		this.refreshes++;
+	}
+}
+
+test("updates key: polled only while shown; a tap opens T3 Code when something is waiting, else checks again", async () => {
+	const updates = new FakeUpdates();
+	const d = new Deck(monitor as unknown as Monitor, new FakeUsage() as unknown as UsageMonitor, commands as unknown as ThreadCommands, host, undefined, updates as unknown as UpdatesMonitor);
+	try {
+		const key = fakeAction("u1", 1);
+		d.add("updates", key as never, {});
+		assert.equal(updates.wanted.at(-1), true);
+		await flush();
+		assert.match(key.last(), />Loading…</);
+
+		updates.snapshot = { ok: true, fetchedAt: 1, t3: { name: "T3 Code", current: "0.1.7", latest: "0.1.7", available: false }, providers: [{ name: "Claude", current: "2.1.319", latest: "2.1.319", available: false }] };
+		updates.emit("change", updates.snapshot);
+		await flush();
+		assert.match(key.last(), />✓ Up to date</);
+		d.keyDown("u1");
+		await d.keyUp("u1");
+		assert.equal(updates.refreshes, 1);
+		assert.deepEqual(host.opened, []);
+
+		updates.snapshot = { ...updates.snapshot, t3: { name: "T3 Code", current: "0.1.7", latest: "0.1.8", available: true } };
+		updates.emit("change", updates.snapshot);
+		await flush();
+		assert.match(key.last(), />T3 0.1.8</);
+		d.keyDown("u1");
+		await d.keyUp("u1");
+		await flush();
+		assert.deepEqual(host.opened, [["-b", "com.t3tools.t3code"]]);
+
+		d.remove("u1");
+		assert.equal(updates.wanted.at(-1), false);
+	} finally {
+		d.dispose();
+	}
 });

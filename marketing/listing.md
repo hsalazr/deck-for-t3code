@@ -23,6 +23,8 @@ macOS only. T3 Code must be installed and running on the same Mac.
 • Overview key: counts of threads that need you, are working, or are done. Tap for a full page of threads.
 • Hold a thread key, then let go, for quick messages, Compact, Snooze, Settle and Stop. Compact, Settle, Stop and messages need a hold. Pages for Stream Deck XL, Stream Deck, Neo and Mini.
 • Usage keys: any usage limit T3 Code reports, as a bar or a ring with an even-pace tick.
+• Machine keys: this Mac's CPU (performance and efficiency cores apart), memory pressure and free disk space, detailed or as one big glanceable number.
+• Updates key: see when T3 Code or a provider CLI has an update waiting.
 • Context bar on every thread key.
 
 Private by design: the plugin talks only to the T3 Code app on your Mac. No account, no cloud, no telemetry. Two read-only tokens come from your local T3 CLI. An optional 24-hour actions token exists only while you enable thread actions. Sign out any time.
@@ -46,8 +48,8 @@ Development (or Productivity, whichever the form offers)
 - Platform: macOS 13 or later (macOS only at launch)
 - Stream Deck app 7.1 or later
 - Requires T3 Code installed and running locally
-- Bundled T3 Threads and Thread Actions pages for Stream Deck XL, Stream Deck (15 keys, including MK.2), Stream Deck Neo and Stream Deck Mini. Not Stream Deck +: it gets the Thread, Overview and Usage keys only (Overview jumps to the most urgent thread).
-- Thread, Overview and Usage keys work on any key-based Stream Deck.
+- Bundled T3 Threads and Thread Actions pages for Stream Deck XL, Stream Deck (15 keys, including MK.2), Stream Deck Neo and Stream Deck Mini. Not Stream Deck +: it gets the Thread, Overview, Usage, Machine and Updates keys only (Overview jumps to the most urgent thread).
+- Thread, Overview, Usage, Machine and Updates keys work on any key-based Stream Deck.
 
 ## Release notes: 1.0.0
 
@@ -58,6 +60,8 @@ First public release.
 - Overview key and a full-deck T3 Threads page (XL, Stream Deck, Neo, Mini)
 - Thread Actions page: quick messages, Compact, Snooze, Settle, Stop (hold to confirm)
 - Usage keys as a bar or a ring, with a pace marker
+- Machine keys: CPU per core type, memory pressure and disk space for this Mac
+- Updates key for T3 Code and provider CLIs
 - Context-window bar on each key
 - Two read-only tokens (30 days); opt-in 24-hour actions token, revoked when you turn actions off
 
@@ -87,6 +91,6 @@ No data leaves your Mac. Deck for T3 Code talks only to the T3 Code app running 
 | Gallery 4: how it works (tokens, local only) | `gallery-4-how-it-works.png` |
 | Plugin icon | `icon/plugin-256.png`, `icon/plugin-512.png` |
 | Category icon (white, 28/56) | `icon/category.png`, `icon/category@2x.png` |
-| Action list icons (white, 20/40) | `icon/thread*.png`, `icon/overview*.png`, `icon/usage*.png`, `icon/back*.png` |
+| Action list icons (white, 20/40) | `icon/thread*.png`, `icon/overview*.png`, `icon/usage*.png`, `icon/machine*.png`, `icon/updates*.png`, `icon/back*.png` |
 
 All images are generated from the plugin's own renderers with invented data by `render-assets.ts`. They contain no T3 artwork. Re-run the script after UI changes land.

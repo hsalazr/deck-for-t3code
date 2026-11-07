@@ -8,7 +8,7 @@
  * thread titles), lays the keys out on a Stream Deck XL mock-up, and
  * rasterises the result with the headless Chrome that T3 Code ships
  * (~/.t3/tools/chrome-headless-shell), or the binary named by $CHROME.
- * Scratch files go to /tmp/t3deck-docs2/. `ONLY=icons` renders just the icons.
+ * Scratch files go to /tmp/t3deck-docs2/. `ONLY=icons` renders just the icons, `ONLY=keys` just the single-key PNGs.
  *
  * The Thread Actions pages are laid out from the same PROFILES table that
  * builds the bundled profiles (scripts/build-profile.mjs), and the quick
@@ -24,9 +24,11 @@ import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type ThreadCard } from "../src/model.ts";
-import { renderActionKey, renderBackKey, renderOverview, renderThreadKey, renderUsageKey, type ActionKeyInput } from "../src/render.ts";
+import { renderActionKey, renderBackKey, renderMachineKey, renderOverview, renderThreadKey, renderUpdatesKey, renderUsageKey, type ActionKeyInput } from "../src/render.ts";
+import type { MachineSnapshot } from "../src/machine.ts";
 import { pace, type UsageMetric } from "../src/usage.ts";
 import { PROFILES } from "../scripts/build-profile.mjs";
+import { soften } from "./screen-colors.ts";
 import { EXAMPLE_MESSAGES } from "./quick-messages.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -84,7 +86,7 @@ interface Spec {
 	subagentAsks?: boolean;
 }
 
-function threadKey(s: Spec, i = 0, showLabel = false): string {
+function threadKey(s: Spec, i = 0, showLabel = false, style: "detailed" | "glance" = "detailed"): string {
 	const now = BASE + (s.t ?? (i * 337) % 2400);
 	const own = s.state === "input" ? "waiting" : s.state === "working" ? (s.background && !s.subagents ? "completed" : "running") : s.state === "done" ? "completed" : s.state === "failed" ? "failed" : "idle";
 	const card: ThreadCard = {
@@ -95,7 +97,7 @@ function threadKey(s: Spec, i = 0, showLabel = false): string {
 		context: s.ctx === undefined ? undefined : { used: s.ctx * 2000, max: 200_000 },
 		ackKey: "", updatedAt: 0, createdAt: 0,
 	};
-	return renderThreadKey({ card, projectName: s.project, connection: ok, animation: "smooth", now, showLabel });
+	return renderThreadKey({ card, projectName: s.project, connection: ok, animation: "smooth", now, showLabel, style });
 }
 
 const T = (title: string, project: string, state: Spec["state"], extra: Partial<Spec> = {}): Spec => ({ title, project, state, ...extra });
@@ -139,8 +141,21 @@ const WEEKLY_UNDER = metric("seven_day", "Weekly", 38, 10_080, 57);
 const FIVE_HOUR = metric("five_hour", "5-hour", 31, 300, 48);
 const WEEKLY_HOT = metric("seven_day", "Weekly", 93, 10_080, 71);
 
-const overviewKey = (counts: Partial<Record<"input" | "failed" | "done" | "working" | "background" | "idle", number>>, overflow: number, t: number): string =>
-	renderOverview({ connection: ok, counts: { input: 0, failed: 0, done: 0, working: 0, background: 0, idle: 0, ...counts }, overflow, animation: "smooth", now: BASE + t });
+const overviewKey = (counts: Partial<Record<"input" | "failed" | "done" | "working" | "background" | "idle", number>>, overflow: number, t: number, style: "detailed" | "glance" = "detailed"): string =>
+	renderOverview({ connection: ok, counts: { input: 0, failed: 0, done: 0, working: 0, background: 0, idle: 0, ...counts }, overflow, animation: "smooth", now: BASE + t, style });
+
+/** The site's Detailed / Glance switch: the same keys in both looks. */
+const LOOKS: { file: string; detailed: string; glance: string }[] = (() => {
+	const keys: [string, (style: "detailed" | "glance") => string][] = [
+		["overview", (st) => overviewKey({ input: 2, working: 6, background: 2, done: 1, idle: 3 }, 0, 0, st)],
+		["input", (st) => threadKey(T("Add retry to checkout flow", "acme-web", "input", { t: 0 }), 0, false, st)],
+		["working", (st) => threadKey(T("Paginate the orders endpoint", "acme-api", "working", { t: 600, ctx: 23 }), 0, false, st)],
+		["waiting", (st) => threadKey(T("Upgrade to Node 24", "acme-api", "working", { t: 1500, background: 1, waitingOn: "PR #42 CI", ctx: 48 }), 0, false, st)],
+		["done", (st) => threadKey(T("Fix flaky login test", "acme-web", "done", { ctx: 64 }), 0, false, st)],
+		["failed", (st) => threadKey(T("Cache build artifacts in CI", "acme-infra", "failed", { t: 0 }), 0, false, st)],
+	];
+	return keys.map(([name, f]) => ({ file: `looks-${name}`, detailed: f("detailed"), glance: f("glance") }));
+})();
 
 const emptyKey = (): string => renderThreadKey({ card: undefined, projectName: "", connection: ok, animation: "smooth", now: BASE });
 
@@ -206,6 +221,21 @@ const profileFor = (file: string): (typeof PROFILES)[number] => PROFILES.find((p
 // ---------------------------------------------------------------- key legend (site)
 
 interface Legend { file: string; svg: string }
+// Invented machine readings for the Machine key pictures.
+const MACHINE_CALM: MachineSnapshot = {
+	at: 0,
+	load: [6.1, 5.4, 4.8],
+	cpu: { chip: "M4 Pro", windowMs: 30_000, clusters: [{ kind: "P", cores: 10, busy: 22 }, { kind: "E", cores: 4, busy: 58 }] },
+	memory: { freePercent: 64, pressure: 1, totalBytes: 48 * 2 ** 30, swapUsedBytes: 0 },
+	disks: new Map([["/", { totalBytes: 994e9, freeBytes: 412e9 }]]),
+};
+const MACHINE_BUSY: MachineSnapshot = {
+	...MACHINE_CALM,
+	load: [38.2, 24.9, 14.1],
+	cpu: { chip: "M4 Pro", windowMs: 30_000, clusters: [{ kind: "P", cores: 10, busy: 93 }, { kind: "E", cores: 4, busy: 100 }] },
+	disks: new Map([["/", { totalBytes: 994e9, freeBytes: 21e9 }]]),
+};
+
 const LEGEND: Legend[] = [
 	{ file: "needs-you", svg: threadKey(T("Add retry to checkout flow", "acme-web", "input", { t: 0 })) },
 	{ file: "failed", svg: threadKey(T("Cache build artifacts in CI", "acme-infra", "failed", { t: 0 })) },
@@ -224,6 +254,20 @@ const LEGEND: Legend[] = [
 	{ file: "usage-ring", svg: usageKey(WEEKLY_UNDER, "ring") },
 	{ file: "usage-ring-5h", svg: usageKey(FIVE_HOUR, "ring") },
 	{ file: "usage-ring-hot", svg: usageKey(WEEKLY_HOT, "ring") },
+	{ file: "machine-summary", svg: renderMachineKey({ stat: "summary", sample: MACHINE_CALM, path: "/" }) },
+	{ file: "machine-cpu", svg: renderMachineKey({ stat: "cpu", sample: MACHINE_CALM, path: "/" }) },
+	{ file: "machine-cpu-busy", svg: renderMachineKey({ stat: "cpu", sample: MACHINE_BUSY, path: "/" }) },
+	{ file: "machine-memory", svg: renderMachineKey({ stat: "memory", sample: MACHINE_CALM, path: "/" }) },
+	{ file: "machine-disk", svg: renderMachineKey({ stat: "disk", sample: MACHINE_BUSY, path: "/" }) },
+	{ file: "updates-current", svg: renderUpdatesKey({ ok: true, fetchedAt: 1, t3: { name: "T3 Code", current: "0.1.7", latest: "0.1.7", available: false }, providers: [{ name: "Claude", current: "2.1.319", latest: "2.1.319", available: false }] }) },
+	{ file: "updates-waiting", svg: renderUpdatesKey({ ok: true, fetchedAt: 1, t3: { name: "T3 Code", current: "0.1.7", latest: "0.1.8", available: true }, providers: [{ name: "Claude", current: "2.1.319", latest: "2.1.320", available: true }] }) },
+	{ file: "machine-summary-glance", svg: renderMachineKey({ stat: "summary", sample: MACHINE_CALM, path: "/", style: "glance" }) },
+	{ file: "machine-cpu-glance", svg: renderMachineKey({ stat: "cpu", sample: MACHINE_CALM, path: "/", style: "glance" }) },
+	{ file: "machine-cpu-busy-glance", svg: renderMachineKey({ stat: "cpu", sample: MACHINE_BUSY, path: "/", style: "glance" }) },
+	{ file: "machine-memory-glance", svg: renderMachineKey({ stat: "memory", sample: MACHINE_CALM, path: "/", style: "glance" }) },
+	{ file: "machine-disk-glance", svg: renderMachineKey({ stat: "disk", sample: MACHINE_BUSY, path: "/", style: "glance" }) },
+	{ file: "updates-waiting-glance", svg: renderUpdatesKey({ ok: true, fetchedAt: 1, t3: { name: "T3 Code", current: "0.1.7", latest: "0.1.8", available: true }, providers: [{ name: "Claude", current: "2.1.319", latest: "2.1.320", available: true }] }, "glance") },
+	...LOOKS.flatMap((l) => [{ file: l.file, svg: l.detailed }, { file: `${l.file}-glance`, svg: l.glance }]),
 	{ file: "back", svg: renderBackKey(false) },
 	{ file: "back-attention", svg: renderBackKey(true) },
 	{ file: "back-more", svg: renderBackKey(true, 4) },
@@ -234,7 +278,7 @@ function renderKeyPngs(): void {
 	const cols = 6;
 	const rows = Math.ceil(LEGEND.length / cols);
 	// The sheet starts one empty row down: sips treats a crop offset of 0,0 as "centre".
-	const html = `<style>body{margin:0;background:#000;display:grid;grid-template-columns:repeat(${cols},144px)}svg{display:block}</style><div style="grid-column:1/-1;height:144px"></div>${LEGEND.map((l) => l.svg).join("")}`;
+	const html = `<style>body{margin:0;background:#000;display:grid;grid-template-columns:repeat(${cols},144px)}svg{display:block}</style><div style="grid-column:1/-1;height:144px"></div>${LEGEND.map((l) => soften(l.svg)).join("")}`;
 	const sheet = join(SCRATCH, "key-sheet.png");
 	shot("key-sheet", html, sheet, cols * 144, (rows + 1) * 144, 2);
 	LEGEND.forEach((l, i) => crop(sheet, join(KEYS, `${l.file}.png`), (i % cols) * 288, (Math.floor(i / cols) + 1) * 288, 288, 288));
@@ -273,6 +317,14 @@ const GLYPHS: Record<string, { size: number; body: string }> = {
 	usage: {
 		size: 20,
 		body: `<circle cx="10" cy="10" r="7" ${stroke(1.7, 'opacity=".45"')}/><path d="M10 3a7 7 0 1 1-6.1 10.4" ${stroke()}/><path d="M10 10l3.2-3.4" ${stroke()}/><circle cx="10" cy="10" r="1.2" fill="${W}"/>`,
+	},
+	machine: {
+		size: 20,
+		body: `<rect x="2.5" y="3" width="15" height="10.5" rx="2.5" ${stroke()}/><path d="M7 17h6M10 13.5V17" ${stroke()}/><path d="M5.5 10.5 8 8l2 1.5 4.5-4" ${stroke()}/>`,
+	},
+	updates: {
+		size: 20,
+		body: `<circle cx="10" cy="10" r="7.5" ${stroke()}/><path d="M10 5.8v7.4M6.8 10.2 10 13.4l3.2-3.2" ${stroke()}/>`,
 	},
 	back: {
 		size: 20,
@@ -389,9 +441,9 @@ ${box("T3 Code", ["Your local server", "Threads, runs, usage"])}${arrow("localho
 
 // ---------------------------------------------------------------- run
 
-// ONLY=icons regenerates just the icons (and favicon); useful after touching the glyphs.
+// ONLY=icons regenerates just the icons (and favicon); useful after touching the glyphs. ONLY=keys just the key PNGs.
 const only = process.env.ONLY;
-if (!only) renderKeyPngs();
+if (!only || only === "keys") renderKeyPngs();
 if (!only || only === "icons") renderIcons();
 if (!only) renderDeckShots();
 console.log("assets written to docs/assets and marketing/");

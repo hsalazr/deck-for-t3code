@@ -299,3 +299,79 @@ footer { margin-top: 128px; border-top: 1px solid var(--line); padding: 40px 0 5
 /* Link to T3 Code in running text: same colour as the sentence, underlined on hover. */
 .sub .t3-link { color: inherit; text-decoration: underline; text-decoration-color: #ffffff40; text-underline-offset: 3px; }
 .sub .t3-link:hover, .sub .t3-link:focus-visible { text-decoration-color: currentColor; }
+
+/* Machine and Updates keys: a Glance / Detailed switch over real key images. No JavaScript: two radios drive it. */
+.pill-new { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); border-color: #6a96f566; }
+.pill-new:hover { color: #fff; border-color: var(--accent); }
+.pill-new .soon { vertical-align: 0; }
+.styles { display: grid; gap: 22px; }
+.seg { justify-self: start; display: inline-flex; padding: 4px; gap: 4px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--card); }
+.seg label { padding: 8px 18px; border-radius: 999px; font: 600 15px/1 var(--sans); color: var(--muted); cursor: pointer; transition: background .2s, color .2s; }
+.seg label:hover { color: #fff; }
+#ks-glance:checked ~ .seg label[for="ks-glance"], #ks-detailed:checked ~ .seg label[for="ks-detailed"] { background: var(--accent-strong); color: #fff; }
+#ks-glance:focus-visible ~ .seg label[for="ks-glance"], #ks-detailed:focus-visible ~ .seg label[for="ks-detailed"] { outline: 2px solid var(--accent); outline-offset: 2px; }
+.style-keys { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+.style-keys figure { margin: 0; }
+.style-keys .pair { position: relative; aspect-ratio: 1; }
+.style-keys img { position: absolute; inset: 0; width: 100%; border-radius: 12px; box-shadow: 0 0 0 1px var(--line-strong); transition: opacity .35s ease, transform .35s ease; }
+.style-keys figcaption { margin-top: 10px; font-size: 14px; color: var(--muted); text-align: center; }
+#ks-glance:checked ~ .style-keys .d, #ks-detailed:checked ~ .style-keys .g { opacity: 0; transform: scale(.96); visibility: hidden; }
+
+/* Why memory pressure: two panels and an animated memory bar where the cache gives way to an app. */
+.mem-demo { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.mem-panel { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 28px; display: flex; flex-direction: column; gap: 16px; }
+.mem-kicker { font: 600 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.mem-figure { font-size: 18px; color: var(--muted); }
+.mem-num { font-size: 44px; font-weight: 800; letter-spacing: -.03em; margin-right: 6px; vertical-align: -4px; }
+.mem-num.warn, .mem-verdict.warn { color: #f5a524; }
+.mem-num.ok, .mem-verdict.ok { color: #3dd68c; }
+.mem-verdict { font-weight: 650; margin-top: auto; }
+.mem-bar { display: flex; height: 44px; border-radius: 10px; overflow: hidden; background: #1a1d22; box-shadow: inset 0 0 0 1px var(--line); }
+.mem-bar span { display: flex; align-items: center; justify-content: center; min-width: 0; }
+.seg-app { background: #5b9cff; }
+.seg-wired { background: #9a7bff; }
+.seg-comp { background: #f5a524; }
+.seg-cache { background: repeating-linear-gradient(135deg, #3dd68c55 0 6px, #3dd68c2a 6px 12px); }
+.seg-free { background: #2a2f37; }
+.mem-bar .seg-app { flex: 0 0 37.5%; animation: app-grows 8s ease-in-out infinite; }
+.mem-bar .seg-wired { flex: 0 0 12.5%; }
+.mem-bar .seg-comp { flex: 0 0 6.25%; }
+.mem-bar .seg-cache { flex: 0 0 37.5%; animation: cache-gives 8s ease-in-out infinite; }
+.mem-bar .seg-free { flex: 1 1 auto; }
+.mem-bar em { font: 600 12px/1 var(--mono); font-style: normal; color: #d8fbe9; letter-spacing: .04em; white-space: nowrap; overflow: hidden; }
+@keyframes app-grows { 0%, 30% { flex-basis: 37.5%; } 50%, 80% { flex-basis: 56%; } 100% { flex-basis: 37.5%; } }
+@keyframes cache-gives { 0%, 30% { flex-basis: 37.5%; } 50%, 80% { flex-basis: 19%; } 100% { flex-basis: 37.5%; } }
+.mem-legend { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 14px; color: var(--muted); }
+.mem-legend li { display: inline-flex; align-items: center; gap: 7px; }
+.mem-legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.gauge { position: relative; display: grid; grid-template-columns: 3fr 1fr 1fr; height: 44px; border-radius: 10px; overflow: hidden; font: 600 12px/44px var(--mono); letter-spacing: .04em; text-transform: uppercase; text-align: center; color: #000000c0; }
+.gauge .z-ok { background: #3dd68c; }
+.gauge .z-warn { background: #f5c524; }
+.gauge .z-crit { background: #f0524f; }
+.gauge .needle { position: absolute; top: -4px; bottom: -4px; left: 9%; width: 4px; border-radius: 2px; background: #fff; box-shadow: 0 0 0 2px #000; animation: needle 8s ease-in-out infinite; }
+@keyframes needle { 0%, 30% { left: 9%; } 50%, 80% { left: 15%; } 100% { left: 9%; } }
+.mem-keys { display: flex; gap: 12px; }
+.mem-keys img { width: 96px; height: 96px; border-radius: 10px; box-shadow: 0 0 0 1px var(--line-strong); }
+.mem-steps { list-style: none; padding: 0; margin-top: 16px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.mem-steps .step { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: #6a96f51f; border: 1px solid #6a96f566; color: var(--accent); font: 700 14px/1 var(--mono); margin-bottom: 14px; }
+@media (max-width: 880px) {
+  .style-keys { grid-template-columns: repeat(3, 1fr); }
+  .mem-demo, .mem-steps { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) {
+  .style-keys { gap: 8px; }
+  .style-keys figcaption { font-size: 12.5px; }
+  .mem-panel { padding: 20px; }
+  .mem-num { font-size: 36px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mem-bar .seg-app, .mem-bar .seg-cache, .gauge .needle { animation: none; }
+  .style-keys img, .seg label { transition: none; }
+}
+
+/* Two looks: the same radio switch, for the Thread and Overview keys (six of them). */
+#lk-glance:checked ~ .seg label[for="lk-glance"], #lk-detailed:checked ~ .seg label[for="lk-detailed"] { background: var(--accent-strong); color: #fff; }
+#lk-glance:focus-visible ~ .seg label[for="lk-glance"], #lk-detailed:focus-visible ~ .seg label[for="lk-detailed"] { outline: 2px solid var(--accent); outline-offset: 2px; }
+#lk-glance:checked ~ .style-keys .d, #lk-detailed:checked ~ .style-keys .g { opacity: 0; transform: scale(.96); visibility: hidden; }
+.style-keys.six { grid-template-columns: repeat(6, 1fr); }
+@media (max-width: 880px) { .style-keys.six { grid-template-columns: repeat(3, 1fr); } }

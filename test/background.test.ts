@@ -33,7 +33,7 @@ test("spinner: blue while the agent works, white while only background work runs
 	const bg = render(card({ background: 2 }), 900);
 	const busy = render(card({ ownStatus: "running" }), 900);
 	assert.ok(bg.includes('stroke="#F4F5F7" stroke-width="3" stroke-linecap="round" transform="rotate('));
-	assert.ok(busy.includes('stroke="#5B9CFF" stroke-width="3" stroke-linecap="round" transform="rotate('));
+	assert.ok(busy.includes('stroke="#297EFF" stroke-width="3" stroke-linecap="round" transform="rotate('));
 	assert.equal(rotation(bg), rotation(busy));
 	assert.notEqual(rotation(render(card({ ownStatus: "running" }), 0)), rotation(busy));
 	assert.ok(!render(card({ state: "idle", ownStatus: "completed" })).includes("rotate("), "idle doesn't spin");
@@ -42,7 +42,7 @@ test("spinner: blue while the agent works, white while only background work runs
 test("done is a steady solid tile; only needs-you and failed blink", () => {
 	const frames = (state: ThreadCard["state"]) => new Set([0, 300, 600, 900, 1200, 1500].map((now) => render(card({ state, ownStatus: "completed" }), now)));
 	assert.equal(frames("done").size, 1);
-	assert.ok([...frames("done")][0]!.includes('fill="#3DD68C"'));
+	assert.ok([...frames("done")][0]!.includes('fill="#00E069"'));
 	assert.ok(frames("input").size > 1);
 	assert.ok(frames("failed").size > 1);
 });
@@ -59,7 +59,7 @@ test("overview priority: failed > needs you > done > working > background > idle
 	const frames = (counts: ReturnType<typeof c>) => new Set([0, 300, 600, 900, 1200].map((now) => renderOverview({ connection: { kind: "ok" }, counts, overflow: 0, animation: "smooth", now })));
 	const done = frames(c({ done: 1, working: 2 }));
 	assert.equal(done.size, 1, "done is steady");
-	assert.ok([...done][0]!.includes('fill="#3DD68C"'), "solid green");
+	assert.ok([...done][0]!.includes('fill="#00E069"'), "solid green");
 	assert.ok(frames(c({ failed: 1 })).size > 1, "failed blinks");
 	assert.ok(frames(c({ input: 1 })).size > 1, "needs you blinks");
 	assert.ok([...frames(c({ working: 1, background: 1 }))][0]!.includes('stroke="#F4F5F7"'), "white orbit");

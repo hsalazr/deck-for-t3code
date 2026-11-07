@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>T3 Updates</title><link rel="stylesheet" href="style.css"></head>
+<body>
+  <h3>This key</h3>
+  <div class="row"><label>Style</label><select id="style"><option value="detailed">Detailed: versions listed</option><option value="glance">Glance: a big check or count</option></select></div>
+  <div class="hint wide">Shows whether <b>T3 Code</b> or one of its provider CLIs (Claude, Codex…) has an update waiting. T3 Code is compared with the newest release on its own channel (stable, or nightly if you run a nightly build); provider CLIs use T3 Code's own update checks, so keep <b>Check for provider updates</b> on in T3 Code's settings. Checked every 30 minutes. Tap to open T3 Code when an update is waiting, or to check again. <a href="#" id="how">How this works</a></div>
+  <div id="globals"></div>
+  <script src="common.js"></script>
+  <script>
+    document.getElementById("how").addEventListener("click", (e) => { e.preventDefault(); PI.send("openUrl", { url: "https://hsalazr.github.io/deck-for-t3code/#machine" }); });
+    const style = document.getElementById("style");
+    PI.onSettings = () => { style.value = PI.settings.style === "glance" ? "glance" : "detailed"; };
+    style.addEventListener("change", () => PI.setSettings({ style: style.value }));
+    mountStatus();
+    mountGlobals();
+  </script>
+</body>
+</html>

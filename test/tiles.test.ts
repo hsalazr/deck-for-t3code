@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type { ThreadCard } from "../src/model.ts";
-import { SPINNER_LEFT, sanitize, renderActionKey, renderBackKey, renderOverview, renderThreadKey, renderUsageKey, textWidth, truncate, wrap, wrapWidths } from "../src/render.ts";
+import { SPINNER_LEFT, nextThreadFrame, sanitize, renderActionKey, renderBackKey, renderOverview, renderThreadKey, renderUsageKey, textWidth, truncate, wrap, wrapWidths } from "../src/render.ts";
 import { pace } from "../src/usage.ts";
 import { tomorrowAt9 } from "../src/t3/commands.ts";
 import { contextOf } from "../src/t3/context-watcher.ts";
@@ -33,7 +33,7 @@ test("background-only tile shows what it waits on instead of the project", () =>
 test("context bar: grey, amber from 70%, red from 85%", () => {
 	assert.ok(render(card({ context: { used: 30, max: 100 } })).includes('height="4" rx="2" fill="#C9CED6"/>'));
 	assert.ok(render(card({ context: { used: 76, max: 100 } })).includes('width="91.2" height="4" rx="2" fill="#F5A524"'));
-	assert.ok(render(card({ context: { used: 91, max: 100 } })).includes('fill="#F0524F"'));
+	assert.ok(render(card({ context: { used: 91, max: 100 } })).includes('fill="#FF242F"'));
 	assert.ok(render(card({ context: { used: 76, max: 100 } })).includes(">76%<"), "% shown when there's no badge");
 	assert.deepEqual(contextOf({ thread: { activeProviderThreadId: "b" }, providerThreads: [{ id: "a", contextUsage: { usedTokens: 1, maxTokens: 10 } }, { id: "b", contextUsage: { usedTokens: 126616, maxTokens: 1000000 } }] }), { used: 126616, max: 1000000 });
 	assert.equal(contextOf({ providerThreads: [] }), null);
@@ -206,12 +206,12 @@ test("offline wording names the fix", () => {
 	assert.ok(key("sign-in-failed", "error").includes(">Sign-in failed<"));
 	assert.ok(key("server-error", "error").includes(">T3 error<"));
 	assert.ok(key("signed-out").includes(">Signed out<"));
-	assert.ok(!key("signed-out").includes("#F0524F"), "signed out isn't red");
-	assert.ok(!key("signed-out", "error").includes("#F0524F"), "signed out isn't red, whatever the kind");
+	assert.ok(!key("signed-out").includes("#FF242F"), "signed out isn't red");
+	assert.ok(!key("signed-out", "error").includes("#FF242F"), "signed out isn't red, whatever the kind");
 	const signedOut = overview(counts({}), { connection: { kind: "offline", detail: "", reason: "signed-out" } });
-	assert.ok(signedOut.includes("Signed out") && !signedOut.includes("#F0524F"), "overview says Signed out, in grey");
+	assert.ok(signedOut.includes("Signed out") && !signedOut.includes("#FF242F"), "overview says Signed out, in grey");
 	assert.ok(!renderThreadKey({ card: undefined, projectName: "", connection: { kind: "offline", detail: "" }, animation: "off", now: 0, primary: false }).includes("<text"));
-	assert.ok(!overview(counts({}), { connection: { kind: "offline", detail: "", reason: "not-running" } }).includes("#F0524F"), "offline overview is grey, not red");
+	assert.ok(!overview(counts({}), { connection: { kind: "offline", detail: "", reason: "not-running" } }).includes("#FF242F"), "offline overview is grey, not red");
 });
 
 test("a word that fits on the next line moves there whole instead of being split", () => {
@@ -228,3 +228,63 @@ test("a word too long for a line breaks after its hyphen, not at a random letter
 	assert.equal(lines[0], "double-", `got ${JSON.stringify(lines)}`);
 	assert.ok(lines[1]!.startsWith("check"), `got ${JSON.stringify(lines)}`);
 });
+
+test("glance thread keys: only the title, big; colour and motion carry the state", () => {
+	const at = (extra: Partial<ThreadCard>, now = 0) => renderThreadKey({ card: card(extra), projectName: "acme-api", connection: ok, animation: "smooth", now, style: "glance" });
+	const sizes = (svg: string) => [...svg.matchAll(/font-size="([\d.]+)"/g)].map((m) => Number(m[1]));
+	const input = at({ state: "input", title: "Upgrade to Node 24", context: { used: 80, max: 100 }, subagentsWorking: 0 });
+	assert.ok(!input.includes("<g id=\"glyph") && !input.includes(">acme-api<") && !input.includes('y="138"'), "no icon, project or context bar");
+	assert.ok(input.includes(">Upgrade<") || input.includes(">Upgrade to<"));
+	assert.ok(at({ state: "input", title: "x" }, 600).includes('stroke-width="3" opacity="0.9"'), "dark phase keeps the ring");
+
+	// Working: a blue stroke orbits the border; only background work left: a white one. No numbers.
+	const working = at({ state: "working", ownStatus: "running", title: "Cache build artifacts", subagentsWorking: 12 });
+	assert.ok(working.includes('<g id="orbit">') && working.includes('stroke="#297EFF"'));
+	assert.ok(!/>\d+<\/text>|>\+</.test(working), "no counts");
+	assert.notEqual(working, at({ state: "working", ownStatus: "running", title: "Cache build artifacts", subagentsWorking: 12 }, 150), "it moves every 150 ms");
+	const waiting = at({ state: "working", ownStatus: "completed", background: 1, title: "Release hardening" });
+	assert.ok(waiting.includes('<g id="orbit">') && waiting.includes('stroke="#F4F5F7"'));
+
+	const long = at({ state: "failed", title: "Deploy staging stack for the quarterly release review" });
+	assert.ok(long.includes("…"), "too long: the last line is cut");
+	const word = at({ state: "done", title: "Implementation" });
+	assert.ok(word.includes("Implem") && word.includes("…") && !word.includes(">ntation<"), "a word too long for a line is cut, not split");
+	const paused = at({ state: "paused", title: "Write the plan", pausedUntil: 2 * 3600_000 + 10 * 60_000 });
+	assert.ok(paused.includes("stroke-dasharray") && !paused.includes("2h 10m"), "paused: dashed and dim, no countdown");
+	for (const svg of [input, working, waiting, long, word, paused]) assert.ok(sizes(svg).every((n) => n === 26), `titles at 26 px: ${sizes(svg)}`);
+});
+
+test("glance thread keys schedule the orbit's steps, and paused ones don't tick", () => {
+	const working = card({ state: "working", ownStatus: "running" });
+	assert.equal(nextThreadFrame(working, "smooth", 1000, "glance"), 1050);
+	assert.equal(nextThreadFrame(working, "smooth", 1000), 1200, "the detailed spinner steps every 300 ms");
+	const paused = card({ state: "paused", pausedUntil: 3_600_000 });
+	assert.equal(nextThreadFrame(paused, "smooth", 0, "glance"), undefined);
+	assert.notEqual(nextThreadFrame(paused, "smooth", 0), undefined);
+});
+
+test("glance overview: the most urgent count big, then / all threads, smaller and fainter, joined at one point", () => {
+	const counts = (o: Partial<Record<"input" | "failed" | "done" | "working" | "background" | "idle", number>>) => ({ input: 0, failed: 0, done: 0, working: 0, background: 0, idle: 0, ...o });
+	const ov = (c: ReturnType<typeof counts>, now = 0) => renderOverview({ connection: ok, counts: c, overflow: 3, animation: "smooth", now, style: "glance" });
+	const needs = ov(counts({ input: 2, working: 6, background: 2, done: 1, idle: 3 }), 600); // the blink's dark phase
+	assert.match(needs, /y="132"[^>]*>NEED YOU</, "what it counts, at the bottom");
+	assert.match(needs, /x="72" y="22"[^>]*>T3 THREADS</, "titled like the Machine keys");
+	const big = /<text x="(\d+)" y="96" [^>]*font-size="66"[^>]*text-anchor="end">2</.exec(needs);
+	const rest = /<text x="(\d+)" y="96" [^>]*font-size="30"[^>]*fill="#6B7280">\/12</.exec(needs);
+	assert.ok(big && rest, "2 of 12, same baseline, the rest fainter");
+	assert.equal(Number(rest![1]), Number(big![1]) + 4, "a small, fixed gap between the count and /12");
+	assert.match(ov(counts({ input: 2, idle: 3 }), 0), /fill="rgba\(0,0,0,0.8\)">\/5</, "on the lit tile the total is dark ink");
+	assert.ok(!needs.includes("<circle"), "no dots");
+	const half = ov(counts({ done: 1, idle: 1 }));
+	assert.ok(half.includes(">/2<"), "two threads, one done: 1/2");
+	const one = /<text x="(\d+)" y="96" [^>]*text-anchor="end">1</.exec(half);
+	const two = /<text x="(\d+)" y="96" [^>]*font-size="30"[^>]*>\/2</.exec(half);
+	assert.ok(Number(two![1]) < Number(one![1]), "/2 tucks into the space a final 1 leaves");
+	assert.ok(ov(counts({ failed: 1, input: 2 })).includes(">FAILED<"), "failed first");
+	const working = ov(counts({ working: 12, background: 3, idle: 4 }), 300);
+	assert.ok(working.includes(">WORKING<") && working.includes(">9<") && working.includes(">/16<") && !working.includes("rotate("), "no spinner");
+	assert.ok(ov(counts({ working: 2, background: 2, idle: 5 })).includes(">WAITING<"));
+	const idle = ov(counts({ idle: 6 }));
+	assert.ok(idle.includes(">IDLE<") && /text-anchor="middle">6</.test(idle) && !idle.includes(">/"), "all of them: just the count, centred");
+});
+

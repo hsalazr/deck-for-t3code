@@ -1,7 +1,7 @@
 {
 	"$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
 	"Name": "Deck for T3 Code",
-	"Version": "1.1.0.0",
+	"Version": "1.2.0.0",
 	"Author": "hsalazr",
 	"URL": "https://hsalazr.github.io/deck-for-t3code/",
 	"SupportURL": "https://github.com/hsalazr/deck-for-t3code/issues",
@@ -72,6 +72,40 @@
 			"States": [
 				{
 					"Image": "imgs/actions/usage/key",
+					"ShowTitle": false
+				}
+			]
+		},
+		{
+			"Name": "Machine",
+			"UUID": "io.github.hsalazr.deck-for-t3code.machine",
+			"Icon": "imgs/actions/machine/icon",
+			"Tooltip": "This Mac's CPU use (performance and efficiency cores apart), memory pressure and free disk space, together or one per key. Tap for Activity Monitor (a disk key opens that disk in Finder).",
+			"PropertyInspectorPath": "ui/machine.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"SupportedInMultiActions": false,
+			"States": [
+				{
+					"Image": "imgs/actions/machine/key",
+					"ShowTitle": false
+				}
+			]
+		},
+		{
+			"Name": "Updates",
+			"UUID": "io.github.hsalazr.deck-for-t3code.updates",
+			"Icon": "imgs/actions/updates/icon",
+			"Tooltip": "Whether T3 Code or a provider CLI (Claude, Codex…) has an update waiting. Tap to open T3 Code when one is, or to check again.",
+			"PropertyInspectorPath": "ui/updates.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"SupportedInMultiActions": false,
+			"States": [
+				{
+					"Image": "imgs/actions/updates/key",
 					"ShowTitle": false
 				}
 			]

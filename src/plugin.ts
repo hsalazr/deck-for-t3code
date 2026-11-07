@@ -1,7 +1,8 @@
 import streamDeck from "@elgato/streamdeck";
 
-import { BackKey, OverviewKey, runtime, ThreadActionKey, ThreadKey, UsageKey } from "./actions.ts";
+import { BackKey, MachineKey, OverviewKey, runtime, ThreadActionKey, ThreadKey, UpdatesKey, UsageKey } from "./actions.ts";
 import { Deck } from "./deck.ts";
+import { MachineMonitor } from "./machine.ts";
 import type { AnimationMode } from "./render.ts";
 import { defaultTokens } from "./t3/auth.ts";
 import { ThreadCommands } from "./t3/commands.ts";
@@ -10,9 +11,10 @@ import { collapseRepeats, describe, redact, redactLogger } from "./t3/log.ts";
 import { Monitor, signOutReply, type MonitorSettings } from "./t3/monitor.ts";
 import { RpcAccess } from "./t3/rpc.ts";
 import { ShellStream } from "./t3/shell-stream.ts";
+import { UpdatesMonitor, rpcUpdatesSource } from "./t3/updates-monitor.ts";
 import { UsageMonitor } from "./t3/usage-monitor.ts";
 
-type GlobalSettings = Partial<MonitorSettings> & { animation?: AnimationMode; showLabels?: boolean; messages?: string; actionsEnabled?: boolean };
+type GlobalSettings = Partial<MonitorSettings> & { animation?: AnimationMode; showLabels?: boolean; threadStyle?: "detailed" | "glance"; messages?: string; actionsEnabled?: boolean };
 
 streamDeck.logger.setLevel("info");
 // Every log line, whoever writes it, goes through redact(): no token ever lands in the log files.
@@ -35,13 +37,17 @@ const usage = new UsageMonitor(rpc);
 // Thread actions (stop, snooze, settle, send) use a separate token that may act on threads,
 // minted only while the actionsEnabled global setting is on.
 const commands = new ThreadCommands(new RpcAccess(() => monitor.location, "operate", { tokens }), () => tokens.actionsEnabled);
-const deck = new Deck(monitor, usage, commands);
+// This Mac's own load, memory and disk space, for Machine keys (read from the OS, not T3).
+const machine = new MachineMonitor();
+// T3 Code and provider CLI updates, over the same read-only socket as usage limits.
+const updates = new UpdatesMonitor(rpcUpdatesSource(rpc));
+const deck = new Deck(monitor, usage, commands, undefined, machine, updates);
 runtime.deck = deck;
 
 // A closed T3 makes the shell stream and the usage monitor report the same failure every ~30 s;
 // log it once, then once more with a count after 10 minutes.
 const logOnce = collapseRepeats(log);
-for (const [name, source] of Object.entries({ monitor, usage, shell, context, tokens })) source.on("log", (line: string) => logOnce(name, line));
+for (const [name, source] of Object.entries({ monitor, usage, shell, context, tokens, machine, updates })) source.on("log", (line: string) => logOnce(name, line));
 
 let lastConnection = "";
 monitor.on("change", (snapshot) => {
@@ -83,6 +89,7 @@ streamDeck.ui.onSendToPlugin((ev) => {
 		if (type === "signIn") {
 			await monitor.signIn();
 			usage.refresh();
+			updates.refresh();
 			await reply({ type: "signedIn", ok: monitor.snapshot.connection.kind === "ok" });
 			return sendStatus();
 		}
@@ -112,6 +119,7 @@ function applyGlobal(settings: GlobalSettings): void {
 	lastActions = actions;
 	deck.animation = settings.animation === "off" ? "off" : "smooth";
 	deck.showLabels = settings.showLabels === true;
+	deck.threadStyle = settings.threadStyle === "glance" ? "glance" : "detailed";
 	deck.actionsEnabled = actions;
 	deck.messages = typeof settings.messages === "string" ? settings.messages : undefined;
 }
@@ -121,13 +129,18 @@ streamDeck.settings.onDidReceiveGlobalSettings<GlobalSettings>((ev) => applyGlob
 streamDeck.actions.registerAction(new ThreadKey());
 streamDeck.actions.registerAction(new OverviewKey());
 streamDeck.actions.registerAction(new UsageKey());
+streamDeck.actions.registerAction(new MachineKey());
+streamDeck.actions.registerAction(new UpdatesKey());
 streamDeck.actions.registerAction(new BackKey());
 streamDeck.actions.registerAction(new ThreadActionKey());
 
 await streamDeck.connect();
+// Before anything waits on T3: Machine keys work whether or not T3 Code is running.
+machine.start();
 applyGlobal(await streamDeck.settings.getGlobalSettings<GlobalSettings>());
 monitor.start();
 await monitor.located().catch((error: unknown) => log(`finding T3 home failed: ${describe(error)}`));
 shell.start();
 context.start();
 usage.start();
+updates.start();

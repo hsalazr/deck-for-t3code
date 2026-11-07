@@ -1,0 +1,19 @@
+title: "[Q] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ask anything about setting up or using Deck for T3 Code. If something is clearly broken, a [bug report](https://github.com/hsalazr/deck-for-t3code/issues/new?template=bug_report.yml) is the better place.
+        **Please don't paste tokens, project names or thread titles you consider private.**
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: What are you trying to do, and what have you tried?
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions (if relevant)
+      placeholder: Plugin 1.2.0, Stream Deck 7.1 on an XL, macOS 15.1, T3 Code 0.9

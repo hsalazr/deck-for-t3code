@@ -8,7 +8,7 @@ Every [T3 Code](https://t3.codes) thread on a Stream Deck key. See who's working
 
 > Not affiliated with or endorsed by T3 Tools Inc. T3 Code is a trademark of its respective owner.
 
-[Website](https://hsalazr.github.io/deck-for-t3code/) · [Releases](https://github.com/hsalazr/deck-for-t3code/releases) · [Report a bug](https://github.com/hsalazr/deck-for-t3code/issues) · [Sponsor](https://github.com/sponsors/hsalazr)
+[Website](https://hsalazr.github.io/deck-for-t3code/) · [Releases](https://github.com/hsalazr/deck-for-t3code/releases) · [Report a bug](https://github.com/hsalazr/deck-for-t3code/issues) · [Discussions](https://github.com/hsalazr/deck-for-t3code/discussions) · [Sponsor](https://github.com/sponsors/hsalazr)
 
 ## Features
 
@@ -269,7 +269,7 @@ Logs are in the `.sdPlugin` folder's `logs/` directory. The website lives in [`d
 
 ## Contributing
 
-Bug reports, ideas and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first, and please follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+Bug reports, ideas and pull requests are welcome. Questions, ideas and setups you want to show off go in [Discussions](https://github.com/hsalazr/deck-for-t3code/discussions). Read [CONTRIBUTING.md](CONTRIBUTING.md) first, and please follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Support
 
@@ -279,6 +279,8 @@ Deck for T3 Code is free. If it saves you time, you can chip in:
 - 💛 [Liberapay](https://liberapay.com/hsalazr)
 
 Bug reports and stars help just as much.
+
+Made by Humberto: [LinkedIn](https://www.linkedin.com/in/hsalazarpacios) · [X](https://x.com/hsalazar).
 
 ## License
 

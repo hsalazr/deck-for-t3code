@@ -1,0 +1,28 @@
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas start here. Once one is agreed, it becomes an issue.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: Describe the problem first. What's annoying or missing today?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+      description: A sketch of the key or page helps.
+  - type: dropdown
+    id: device
+    attributes:
+      label: Which Stream Deck do you use?
+      options:
+        - Stream Deck XL
+        - Stream Deck (15 keys)
+        - Stream Deck Neo
+        - Stream Deck Mini
+        - Stream Deck +
+        - Other

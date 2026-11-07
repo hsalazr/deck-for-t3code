@@ -1,0 +1,18 @@
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Show off your deck layout, a custom profile, or how Deck for T3 Code fits your day.
+        **Check your photos and screenshots for private project names and thread titles before posting.**
+  - type: textarea
+    id: setup
+    attributes:
+      label: Your setup
+      description: Drop in a photo or screenshot and tell us what's on the keys.
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Stream Deck model
+      placeholder: Stream Deck XL

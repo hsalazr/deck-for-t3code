@@ -7,7 +7,8 @@ By taking part you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md). By
 ## Before you start
 
 - **Bug?** Open an issue with the bug template. Say which plugin, Stream Deck, macOS and T3 Code versions you use.
-- **Idea?** Open an issue first for anything bigger than a small fix, so we can agree on it before you write code.
+- **Question?** Ask in [Discussions › Q&A](https://github.com/hsalazr/deck-for-t3code/discussions/categories/q-a). Issues are for bugs and agreed work.
+- **Idea?** Start a thread in [Discussions › Ideas](https://github.com/hsalazr/deck-for-t3code/discussions/categories/ideas), or open a feature request. Open an issue first for anything bigger than a small fix, so we can agree on it before you write code.
 - **Security problem?** Don't open a public issue. See [SECURITY.md](SECURITY.md).
 
 ## Set up

@@ -8,7 +8,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 - Releases and the nightly come with a `SHA256SUMS.txt` and a GitHub build provenance attestation, so you can check a download was built by this repo's release workflow (`gh attestation verify <file> --repo hsalazr/deck-for-t3code`).
 
-## [1.2.0] - 2026-11-06
+## [1.2.0] - 2026-11-07
 
 ### Added
 

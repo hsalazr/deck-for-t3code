@@ -25,6 +25,14 @@
  * CONFIRM_HOLD_MS, 100 ms hold-progress steps). Other apps' keys are generic
  * outline glyphs drawn here.
  *
+ * The device is Elgato's own Stream Deck XL preview from their official Stream
+ * Deck Templates Figma file (Elgato's Marketplace guidelines ask for official
+ * resources wherever their hardware is shown), from marketing/device-template.ts.
+ * The keys are laid out flat (144 px keys) and scaled onto the device's 32 key
+ * slots; the template's own glass (bevel and reflections) is drawn over them.
+ * The pointer and the zooms into a key go through the same mapping, so they
+ * land on that key on the device.
+ *
  * Frames are drawn by one headless Chrome page driven over the DevTools pipe:
  * each frame is a plain description (key images, positions, zoom, finger,
  * captions) applied to the page and screenshotted. Nothing depends on the wall
@@ -43,6 +51,7 @@
  *
  *   docs/assets/demo-square.mp4   1080×1080 H.264
  *   docs/assets/demo-square.webm  1080×1080 VP9
+ *   docs/assets/demo-square-poster.png  1080×1080, the first frame
  *
  * Environment:
  *   DEMO_SCRATCH  scratch dir (default: <os tmpdir>/t3deck-demo); frames go to <scratch>/frames
@@ -74,6 +83,11 @@ import { pace, type UsageMetric } from "../../src/usage.ts";
 import { waitingLabel } from "../../src/t3/shell-stream.ts";
 import { PROFILES } from "../../scripts/build-profile.mjs";
 import { soften } from "../screen-colors.ts";
+import { KEY, templateGap, templateGridTransform, templateHeight, templateOverlayImg, templateProject, XL as XL_DEVICE } from "../device-template.ts";
+
+/** Space between keys in the flat grid, so the grid lands on the XL's slots (keys fill the slots exactly; the template's glass covers their edges). */
+const GAP = templateGap(XL_DEVICE);
+const keyOrigin = (index: number): [number, number] => [(index % XL_DEVICE.columns) * (KEY + GAP), Math.floor(index / XL_DEVICE.columns) * (KEY + GAP)];
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SCRATCH = process.env.DEMO_SCRATCH ?? join(tmpdir(), "t3deck-demo");
@@ -174,25 +188,43 @@ const FRAME_COUNT = (DURATION * FPS) / 1000;
 /** The frame. The deck itself is laid out for the wide frame in both formats; square shows it through a camera. */
 const W = SQUARE ? 1080 : 1920;
 const H = 1080;
-const KEY = 144;
-const GAP = 20;
-const PAD = 40;
 const COLS = 8;
 const ROWS = 4;
 const SLOTS = COLS * ROWS;
-const DECK_W = COLS * KEY + (COLS - 1) * GAP + 2 * PAD; // 1372
-const DECK_H = ROWS * KEY + (ROWS - 1) * GAP + 2 * PAD; // 716
-const DECK_X = (1920 - DECK_W) / 2;
-const DECK_Y = 258;
-
-const slotPos = (slot: number): { x: number; y: number } => ({
-	x: DECK_X + PAD + (slot % COLS) * (KEY + GAP),
-	y: DECK_Y + PAD + Math.floor(slot / COLS) * (KEY + GAP),
-});
-const slotCenter = (slot: number): { x: number; y: number } => {
-	const p = slotPos(slot);
-	return { x: p.x + KEY / 2, y: p.y + KEY / 2 };
+/**
+ * Elgato's template XL, 1520 px wide under the captions: keys about 135 px
+ * across, and the device running off the frame's bottom edge below the keys.
+ */
+const DEVICE_W = 1520;
+const DEVICE_H = templateHeight(XL_DEVICE, DEVICE_W);
+const DEVICE_X = (1920 - DEVICE_W) / 2;
+const DEVICE_Y = 236;
+/** The flat key grid (KEY px keys, GAP apart), before it is scaled onto the device's slots. */
+const GRID_W = COLS * KEY + (COLS - 1) * GAP;
+const GRID_H = ROWS * KEY + (ROWS - 1) * GAP;
+const projectOnDevice = templateProject(XL_DEVICE, DEVICE_W);
+/** A flat-grid point on the device, in deck coordinates (the page, with the deck at rest). */
+const onDevice = (x: number, y: number): { x: number; y: number } => {
+	const [u, v] = projectOnDevice(x, y);
+	return { x: DEVICE_X + u, y: DEVICE_Y + v };
 };
+
+/** A key's top-left in the flat grid: tiles are laid out here, under the grid's transform. */
+const slotPos = (slot: number): { x: number; y: number } => {
+	const [x, y] = keyOrigin(slot);
+	return { x, y };
+};
+/** The centre of the key at (col, row) on the device, in deck coordinates; fractions land between keys. */
+const gridCenter = (col: number, row: number): { x: number; y: number } => onDevice(col * (KEY + GAP) + KEY / 2, row * (KEY + GAP) + KEY / 2);
+const slotCenter = (slot: number): { x: number; y: number } => gridCenter(slot % COLS, Math.floor(slot / COLS));
+/** How wide and tall a key's screen is on the device at rest (square: the template is a flat front view). */
+function keyOnDevice(slot: number): { w: number; h: number } {
+	const { x, y } = slotPos(slot);
+	const [tl, tr, bl, br] = [onDevice(x, y), onDevice(x + KEY, y), onDevice(x, y + KEY), onDevice(x + KEY, y + KEY)];
+	return { w: (tr.x - tl.x + br.x - bl.x) / 2, h: (bl.y - tl.y + br.y - tr.y) / 2 };
+}
+/** A key near the middle of the deck, for sizes that should follow the keys (the camera, the finger). */
+const MID_KEY = keyOnDevice(11);
 const slotDist = (a: number, b: number): number => Math.hypot((a % COLS) - (b % COLS), Math.floor(a / COLS) - Math.floor(b / COLS));
 
 /**
@@ -216,23 +248,30 @@ interface Shot {
 }
 /** Where a shot puts its focus point: centred, below the captions. */
 const ANCHOR = { x: 540, y: 690 };
-const COL_X = (col: number): number => DECK_X + PAD + KEY / 2 + col * (KEY + GAP);
-const ROW_Y = (row: number): number => DECK_Y + PAD + KEY / 2 + row * (KEY + GAP);
+/**
+ * A shot centred on key (col, row) of the device (fractions land between keys),
+ * with keys `keys` × 144 px wide: 2 shows a key about 290 px across, and the
+ * keys are about 1.19 keys apart, centre to centre.
+ */
+const shotAt = (col: number, row: number, keys: number): Shot => {
+	const c = gridCenter(col, row);
+	return { fx: c.x, fy: c.y, s: (keys * KEY) / MID_KEY.w };
+};
 const SHOT = {
 	/** Acts 1, 4 and 5: the Machine, Overview and Usage keys, with a ring of other apps' keys. */
-	home: { fx: COL_X(3), fy: ROW_Y(1), s: 2.1 },
+	home: shotAt(3, 1, 1.85),
 	/** Act 2: the first threads, with the amber and the green one. */
-	threads: { fx: COL_X(1.55), fy: ROW_Y(0.8), s: 1.8 },
+	threads: shotAt(1.05, 0.8, 1.7),
 	/** Act 3: the held thread. */
-	held: { fx: COL_X(3), fy: ROW_Y(0.9), s: 2.0 },
+	held: shotAt(3, 0.9, 2.0),
 	/** Thread Actions, top row: the thread and the quick messages. */
-	messages: { fx: COL_X(2.5), fy: ROW_Y(0.5), s: 1.65 },
+	messages: shotAt(2.5, 0.5, 1.45),
 	/** Thread Actions, bottom row: Compact and Snooze. */
-	bottom: { fx: COL_X(1.2), fy: ROW_Y(2.4), s: 1.9 },
+	bottom: shotAt(0.75, 2.4, 1.8),
 	/** Back on the Threads page: the row that slides up. */
-	slide: { fx: COL_X(4.2), fy: ROW_Y(1), s: 1.8 },
+	slide: shotAt(4.2, 1, 1.8),
 	/** Back key. */
-	back: { fx: COL_X(1), fy: ROW_Y(0.7), s: 1.9 },
+	back: shotAt(1, 0.7, 1.9),
 } satisfies Record<string, Shot>;
 /** Camera moves: from each start time the camera eases to the shot over `ms`. */
 const MOVES: { at: number; ms: number; to: Shot }[] = [
@@ -476,14 +515,16 @@ interface Finger {
 	press: number;
 	ripple?: { scale: number; opacity: number };
 }
-/** The finger rests right of the key centre, so the key's own text stays readable. */
+/** The finger rests right of the key centre (in the flat grid), so the key's own text stays readable. */
 const FINGER_OFFSET = { x: 36, y: -4 };
+/** The finger keeps its size against the keys it presses (it was drawn for 144 px keys). */
+const FINGER_SIZE = MID_KEY.w / KEY;
 function fingerAt(t: number): Finger | undefined {
 	const session = SESSIONS.find((s) => t >= s.in && t <= s.out + 300);
 	if (!session) return undefined;
 	const at = (slot: number) => {
-		const c = slotCenter(slot);
-		return { x: c.x + FINGER_OFFSET.x, y: c.y + FINGER_OFFSET.y };
+		const o = slotPos(slot);
+		return onDevice(o.x + KEY / 2 + FINGER_OFFSET.x, o.y + KEY / 2 + FINGER_OFFSET.y);
 	};
 	const presses = session.presses;
 	let slot = presses[0]!.slot;
@@ -517,7 +558,7 @@ function fingerAt(t: number): Finger | undefined {
 			ripple = { scale: 0.7 + 1.3 * e, opacity: 0.55 * (1 - e) };
 		}
 	}
-	const scale = (1.25 - 0.25 * appear) * (1 + 0.08 * lift) * (1 - 0.1 * press);
+	const scale = FINGER_SIZE * (1.25 - 0.25 * appear) * (1 + 0.08 * lift) * (1 - 0.1 * press);
 	if (SQUARE) {
 		// Through the camera, and a little smaller than the keys it grows with.
 		const cam = cameraAt(t);
@@ -776,6 +817,8 @@ interface Big {
 	x: number;
 	y: number;
 	scale: number;
+	/** Vertical scale: equal to `scale` on the template's flat front view (it would be less on a device seen at an angle). */
+	sy: number;
 	opacity: number;
 	layers: { svg: string; opacity: number }[];
 	/** The Glance twin, TWIN_DX to the right once zoomed; it fades in at the end of the zoom. */
@@ -802,15 +845,19 @@ function zoomAt(t: number): { p: number; z: Zoom } {
 	if (t < z.out[0]) return { p: 1, z };
 	return { p: 1 - easeInOut(ramp(t, z.out[0], z.out[1])), z };
 }
-/** Where the zoomed key's centre is, and how big (1 = a deck key, ZOOM = the big key). */
-function zoomFrame(p: number, z: Zoom): { cx: number; cy: number; s: number } {
+/**
+ * Where the zoomed key's centre is, the deck's scale `s`, and the big key's
+ * width `b` (in 144 px keys: ZOOM once zoomed in) and height over width `squash`.
+ * The big key starts as the key on the device (the same size and shape) and
+ * grows into the big key; the deck grows with it.
+ */
+function zoomFrame(p: number, z: Zoom): { cx: number; cy: number; s: number; b: number; squash: number } {
 	const c = slotCenter(z.slot);
-	if (SQUARE) {
-		// Act 4 starts and ends on the home shot.
-		const from = onScreen(SHOT.home, c.x, c.y);
-		return { cx: lerp(from.x, BIG_CENTER.x, p), cy: lerp(from.y, BIG_CENTER.y, p), s: lerp(SHOT.home.s, ZOOM, p) };
-	}
-	return { cx: lerp(c.x, BIG_CENTER.x, p), cy: lerp(c.y, BIG_CENTER.y, p), s: lerp(1, ZOOM, p) };
+	const key = keyOnDevice(z.slot);
+	// Act 4 starts and ends on the deck at rest; square, on the home shot.
+	const from = SQUARE ? { ...onScreen(SHOT.home, c.x, c.y), s: SHOT.home.s } : { ...c, s: 1 };
+	const b = lerp((from.s * key.w) / KEY, ZOOM, p);
+	return { cx: lerp(from.x, BIG_CENTER.x, p), cy: lerp(from.y, BIG_CENTER.y, p), s: (b * KEY) / key.w, b, squash: lerp(key.h / key.w, 1, p) };
 }
 function bigAt(t: number, p: number, z: Zoom): Big | undefined {
 	const opacity = easeInOut(ramp(p, 0.35, 0.8));
@@ -829,13 +876,14 @@ function bigAt(t: number, p: number, z: Zoom): Big | undefined {
 		if (shown > 0) layers.push({ svg: cur[look](stateClock(STATES, i, t)), opacity: shown });
 		return layers;
 	};
-	const { cx, cy, s } = zoomFrame(p, z);
-	const scale = s / ZOOM;
+	const { cx, cy, b, squash } = zoomFrame(p, z);
+	const scale = b / ZOOM;
 	const x = cx - BIG / 2;
 	return {
 		x,
 		y: cy - BIG / 2,
 		scale,
+		sy: scale * squash,
 		opacity,
 		layers: layersOf("svg"),
 		twin: { x: x + TWIN_DX * scale, opacity: opacity * easeInOut(ramp(p, 0.7, 1)), layers: layersOf("glance") },
@@ -1009,13 +1057,14 @@ const SQUARE_CSS = `
 .lab{left:0;width:${W}px;top:${BIG_CENTER.y + BIG / 2 + 26}px;text-align:center}
 .lab .lt{font-size:60px}
 .lab .ls{margin-top:8px;font-size:34px}
-.note{top:1050px;font-size:16px;z-index:7}
+.note{left:0;right:auto;width:${W}px;top:1050px;text-align:center;font-size:16px;z-index:7}
 `;
 
 function pageHtml(): string {
-	const wells = Array.from({ length: SLOTS }, (_, s) => {
+	// A dark screen under every key, so a slot is never see-through (a key fading or shrinking, a page switch).
+	const screens = Array.from({ length: SLOTS }, (_, s) => {
 		const p = slotPos(s);
-		return `<div class="well" style="left:${p.x - 5}px;top:${p.y - 5}px"></div>`;
+		return `<div class="screen" style="left:${p.x}px;top:${p.y}px"></div>`;
 	}).join("");
 	const captions = CAPTIONS.map((c) => `<div class="cap ${c.kind}" id="${c.id}">${c.text}</div>`).join("");
 	const labels = [...STATES, ...MACHINE_STATES].map((s) => `<div class="lab" id="lab-${s.id}"><div class="lt" style="color:${s.color}">${s.title}</div><div class="ls">${s.sub}</div></div>`).join("");
@@ -1031,22 +1080,21 @@ html,body{margin:0;width:${W}px;height:${H}px;overflow:hidden;background:#000;co
 .cap.title{top:96px;font-size:64px;font-weight:700;letter-spacing:-.025em;line-height:1.06}
 .cap.sub{top:180px;font-size:30px;line-height:1.3;color:#a3a3a3}
 #deck{position:absolute;left:0;top:0;width:${W}px;height:${H}px;transform-origin:0 0}
-.slab{position:absolute;left:${DECK_X}px;top:${DECK_Y}px;width:${DECK_W}px;height:${DECK_H}px;border-radius:46px;
-  background:linear-gradient(180deg,#1c1d22 0%,#131418 38%,#0c0d10 100%);
-  box-shadow:0 0 0 1px #ffffff17,inset 0 1px 0 #ffffff26,inset 0 -1px 0 #00000099,0 7px 0 -1px #08080a,0 7px 0 0 #ffffff0d,0 46px 110px #000,0 18px 40px #000c}
-.sheen{position:absolute;left:${DECK_X}px;top:${DECK_Y}px;width:${DECK_W}px;height:${DECK_H}px;border-radius:46px;pointer-events:none;
-  background:linear-gradient(112deg,transparent 18%,#ffffff09 34%,#ffffff03 46%,transparent 58%);z-index:3}
-.floor{position:absolute;left:${DECK_X + 80}px;top:${DECK_Y + DECK_H + 18}px;width:${DECK_W - 160}px;height:46px;border-radius:50%;
-  background:radial-gradient(50% 50% at 50% 50%,oklch(0.72 0.15 252 / 0.10),transparent 70%)}
-.well{position:absolute;width:${KEY + 10}px;height:${KEY + 10}px;border-radius:22px;background:#040405;
-  box-shadow:inset 0 2px 6px #000,inset 0 0 0 1px #000,0 1px 0 #ffffff12}
-#tiles{position:absolute;left:0;top:0;z-index:2}
+.device{position:absolute;left:${DEVICE_X}px;top:${DEVICE_Y}px;width:${DEVICE_W}px;height:${DEVICE_H}px;overflow:hidden}
+/* The flat key grid, scaled onto the device's key slots; the device (.device, the template overlay) is drawn over it. */
+#grid{position:absolute;left:${DEVICE_X}px;top:${DEVICE_Y}px;width:${GRID_W}px;height:${GRID_H}px;transform-origin:0 0;transform:${templateGridTransform(XL_DEVICE, DEVICE_W)}}
+.screen{position:absolute;width:${KEY}px;height:${KEY}px;border-radius:14px;background:#050506}
+#tiles{position:absolute;left:0;top:0}
 .tile{position:absolute;left:0;top:0;width:${KEY}px;height:${KEY}px;transform-origin:50% 50%}
-.face{position:absolute;inset:0;border-radius:17px;overflow:hidden;background:#050506;box-shadow:0 1px 2px #000}
+.face{position:absolute;inset:0;border-radius:17px;overflow:hidden;background:#050506}
 .face>.l{position:absolute;inset:0}
 .face svg{display:block}
 .face>.shade{position:absolute;inset:0;background:#000;opacity:0}
 .face>.gloss{position:absolute;inset:0;border-radius:17px;background:linear-gradient(162deg,#ffffff16 0%,#ffffff05 30%,transparent 46%);box-shadow:inset 0 1px 0 #ffffff1c,inset 0 0 0 1px #ffffff08}
+/* On the device a key fills its slot, and the template's own glass is on top: no drawn gloss on the small keys. */
+.tile>.face{border-radius:14px}
+.tile>.face>.l{border-radius:14px;overflow:hidden}
+.tile>.face>.gloss{display:none}
 #big,#big2{position:absolute;left:0;top:0;width:${BIG}px;height:${BIG}px;transform-origin:50% 50%;z-index:4;opacity:0;border-radius:${r}px;
   box-shadow:0 0 0 ${ZOOM * 5}px #040405,0 0 0 ${ZOOM * 5 + 1}px #ffffff14,0 40px 110px #000}
 #big>.face,#big2>.face{border-radius:${r}px}
@@ -1061,18 +1109,16 @@ html,body{margin:0;width:${W}px;height:${H}px;overflow:hidden;background:#000;co
   background:radial-gradient(circle at 42% 38%,#ffffff73,#ffffff33 60%,#ffffff24);border:2px solid #ffffffcc;
   box-shadow:0 10px 28px #000a,0 0 0 1px #0000004d}
 .finger>.ripple{position:absolute;inset:0;border-radius:50%;border:3px solid #ffffff;opacity:0}
-.note{position:absolute;left:0;width:${W}px;top:${DECK_Y + DECK_H + 44}px;text-align:center;font-size:17px;color:#a3a3a3;opacity:.7}
+/* The device fills the frame below the captions, so the note sits in the top right corner. */
+.note{position:absolute;right:36px;top:30px;font-size:17px;color:#a3a3a3;opacity:.7}
 ${macCss()}
 ${SQUARE ? SQUARE_CSS : ""}</style></head><body>
 <div class="glow"></div>
 <div class="eyebrow">Deck for T3 Code</div>
 ${captions}
 <div id="deck">
-<div class="floor"></div>
-<div class="slab"></div>
-${wells}
-<div id="tiles"></div>
-<div class="sheen"></div>
+<div id="grid">${screens}<div id="tiles"></div></div>
+<div class="device">${templateOverlayImg(XL_DEVICE, DEVICE_W)}</div>
 </div>${SQUARE ? `<div class="scrim"></div>` : ""}
 <div id="big"><div class="face"><div class="gloss"></div></div><div class="look">Detailed</div></div>
 <div id="big2"><div class="face"><div class="gloss"></div></div><div class="look">Glance</div></div>
@@ -1128,11 +1174,12 @@ window.apply = (s) => {
   if (s.big) {
     big.style.display = "";
     big.style.opacity = s.big.opacity;
-    big.style.transform = "translate(" + s.big.x + "px," + s.big.y + "px)" + (s.big.scale === 1 ? "" : " scale(" + s.big.scale + ")");
+    const scale = s.big.scale === 1 && s.big.sy === 1 ? "" : " scale(" + s.big.scale + "," + s.big.sy + ")";
+    big.style.transform = "translate(" + s.big.x + "px," + s.big.y + "px)" + scale;
     setLayers(big, s.big.layers, big._face.lastChild);
     big2.style.display = "";
     big2.style.opacity = s.big.twin.opacity;
-    big2.style.transform = "translate(" + s.big.twin.x + "px," + s.big.y + "px)" + (s.big.scale === 1 ? "" : " scale(" + s.big.scale + ")");
+    big2.style.transform = "translate(" + s.big.twin.x + "px," + s.big.y + "px)" + scale;
     setLayers(big2, s.big.twin.layers, big2._face.lastChild);
   } else { big.style.display = "none"; big2.style.display = "none"; }
   mac.style.opacity = s.mac.opacity;
@@ -1160,7 +1207,7 @@ window.apply = (s) => {
 
 const CHROME =
 	process.env.CHROME ??
-	execSync(`find "$HOME/.t3/tools/chrome-headless-shell" -name chrome-headless-shell -type f -perm +111 | sort | tail -1`, { encoding: "utf8", shell: "/bin/bash" }).trim();
+	execSync(`find "$HOME/.t3/tools/chrome-headless-shell" -name chrome-headless-shell -type f -perm -u+x | sort | tail -1`, { encoding: "utf8", shell: "/bin/bash" }).trim();
 
 class Browser {
 	#proc: ChildProcess;
@@ -1277,6 +1324,8 @@ function encodeSquare(): void {
 		console.log("encoding docs/assets/demo-square.webm (1080×1080, VP9)");
 		ffmpeg([...input, "-vf", vf, "-c:v", "libvpx-vp9", "-crf", "37", "-b:v", "0", "-deadline", "good", "-cpu-used", "2", "-row-mt", "1", "-g", String(FPS * 4), ...tags, ...clean, join(ASSETS, "demo-square.webm")]);
 	} else console.warn("libvpx-vp9 not available: skipped docs/assets/demo-square.webm");
+	console.log("writing docs/assets/demo-square-poster.png");
+	ffmpeg(["-i", join(FRAMES, "f0000.png"), "-frames:v", "1", "-map_metadata", "-1", "-fflags", "+bitexact", join(ASSETS, "demo-square-poster.png")]);
 	for (const f of [join(ASSETS, "demo-square.mp4"), join(ASSETS, "demo-square.webm")]) {
 		if (existsSync(f)) console.log(`  ${f.slice(ROOT.length + 1)}  ${(statSync(f).size / 1e6).toFixed(2)} MB`);
 	}

@@ -5,8 +5,8 @@
  *   node --experimental-strip-types marketing/render-assets.ts
  *
  * It imports src/render.ts, feeds it invented data (acme-* projects, made-up
- * thread titles), lays the keys out on a Stream Deck XL mock-up, and
- * rasterises the result with the headless Chrome that T3 Code ships
+ * thread titles), lays the keys out (in Elgato's own Stream Deck XL device
+ * preview wherever a picture shows a deck, see device-template.ts), and rasterises the result with the headless Chrome that T3 Code ships
  * (~/.t3/tools/chrome-headless-shell), or the binary named by $CHROME.
  * Scratch files go to /tmp/t3deck-docs2/. `ONLY=icons` renders just the icons, `ONLY=keys` just the single-key PNGs.
  *
@@ -30,6 +30,7 @@ import { pace, type UsageMetric } from "../src/usage.ts";
 import { PROFILES } from "../scripts/build-profile.mjs";
 import { soften } from "./screen-colors.ts";
 import { EXAMPLE_MESSAGES } from "./quick-messages.ts";
+import { TEMPLATE_CSS, templateDeck, XL as XL_DEVICE } from "./device-template.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SCRATCH = "/tmp/t3deck-docs2";
@@ -167,10 +168,6 @@ const MONO = `ui-monospace, "SF Mono", Menlo, monospace`;
 const BASE_CSS = `
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:#000;color:#f5f5f5;font-family:${SANS};-webkit-font-smoothing:antialiased}
-.deck{display:grid;gap:16px;padding:40px;border-radius:36px;
-  background:linear-gradient(180deg,#17171b,#0d0d10);box-shadow:0 0 0 1px #ffffff1a,inset 0 1px 0 #ffffff14,0 50px 120px #000c}
-.deck .k{width:144px;height:144px;border-radius:14px;overflow:hidden;background:#050506;box-shadow:0 0 0 1px #00000099}
-.deck .k svg{display:block}
 .glow{position:absolute;inset:0;background:radial-gradient(60% 55% at 50% 40%,#6a96f533,transparent 70%);z-index:0}
 .stage{position:relative;overflow:hidden}
 .stage>*:not(.glow){position:relative;z-index:1}
@@ -179,7 +176,6 @@ h1,h2,p{margin:0}
 .pill{display:inline-block;padding:6px 14px;border:1px solid #ffffff24;border-radius:999px;font-size:20px;color:#a3a3a3;background:#0d0d0d}
 `;
 
-const deck = (keys: string[], columns = 8): string => `<div class="deck" style="grid-template-columns:repeat(${columns},144px)">${keys.map((k) => `<div class="k">${k}</div>`).join("")}</div>`;
 
 // ---------------------------------------------------------------- decks
 
@@ -277,10 +273,11 @@ const LEGEND: Legend[] = [
 function renderKeyPngs(): void {
 	const cols = 6;
 	const rows = Math.ceil(LEGEND.length / cols);
-	// The sheet starts one empty row down: sips treats a crop offset of 0,0 as "centre".
-	const html = `<style>body{margin:0;background:#000;display:grid;grid-template-columns:repeat(${cols},144px)}svg{display:block}</style><div style="grid-column:1/-1;height:144px"></div>${LEGEND.map((l) => soften(l.svg)).join("")}`;
+	// The sheet starts one empty row down: sips treats a crop offset of 0,0 as "centre". It also ends one empty row
+	// below the last key: a crop that ends on the sheet's bottom edge at x=0 makes sips return the whole sheet.
+	const html = `<style>body{margin:0;background:#000;display:grid;align-content:start;grid-template-columns:repeat(${cols},144px)}svg{display:block}</style><div style="grid-column:1/-1;height:144px"></div>${LEGEND.map((l) => soften(l.svg)).join("")}`;
 	const sheet = join(SCRATCH, "key-sheet.png");
-	shot("key-sheet", html, sheet, cols * 144, (rows + 1) * 144, 2);
+	shot("key-sheet", html, sheet, cols * 144, (rows + 2) * 144, 2);
 	LEGEND.forEach((l, i) => crop(sheet, join(KEYS, `${l.file}.png`), (i % cols) * 288, (Math.floor(i / cols) + 1) * 288, 288, 288));
 }
 
@@ -361,26 +358,24 @@ function renderIcons(): void {
 
 // ---------------------------------------------------------------- Stream Deck frame shots
 
-/** Outer size of a mock-up deck with this many keys across and down. */
-const deckW = (columns: number): number => columns * 144 + (columns - 1) * 16 + 80;
-const deckH = (rows: number): number => rows * 144 + (rows - 1) * 16 + 80;
-const DECK_W = deckW(8); // 1360
-const DECK_H = deckH(4); // 704
-
 function renderDeckShots(): void {
-	const hero = heroKeys();
-	const actions = actionKeys(profileFor("Deck for T3 Code XL"));
-	// Site images: just the deck, on transparent, at 2×.
-	const bare = (keys: string[], columns = 8): string => `<style>${BASE_CSS}body{background:transparent;padding:0}.deck{box-shadow:0 0 0 1px #ffffff1a,inset 0 1px 0 #ffffff14}</style>${deck(keys, columns)}`;
-	shot("hero", bare(hero), join(ASSETS, "hero.png"), DECK_W, DECK_H, 2, true);
-	// The same page on the other decks that ship one: marketing/render-devices.ts (the site's carousel).
+	// Screen colours, like every other marketing picture (screen-colors.ts).
+	const hero = heroKeys().map(soften);
+	const actions = actionKeys(profileFor("Deck for T3 Code XL")).map(soften);
+	// Elgato asks for its own product imagery wherever a picture shows a Stream Deck, so every deck here is
+	// the XL device preview from its Stream Deck Templates file (device-template.ts), never a drawn mock-up.
+	// Site image: the whole device on transparent, at 2× (the hero's still, shown when the video doesn't play).
+	shot("hero", `<style>${BASE_CSS}${TEMPLATE_CSS}html,body{background:transparent}</style>${templateDeck(XL_DEVICE, hero, XL_DEVICE.w)}`, join(ASSETS, "hero.png"), XL_DEVICE.w, XL_DEVICE.h, 2, true);
+	// The Thread Actions page on every deck that ships one: marketing/render-devices.ts (the site's carousel).
 
 	// Marketplace images (1920×960, black stage, glow, headline).
 	const stage = (inner: string, css = ""): string => `<style>${BASE_CSS}${css}</style><div class="stage" style="width:1920px;height:960px"><div class="glow"></div>${inner}</div>`;
 	const heading = (h: string, sub: string, align = "center", pad = true): string =>
 		`<div style="text-align:${align};padding:${align === "center" && pad ? "64px 0 0" : "0"}"><h1 style="font-size:76px;font-weight:700;letter-spacing:-.025em;line-height:1.05">${h}</h1><p class="muted" style="font-size:30px;margin-top:14px">${sub}</p></div>`;
+	// The device runs off the bottom edge below the keys: keys stay big enough to read.
+	const DEVICE_W = 1360;
 	const centered = (keys: string[], h: string, sub: string): string =>
-		stage(`${heading(h, sub)}<div style="position:absolute;left:${(1920 - DECK_W) / 2}px;top:${960 - DECK_H - 44}px">${deck(keys)}</div>`);
+		stage(`${heading(h, sub)}<div style="position:absolute;left:${(1920 - DEVICE_W) / 2}px;top:212px">${templateDeck(XL_DEVICE, keys, DEVICE_W)}</div>`, TEMPLATE_CSS);
 
 	shot("thumbnail", centered(hero, "Deck for T3 Code", "Every thread on a key. Glance, tap, move on."), join(MARKETING, "thumbnail.png"), 1920, 960);
 	shot("gallery-2", centered(actions, "Hold a key. Steer the thread.", "Quick messages, compact, snooze, settle and stop. The risky ones need a hold."), join(MARKETING, "gallery-2-thread-actions.png"), 1920, 960);

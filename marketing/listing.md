@@ -89,8 +89,15 @@ No data leaves your Mac. Deck for T3 Code talks only to the T3 Code app running 
 | Gallery 2: Thread Actions page (XL) | `gallery-2-thread-actions.png` |
 | Gallery 3: Usage tiles | `gallery-3-usage.png` |
 | Gallery 4: how it works (tokens, local only) | `gallery-4-how-it-works.png` |
+| Gallery video (1920×1080 MP4) | `gallery-video.mp4` |
 | Plugin icon | `icon/plugin-256.png`, `icon/plugin-512.png` |
 | Category icon (white, 28/56) | `icon/category.png`, `icon/category@2x.png` |
 | Action list icons (white, 20/40) | `icon/thread*.png`, `icon/overview*.png`, `icon/usage*.png`, `icon/machine*.png`, `icon/updates*.png`, `icon/back*.png` |
 
-All images are generated from the plugin's own renderers with invented data by `render-assets.ts`. They contain no T3 artwork. Re-run the script after UI changes land.
+All images are generated from the plugin's own renderers with invented data by `render-assets.ts` (the video by `demo/render-demo.ts`). They contain no T3 artwork. Re-run the scripts after UI changes land.
+
+Wherever a picture shows a Stream Deck (the thumbnail, gallery 2 and the video), the device is Elgato's own Stream Deck XL preview from their official [Stream Deck Templates](https://www.figma.com/community/file/1315040482142393672/stream-deck-templates) Figma file, with the plugin's keys under the template's own glass (`device-template.ts`, overlays in `elgato-template/`). The site uses the same previews: the hero still and video, and the device carousel for the XL, the 15-key Stream Deck (MK.2), the Neo and the Mini (`render-devices.ts`). Elgato's review asks for official resources whenever the listing depicts their hardware, and its [guidelines](https://docs.elgato.com/guidelines/products#gallery) name this file and the [Elgato Media Room](https://www.elgato.com/s/media-room) as the sources; don't go back to a drawn mock-up. The template is CC BY 4.0: the site footer credits it, and the Marketplace pictures are submitted to Elgato itself.
+
+## Review demo video
+
+The plugin needs T3 Code, so Elgato's review wants a short video showing it working before it approves the listing ([review process](https://docs.elgato.com/maker-console/review-process)). Email it to maker@elgato.com, then resubmit the rejected version as a revision in Maker Console (Versions tab → the rejected version). It is a real screen-and-device recording, not the rendered gallery video.

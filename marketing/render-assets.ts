@@ -280,7 +280,7 @@ function renderKeyPngs(): void {
 	const rows = Math.ceil(LEGEND.length / cols);
 	// The sheet starts one empty row down: sips treats a crop offset of 0,0 as "centre". It also ends one empty row
 	// below the last key: a crop that ends on the sheet's bottom edge at x=0 makes sips return the whole sheet.
-	const html = `<style>body{margin:0;background:#000;display:grid;grid-template-columns:repeat(${cols},144px)}svg{display:block}</style><div style="grid-column:1/-1;height:144px"></div>${LEGEND.map((l) => soften(l.svg)).join("")}`;
+	const html = `<style>body{margin:0;background:#000;display:grid;align-content:start;grid-template-columns:repeat(${cols},144px)}svg{display:block}</style><div style="grid-column:1/-1;height:144px"></div>${LEGEND.map((l) => soften(l.svg)).join("")}`;
 	const sheet = join(SCRATCH, "key-sheet.png");
 	shot("key-sheet", html, sheet, cols * 144, (rows + 2) * 144, 2);
 	LEGEND.forEach((l, i) => crop(sheet, join(KEYS, `${l.file}.png`), (i % cols) * 288, (Math.floor(i / cols) + 1) * 288, 288, 288));

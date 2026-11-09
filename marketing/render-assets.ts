@@ -278,10 +278,11 @@ const LEGEND: Legend[] = [
 function renderKeyPngs(): void {
 	const cols = 6;
 	const rows = Math.ceil(LEGEND.length / cols);
-	// The sheet starts one empty row down: sips treats a crop offset of 0,0 as "centre".
+	// The sheet starts one empty row down: sips treats a crop offset of 0,0 as "centre". It also ends one empty row
+	// below the last key: a crop that ends on the sheet's bottom edge at x=0 makes sips return the whole sheet.
 	const html = `<style>body{margin:0;background:#000;display:grid;grid-template-columns:repeat(${cols},144px)}svg{display:block}</style><div style="grid-column:1/-1;height:144px"></div>${LEGEND.map((l) => soften(l.svg)).join("")}`;
 	const sheet = join(SCRATCH, "key-sheet.png");
-	shot("key-sheet", html, sheet, cols * 144, (rows + 1) * 144, 2);
+	shot("key-sheet", html, sheet, cols * 144, (rows + 2) * 144, 2);
 	LEGEND.forEach((l, i) => crop(sheet, join(KEYS, `${l.file}.png`), (i % cols) * 288, (Math.floor(i / cols) + 1) * 288, 288, 288));
 }
 
@@ -369,8 +370,9 @@ const DECK_W = deckW(8); // 1360
 const DECK_H = deckH(4); // 704
 
 function renderDeckShots(): void {
-	const hero = heroKeys();
-	const actions = actionKeys(profileFor("Deck for T3 Code XL"));
+	// Screen colours, like every other marketing picture (screen-colors.ts).
+	const hero = heroKeys().map(soften);
+	const actions = actionKeys(profileFor("Deck for T3 Code XL")).map(soften);
 	// Site images: just the deck, on transparent, at 2×.
 	const bare = (keys: string[], columns = 8): string => `<style>${BASE_CSS}body{background:transparent;padding:0}.deck{box-shadow:0 0 0 1px #ffffff1a,inset 0 1px 0 #ffffff14}</style>${deck(keys, columns)}`;
 	shot("hero", bare(hero), join(ASSETS, "hero.png"), DECK_W, DECK_H, 2, true);

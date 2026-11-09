@@ -35,13 +35,13 @@ const SCREENS: [number, number][] = [[1378, 1360], [4358, 1360], [1314, 2483], [
 
 /** The flat grid the keys are drawn in before the homography: 144 px keys, 48 px apart. */
 export const KEY = 144;
-const GAP = 48;
+export const GAP = 48;
 const COLUMNS = 8;
 const ROWS = 4;
 const GRID_W = COLUMNS * KEY + (COLUMNS - 1) * GAP;
 const GRID_H = ROWS * KEY + (ROWS - 1) * GAP;
 /** How far each key image overhangs its screen, so none of the photo's own key art shows at the edges. */
-const BLEED = 5;
+export const BLEED = 5;
 
 /** Path of the cached photo, downloading it on first use. */
 export function xlPhoto(): string {
@@ -78,10 +78,15 @@ function homography(src: [number, number][], dst: [number, number][]): number[] 
 	return [...b.map((v, i) => v / a[i][i]), 1];
 }
 
-/** The CSS matrix3d (transform-origin 0 0) that takes the flat key grid onto the photo's screens, in photo pixels scaled by `scale` and offset by the body crop. */
-function gridTransform(scale: number): string {
+/** The homography taking the flat key grid onto the photo's screens, in photo pixels scaled by `scale` and offset by the body crop. */
+function gridHomography(scale: number): number[] {
 	const dst = SCREENS.map(([x, y]): [number, number] => [(x - BODY.x) * scale, (y - BODY.y) * scale]);
-	const h = homography([[0, 0], [GRID_W, 0], [0, GRID_H], [GRID_W, GRID_H]], dst);
+	return homography([[0, 0], [GRID_W, 0], [0, GRID_H], [GRID_W, GRID_H]], dst);
+}
+
+/** The CSS matrix3d (transform-origin 0 0) for gridHomography. */
+function gridTransform(scale: number): string {
+	const h = gridHomography(scale);
 	const m = [h[0], h[3], 0, h[6], h[1], h[4], 0, h[7], 0, 0, 1, 0, h[2], h[5], 0, h[8]];
 	return `matrix3d(${m.map((v) => +v.toPrecision(10)).join(",")})`;
 }
@@ -94,6 +99,25 @@ export const keyOrigin = (index: number): [number, number] => [(index % COLUMNS)
 
 /** The flat-grid → page transform for a photo drawn `width` CSS pixels wide, for callers that place their own layers on the keys. */
 export const xlGridTransform = (width: number): string => gridTransform(width / BODY.w);
+
+/**
+ * Where the flat-grid point (x, y) lands on the photo drawn `width` CSS pixels
+ * wide, in that box's pixels: the same mapping as xlGridTransform, for callers
+ * that place things over a key (a pointer, a zoom) outside the transformed layer.
+ */
+export function xlProject(width: number): (x: number, y: number) => [number, number] {
+	const h = gridHomography(width / BODY.w);
+	return (x, y) => {
+		const w = h[6] * x + h[7] * y + h[8];
+		return [(h[0] * x + h[1] * y + h[2]) / w, (h[3] * x + h[4] * y + h[5]) / w];
+	};
+}
+
+/** The photo alone, as an absolutely placed <img class="photo"> for a box `width` × xlPhotoHeight(width) CSS pixels with overflow hidden (the box crops it to the device). */
+export function xlPhotoImg(width: number): string {
+	const scale = width / BODY.w;
+	return `<img class="photo" src="file://${xlPhoto()}" style="left:${-BODY.x * scale}px;top:${-BODY.y * scale}px;width:${PHOTO_W * scale}px;height:${PHOTO_H * scale}px">`;
+}
 
 /** Shared CSS for xlPhotoDeck. */
 export const XL_PHOTO_CSS = `
@@ -112,8 +136,6 @@ export const XL_PHOTO_CSS = `
  * Include XL_PHOTO_CSS once on the page.
  */
 export function xlPhotoDeck(keys: string[], width: number): string {
-	const scale = width / BODY.w;
-	const img = `<img class="photo" src="file://${xlPhoto()}" style="left:${-BODY.x * scale}px;top:${-BODY.y * scale}px;width:${PHOTO_W * scale}px;height:${PHOTO_H * scale}px">`;
 	const cells = keys
 		.slice(0, COLUMNS * ROWS)
 		.map((k, i) => {
@@ -121,5 +143,5 @@ export function xlPhotoDeck(keys: string[], width: number): string {
 			return `<div class="k" style="left:${x - BLEED}px;top:${y - BLEED}px">${k}</div>`;
 		})
 		.join("");
-	return `<div class="xl" style="width:${width}px;height:${xlPhotoHeight(width)}px;overflow:hidden">${img}<div class="grid" style="transform:${gridTransform(scale)}">${cells}</div></div>`;
+	return `<div class="xl" style="width:${width}px;height:${xlPhotoHeight(width)}px;overflow:hidden">${xlPhotoImg(width)}<div class="grid" style="transform:${xlGridTransform(width)}">${cells}</div></div>`;
 }

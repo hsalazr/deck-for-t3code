@@ -96,7 +96,7 @@ No data leaves your Mac. Deck for T3 Code talks only to the T3 Code app running 
 
 All images are generated from the plugin's own renderers with invented data by `render-assets.ts` (the video by `demo/render-demo.ts`). They contain no T3 artwork. Re-run the scripts after UI changes land.
 
-Wherever a picture shows a Stream Deck (the thumbnail, gallery 2 and the video), the device is Elgato's own product photo from the Stream Deck XL press kit in the [Elgato Media Room](https://www.elgato.com/s/media-room), with the plugin's keys laid onto its screens (`device-photo.ts`). Elgato's review asks for official resources whenever the listing depicts their hardware ([guidelines](https://docs.elgato.com/guidelines/products#gallery)); don't go back to a drawn mock-up. The photo is downloaded at render time and isn't committed.
+Wherever a picture shows a Stream Deck (the thumbnail, gallery 2 and the video), the device is Elgato's own product photo from the Stream Deck XL press kit in the [Elgato Media Room](https://www.elgato.com/s/media-room), with the plugin's keys laid onto its screens (`device-photo.ts`). The site's device carousel does the same for the 15-key Stream Deck (MK.2), the Neo and the Mini, from their press kits (`render-devices.ts`). Elgato's review asks for official resources whenever the listing depicts their hardware ([guidelines](https://docs.elgato.com/guidelines/products#gallery)); don't go back to a drawn mock-up. The photo is downloaded at render time and isn't committed.
 
 ## Review demo video
 

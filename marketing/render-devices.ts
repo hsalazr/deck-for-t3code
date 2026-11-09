@@ -1,11 +1,11 @@
 /**
  * Renders the device carousel pictures on the site: the Thread Actions page on
  * the Stream Deck XL, the 15-key Stream Deck, the Stream Deck Neo and the
- * Stream Deck Mini, each on Elgato's own product photo of that device
- * (marketing/device-photo.ts downloads the photos outside the repo; Elgato's
+ * Stream Deck Mini, each on Elgato's own device preview from their official
+ * Stream Deck Templates Figma file (marketing/device-template.ts; Elgato's
  * guidelines ask for official resources wherever their hardware is shown), with
- * the plugin's key images laid onto the photo's key screens and a soft shadow
- * under the device.
+ * the plugin's key images under the template's glass and a soft shadow under
+ * the device.
  *
  *   nice -n 10 node --experimental-strip-types marketing/render-devices.ts
  *
@@ -15,7 +15,7 @@
  * quick messages (DEFAULT_MESSAGES), in the screen colours of the other
  * marketing pictures (screen-colors.ts). A message slot with no default message
  * stays dark, as it does on a real deck. The thread is invented. The Neo's
- * info bar shows Elgato's own clock from the photo.
+ * info bar is left dark.
  *
  * Output (docs/assets/devices/):
  *   <device>.webp   2080×1180, used by the site through <picture>
@@ -34,7 +34,7 @@ import { type ThreadCard } from "../src/model.ts";
 import { renderActionKey, renderBackKey, type ActionKeyInput } from "../src/render.ts";
 import { PROFILES } from "../scripts/build-profile.mjs";
 import { EXAMPLE_MESSAGES } from "./quick-messages.ts";
-import { devicePhotoDeck, devicePhotoHeight, MINI, MK2, NEO, XL, XL_PHOTO_CSS, type PhotoDevice } from "./device-photo.ts";
+import { MINI, MK2, NEO, TEMPLATE_CSS, templateDeck, templateHeight, XL, type TemplateDevice } from "./device-template.ts";
 import { soften } from "./screen-colors.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -102,16 +102,16 @@ function actionRows(profile: Profile): string[][] {
 interface Device {
 	out: string;
 	profile: string;
-	photo: PhotoDevice;
-	/** Height the photo is drawn at in the 1040×590 frame; smaller decks are drawn smaller. */
+	device: TemplateDevice;
+	/** Height the device is drawn at in the 1040×590 frame; smaller decks are drawn smaller. */
 	height: number;
 }
 
 const DEVICES: Device[] = [
-	{ out: "stream-deck-xl", profile: "Deck for T3 Code XL", photo: XL, height: 430 },
-	{ out: "stream-deck", profile: "Deck for T3 Code", photo: MK2, height: 440 },
-	{ out: "stream-deck-neo", profile: "Deck for T3 Code Neo", photo: NEO, height: 420 },
-	{ out: "stream-deck-mini", profile: "Deck for T3 Code Mini", photo: MINI, height: 380 },
+	{ out: "stream-deck-xl", profile: "Deck for T3 Code XL", device: XL, height: 440 },
+	{ out: "stream-deck", profile: "Deck for T3 Code", device: MK2, height: 440 },
+	{ out: "stream-deck-neo", profile: "Deck for T3 Code Neo", device: NEO, height: 430 },
+	{ out: "stream-deck-mini", profile: "Deck for T3 Code Mini", device: MINI, height: 390 },
 ];
 
 const FRAME_W = 1040;
@@ -120,14 +120,14 @@ const FRAME_H = 590;
 function deviceHtml(d: Device): string {
 	const profile = PROFILES.find((p: { file: string }) => p.file === d.profile)! as Profile;
 	const keys = actionRows(profile).flat().map(soften);
-	const width = Math.round((d.height * d.photo.body.w) / d.photo.body.h);
-	const height = devicePhotoHeight(d.photo, width);
+	const width = Math.round((d.height * d.device.w) / d.device.h);
+	const height = templateHeight(d.device, width);
 	const left = (FRAME_W - width) / 2;
 	const top = 44 + (452 - height) / 2; // the rest of the frame is room for the shadow
 	return `<!doctype html><html><head><meta charset="utf-8"><style>
 *{box-sizing:border-box}
 html,body{margin:0;width:${FRAME_W}px;height:${FRAME_H}px;overflow:hidden;background:transparent}
-${XL_PHOTO_CSS}
+${TEMPLATE_CSS}
 .floor{position:absolute;left:${FRAME_W / 2 - width * 0.46}px;top:${top + height - 22}px;width:${width * 0.92}px;height:60px;border-radius:50%;
   background:radial-gradient(50% 50% at 50% 50%,#000000d0,#00000080 45%,transparent 72%);filter:blur(10px)}
 .glow{position:absolute;left:${FRAME_W / 2 - width * 0.4}px;top:${top + height + 4}px;width:${width * 0.8}px;height:40px;border-radius:50%;
@@ -135,7 +135,7 @@ ${XL_PHOTO_CSS}
 .dev{position:absolute;left:${left}px;top:${top}px}
 </style></head><body>
 <div class="floor"></div><div class="glow"></div>
-<div class="dev">${devicePhotoDeck(d.photo, keys, width)}</div>
+<div class="dev">${templateDeck(d.device, keys, width)}</div>
 </body></html>`;
 }
 

@@ -25,12 +25,13 @@
  * CONFIRM_HOLD_MS, 100 ms hold-progress steps). Other apps' keys are generic
  * outline glyphs drawn here.
  *
- * The device is Elgato's own Stream Deck XL product photo (Elgato's Marketplace
- * guidelines ask for official resources wherever their hardware is shown), from
- * marketing/device-photo.ts, which downloads it outside the repo. The keys are
- * laid out flat (144 px keys, 48 px apart) and mapped onto the photo's 32 key
- * screens with its homography; the pointer and the zooms into a key go through
- * the same projection, so they land on that key in the photo.
+ * The device is Elgato's own Stream Deck XL preview from their official Stream
+ * Deck Templates Figma file (Elgato's Marketplace guidelines ask for official
+ * resources wherever their hardware is shown), from marketing/device-template.ts.
+ * The keys are laid out flat (144 px keys) and scaled onto the device's 32 key
+ * slots; the template's own glass (bevel and reflections) is drawn over them.
+ * The pointer and the zooms into a key go through the same mapping, so they
+ * land on that key on the device.
  *
  * Frames are drawn by one headless Chrome page driven over the DevTools pipe:
  * each frame is a plain description (key images, positions, zoom, finger,
@@ -50,6 +51,7 @@
  *
  *   docs/assets/demo-square.mp4   1080×1080 H.264
  *   docs/assets/demo-square.webm  1080×1080 VP9
+ *   docs/assets/demo-square-poster.png  1080×1080, the first frame
  *
  * Environment:
  *   DEMO_SCRATCH  scratch dir (default: <os tmpdir>/t3deck-demo); frames go to <scratch>/frames
@@ -81,7 +83,11 @@ import { pace, type UsageMetric } from "../../src/usage.ts";
 import { waitingLabel } from "../../src/t3/shell-stream.ts";
 import { PROFILES } from "../../scripts/build-profile.mjs";
 import { soften } from "../screen-colors.ts";
-import { BLEED, GAP, KEY, keyOrigin, xlGridTransform, xlPhotoHeight, xlPhotoImg, xlProject } from "../device-photo.ts";
+import { KEY, templateGap, templateGridTransform, templateHeight, templateOverlayImg, templateProject, XL as XL_DEVICE } from "../device-template.ts";
+
+/** Space between keys in the flat grid, so the grid lands on the XL's slots (keys fill the slots exactly; the template's glass covers their edges). */
+const GAP = templateGap(XL_DEVICE);
+const keyOrigin = (index: number): [number, number] => [(index % XL_DEVICE.columns) * (KEY + GAP), Math.floor(index / XL_DEVICE.columns) * (KEY + GAP)];
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SCRATCH = process.env.DEMO_SCRATCH ?? join(tmpdir(), "t3deck-demo");
@@ -186,39 +192,39 @@ const COLS = 8;
 const ROWS = 4;
 const SLOTS = COLS * ROWS;
 /**
- * Elgato's photo of the device, 1680 px wide under the captions: keys about
- * 125 px across, and the device's bottom edge on the frame's.
+ * Elgato's template XL, 1520 px wide under the captions: keys about 135 px
+ * across, and the device running off the frame's bottom edge below the keys.
  */
-const DEVICE_W = 1680;
-const DEVICE_H = xlPhotoHeight(DEVICE_W);
+const DEVICE_W = 1520;
+const DEVICE_H = templateHeight(XL_DEVICE, DEVICE_W);
 const DEVICE_X = (1920 - DEVICE_W) / 2;
 const DEVICE_Y = 236;
-/** The flat key grid (KEY px keys, GAP apart), before the photo's homography. */
+/** The flat key grid (KEY px keys, GAP apart), before it is scaled onto the device's slots. */
 const GRID_W = COLS * KEY + (COLS - 1) * GAP;
 const GRID_H = ROWS * KEY + (ROWS - 1) * GAP;
-const projectOnPhoto = xlProject(DEVICE_W);
-/** A flat-grid point on the photo, in deck coordinates (the page, with the deck at rest). */
-const onPhoto = (x: number, y: number): { x: number; y: number } => {
-	const [u, v] = projectOnPhoto(x, y);
+const projectOnDevice = templateProject(XL_DEVICE, DEVICE_W);
+/** A flat-grid point on the device, in deck coordinates (the page, with the deck at rest). */
+const onDevice = (x: number, y: number): { x: number; y: number } => {
+	const [u, v] = projectOnDevice(x, y);
 	return { x: DEVICE_X + u, y: DEVICE_Y + v };
 };
 
-/** A key's top-left in the flat grid: tiles are laid out here, under the homography. */
+/** A key's top-left in the flat grid: tiles are laid out here, under the grid's transform. */
 const slotPos = (slot: number): { x: number; y: number } => {
 	const [x, y] = keyOrigin(slot);
 	return { x, y };
 };
-/** The centre of the key at (col, row) on the photo, in deck coordinates; fractions land between keys. */
-const gridCenter = (col: number, row: number): { x: number; y: number } => onPhoto(col * (KEY + GAP) + KEY / 2, row * (KEY + GAP) + KEY / 2);
+/** The centre of the key at (col, row) on the device, in deck coordinates; fractions land between keys. */
+const gridCenter = (col: number, row: number): { x: number; y: number } => onDevice(col * (KEY + GAP) + KEY / 2, row * (KEY + GAP) + KEY / 2);
 const slotCenter = (slot: number): { x: number; y: number } => gridCenter(slot % COLS, Math.floor(slot / COLS));
-/** How wide and tall a key's screen looks on the photo at rest (the camera's slight tilt makes it a little squat). */
-function keyOnPhoto(slot: number): { w: number; h: number } {
+/** How wide and tall a key's screen is on the device at rest (square: the template is a flat front view). */
+function keyOnDevice(slot: number): { w: number; h: number } {
 	const { x, y } = slotPos(slot);
-	const [tl, tr, bl, br] = [onPhoto(x, y), onPhoto(x + KEY, y), onPhoto(x, y + KEY), onPhoto(x + KEY, y + KEY)];
+	const [tl, tr, bl, br] = [onDevice(x, y), onDevice(x + KEY, y), onDevice(x, y + KEY), onDevice(x + KEY, y + KEY)];
 	return { w: (tr.x - tl.x + br.x - bl.x) / 2, h: (bl.y - tl.y + br.y - tr.y) / 2 };
 }
 /** A key near the middle of the deck, for sizes that should follow the keys (the camera, the finger). */
-const MID_KEY = keyOnPhoto(11);
+const MID_KEY = keyOnDevice(11);
 const slotDist = (a: number, b: number): number => Math.hypot((a % COLS) - (b % COLS), Math.floor(a / COLS) - Math.floor(b / COLS));
 
 /**
@@ -243,9 +249,9 @@ interface Shot {
 /** Where a shot puts its focus point: centred, below the captions. */
 const ANCHOR = { x: 540, y: 690 };
 /**
- * A shot centred on key (col, row) of the photo (fractions land between keys),
+ * A shot centred on key (col, row) of the device (fractions land between keys),
  * with keys `keys` × 144 px wide: 2 shows a key about 290 px across, and the
- * keys are about 1.33 keys apart, centre to centre.
+ * keys are about 1.19 keys apart, centre to centre.
  */
 const shotAt = (col: number, row: number, keys: number): Shot => {
 	const c = gridCenter(col, row);
@@ -518,7 +524,7 @@ function fingerAt(t: number): Finger | undefined {
 	if (!session) return undefined;
 	const at = (slot: number) => {
 		const o = slotPos(slot);
-		return onPhoto(o.x + KEY / 2 + FINGER_OFFSET.x, o.y + KEY / 2 + FINGER_OFFSET.y);
+		return onDevice(o.x + KEY / 2 + FINGER_OFFSET.x, o.y + KEY / 2 + FINGER_OFFSET.y);
 	};
 	const presses = session.presses;
 	let slot = presses[0]!.slot;
@@ -811,7 +817,7 @@ interface Big {
 	x: number;
 	y: number;
 	scale: number;
-	/** Vertical scale: below `scale` early in the zoom, where the key still looks squat as on the photo. */
+	/** Vertical scale: equal to `scale` on the template's flat front view (it would be less on a device seen at an angle). */
 	sy: number;
 	opacity: number;
 	layers: { svg: string; opacity: number }[];
@@ -842,12 +848,12 @@ function zoomAt(t: number): { p: number; z: Zoom } {
 /**
  * Where the zoomed key's centre is, the deck's scale `s`, and the big key's
  * width `b` (in 144 px keys: ZOOM once zoomed in) and height over width `squash`.
- * The big key starts as the key on the photo (as wide, and as squat from the
- * camera's tilt) and grows square into the big key; the deck grows with it.
+ * The big key starts as the key on the device (the same size and shape) and
+ * grows into the big key; the deck grows with it.
  */
 function zoomFrame(p: number, z: Zoom): { cx: number; cy: number; s: number; b: number; squash: number } {
 	const c = slotCenter(z.slot);
-	const key = keyOnPhoto(z.slot);
+	const key = keyOnDevice(z.slot);
 	// Act 4 starts and ends on the deck at rest; square, on the home shot.
 	const from = SQUARE ? { ...onScreen(SHOT.home, c.x, c.y), s: SHOT.home.s } : { ...c, s: 1 };
 	const b = lerp((from.s * key.w) / KEY, ZOOM, p);
@@ -1055,10 +1061,10 @@ const SQUARE_CSS = `
 `;
 
 function pageHtml(): string {
-	// A dark screen under every key, so the photo's own key art never shows (a key fading or shrinking, a page switch).
+	// A dark screen under every key, so a slot is never see-through (a key fading or shrinking, a page switch).
 	const screens = Array.from({ length: SLOTS }, (_, s) => {
 		const p = slotPos(s);
-		return `<div class="screen" style="left:${p.x - BLEED}px;top:${p.y - BLEED}px"></div>`;
+		return `<div class="screen" style="left:${p.x}px;top:${p.y}px"></div>`;
 	}).join("");
 	const captions = CAPTIONS.map((c) => `<div class="cap ${c.kind}" id="${c.id}">${c.text}</div>`).join("");
 	const labels = [...STATES, ...MACHINE_STATES].map((s) => `<div class="lab" id="lab-${s.id}"><div class="lt" style="color:${s.color}">${s.title}</div><div class="ls">${s.sub}</div></div>`).join("");
@@ -1075,10 +1081,9 @@ html,body{margin:0;width:${W}px;height:${H}px;overflow:hidden;background:#000;co
 .cap.sub{top:180px;font-size:30px;line-height:1.3;color:#a3a3a3}
 #deck{position:absolute;left:0;top:0;width:${W}px;height:${H}px;transform-origin:0 0}
 .device{position:absolute;left:${DEVICE_X}px;top:${DEVICE_Y}px;width:${DEVICE_W}px;height:${DEVICE_H}px;overflow:hidden}
-.device>img.photo{position:absolute;display:block;max-width:none}
-/* The flat key grid, mapped onto the photo's key screens. */
-#grid{position:absolute;left:${DEVICE_X}px;top:${DEVICE_Y}px;width:${GRID_W}px;height:${GRID_H}px;transform-origin:0 0;transform:${xlGridTransform(DEVICE_W)}}
-.screen{position:absolute;width:${KEY + 2 * BLEED}px;height:${KEY + 2 * BLEED}px;border-radius:${14 + BLEED}px;background:#050506}
+/* The flat key grid, scaled onto the device's key slots; the device (.device, the template overlay) is drawn over it. */
+#grid{position:absolute;left:${DEVICE_X}px;top:${DEVICE_Y}px;width:${GRID_W}px;height:${GRID_H}px;transform-origin:0 0;transform:${templateGridTransform(XL_DEVICE, DEVICE_W)}}
+.screen{position:absolute;width:${KEY}px;height:${KEY}px;border-radius:14px;background:#050506}
 #tiles{position:absolute;left:0;top:0}
 .tile{position:absolute;left:0;top:0;width:${KEY}px;height:${KEY}px;transform-origin:50% 50%}
 .face{position:absolute;inset:0;border-radius:17px;overflow:hidden;background:#050506}
@@ -1086,10 +1091,10 @@ html,body{margin:0;width:${W}px;height:${H}px;overflow:hidden;background:#000;co
 .face svg{display:block}
 .face>.shade{position:absolute;inset:0;background:#000;opacity:0}
 .face>.gloss{position:absolute;inset:0;border-radius:17px;background:linear-gradient(162deg,#ffffff16 0%,#ffffff05 30%,transparent 46%);box-shadow:inset 0 1px 0 #ffffff1c,inset 0 0 0 1px #ffffff08}
-/* A key's face overhangs its screen on the photo by BLEED, like xlPhotoDeck's. */
-.tile>.face{inset:-${BLEED}px;border-radius:${14 + BLEED}px}
-.tile>.face>.l{inset:${BLEED}px;border-radius:14px;overflow:hidden}
-.tile>.face>.gloss{border-radius:${14 + BLEED}px}
+/* On the device a key fills its slot, and the template's own glass is on top: no drawn gloss on the small keys. */
+.tile>.face{border-radius:14px}
+.tile>.face>.l{border-radius:14px;overflow:hidden}
+.tile>.face>.gloss{display:none}
 #big,#big2{position:absolute;left:0;top:0;width:${BIG}px;height:${BIG}px;transform-origin:50% 50%;z-index:4;opacity:0;border-radius:${r}px;
   box-shadow:0 0 0 ${ZOOM * 5}px #040405,0 0 0 ${ZOOM * 5 + 1}px #ffffff14,0 40px 110px #000}
 #big>.face,#big2>.face{border-radius:${r}px}
@@ -1112,8 +1117,8 @@ ${SQUARE ? SQUARE_CSS : ""}</style></head><body>
 <div class="eyebrow">Deck for T3 Code</div>
 ${captions}
 <div id="deck">
-<div class="device">${xlPhotoImg(DEVICE_W)}</div>
 <div id="grid">${screens}<div id="tiles"></div></div>
+<div class="device">${templateOverlayImg(XL_DEVICE, DEVICE_W)}</div>
 </div>${SQUARE ? `<div class="scrim"></div>` : ""}
 <div id="big"><div class="face"><div class="gloss"></div></div><div class="look">Detailed</div></div>
 <div id="big2"><div class="face"><div class="gloss"></div></div><div class="look">Glance</div></div>
@@ -1319,6 +1324,8 @@ function encodeSquare(): void {
 		console.log("encoding docs/assets/demo-square.webm (1080×1080, VP9)");
 		ffmpeg([...input, "-vf", vf, "-c:v", "libvpx-vp9", "-crf", "37", "-b:v", "0", "-deadline", "good", "-cpu-used", "2", "-row-mt", "1", "-g", String(FPS * 4), ...tags, ...clean, join(ASSETS, "demo-square.webm")]);
 	} else console.warn("libvpx-vp9 not available: skipped docs/assets/demo-square.webm");
+	console.log("writing docs/assets/demo-square-poster.png");
+	ffmpeg(["-i", join(FRAMES, "f0000.png"), "-frames:v", "1", "-map_metadata", "-1", "-fflags", "+bitexact", join(ASSETS, "demo-square-poster.png")]);
 	for (const f of [join(ASSETS, "demo-square.mp4"), join(ASSETS, "demo-square.webm")]) {
 		if (existsSync(f)) console.log(`  ${f.slice(ROOT.length + 1)}  ${(statSync(f).size / 1e6).toFixed(2)} MB`);
 	}

@@ -5,8 +5,8 @@
  *   node --experimental-strip-types marketing/render-assets.ts
  *
  * It imports src/render.ts, feeds it invented data (acme-* projects, made-up
- * thread titles), lays the keys out on a Stream Deck XL mock-up, and
- * rasterises the result with the headless Chrome that T3 Code ships
+ * thread titles), lays the keys out (on Elgato's own Stream Deck XL product
+ * photo for the Marketplace pictures, see device-photo.ts), and rasterises the result with the headless Chrome that T3 Code ships
  * (~/.t3/tools/chrome-headless-shell), or the binary named by $CHROME.
  * Scratch files go to /tmp/t3deck-docs2/. `ONLY=icons` renders just the icons, `ONLY=keys` just the single-key PNGs.
  *
@@ -30,6 +30,7 @@ import { pace, type UsageMetric } from "../src/usage.ts";
 import { PROFILES } from "../scripts/build-profile.mjs";
 import { soften } from "./screen-colors.ts";
 import { EXAMPLE_MESSAGES } from "./quick-messages.ts";
+import { XL_PHOTO_CSS, xlPhotoDeck } from "./device-photo.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SCRATCH = "/tmp/t3deck-docs2";
@@ -375,12 +376,15 @@ function renderDeckShots(): void {
 	shot("hero", bare(hero), join(ASSETS, "hero.png"), DECK_W, DECK_H, 2, true);
 	// The same page on the other decks that ship one: marketing/render-devices.ts (the site's carousel).
 
-	// Marketplace images (1920×960, black stage, glow, headline).
+	// Marketplace images (1920×960, black stage, glow, headline). Elgato asks for its own product imagery
+	// wherever the listing shows a Stream Deck, so the decks here are its XL photo, not the mock-up above.
 	const stage = (inner: string, css = ""): string => `<style>${BASE_CSS}${css}</style><div class="stage" style="width:1920px;height:960px"><div class="glow"></div>${inner}</div>`;
 	const heading = (h: string, sub: string, align = "center", pad = true): string =>
 		`<div style="text-align:${align};padding:${align === "center" && pad ? "64px 0 0" : "0"}"><h1 style="font-size:76px;font-weight:700;letter-spacing:-.025em;line-height:1.05">${h}</h1><p class="muted" style="font-size:30px;margin-top:14px">${sub}</p></div>`;
+	// The device runs off the bottom edge: keys stay big enough to read, the front lip is cropped.
+	const PHOTO_W = 1680;
 	const centered = (keys: string[], h: string, sub: string): string =>
-		stage(`${heading(h, sub)}<div style="position:absolute;left:${(1920 - DECK_W) / 2}px;top:${960 - DECK_H - 44}px">${deck(keys)}</div>`);
+		stage(`${heading(h, sub)}<div style="position:absolute;left:${(1920 - PHOTO_W) / 2}px;top:212px">${xlPhotoDeck(keys, PHOTO_W)}</div>`, XL_PHOTO_CSS);
 
 	shot("thumbnail", centered(hero, "Deck for T3 Code", "Every thread on a key. Glance, tap, move on."), join(MARKETING, "thumbnail.png"), 1920, 960);
 	shot("gallery-2", centered(actions, "Hold a key. Steer the thread.", "Quick messages, compact, snooze, settle and stop. The risky ones need a hold."), join(MARKETING, "gallery-2-thread-actions.png"), 1920, 960);

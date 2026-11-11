@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- The nightly pre-release is published again. It had failed since 2026-11-11: releases in this repo are immutable now, and GitHub never lets a tag name be used again once a release has used it, so the rolling `nightly` tag stopped working. Each nightly now has its own tag (`nightly-1.2.2.N`) and replaces the one before it. Find it under [pre-releases](https://github.com/hsalazr/deck-for-t3code/releases?q=prerelease%3Atrue).
+
 ## [1.2.2] - 2026-11-11
 
 ### Added

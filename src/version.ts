@@ -4,4 +4,4 @@
  * It is a constant on purpose: Elgato's rules forbid reading the manifest at runtime.
  */
 export const PLUGIN_NAME = "deck-for-t3code";
-export const PLUGIN_VERSION = "1.2.1";
+export const PLUGIN_VERSION = "1.2.2";

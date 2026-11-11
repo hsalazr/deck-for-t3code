@@ -131,8 +131,10 @@ const MAX_RECENT_PAGES = 5;
 /** How long a main thread stays "working" after its background work finishes. */
 const SUBAGENT_GRACE_MS = 30_000;
 const PROJECTS_REFRESH_MS = 60_000;
-/** How often the linked-machines timer checks whether a remote poll is due. */
+/** The linked-machines timer checks at least this often whether a remote poll is due, */
 const REMOTE_TICK_MS = 2_000;
+/** and sooner when one comes due before that, but never closer together than this. */
+const REMOTE_TICK_MIN_MS = 250;
 /** Both lists, regardless of the shell stream. */
 export const FULL_POLL_MS = 30_000;
 /** Shell changes are gathered this long before polling. */
@@ -218,7 +220,7 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 		this.#now = opts.now ?? Date.now;
 		this.#discover = opts.discoverHome ?? (opts.call ? undefined : (base) => discoverHome(base));
 		this.#startedAt = this.#now();
-		this.#remotes = new RemoteEnvironments((name, args) => this.#call(name, args), (message) => this.emit("log", message));
+		this.#remotes = new RemoteEnvironments((name, args) => this.#call(name, args), (message) => this.emit("log", message), () => this.#now());
 	}
 
 	configure(settings: Partial<MonitorSettings>): void {
@@ -710,7 +712,11 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 		clearTimeout(this.#remoteTimer);
 		this.#remoteTimer = setTimeout(() => {
 			this.#remoteTimer = undefined;
-			void this.#pollRemotes(false).finally(() => this.#scheduleRemotes(REMOTE_TICK_MS));
+			void this.#pollRemotes(false).finally(() => {
+				// Still due right after trying means nothing could be asked (T3 away, signed out): wait a whole tick.
+				const dueIn = this.#remotes.dueIn(this.#now(), this.#settings.pollSeconds * 1000);
+				this.#scheduleRemotes(dueIn > 0 ? Math.min(REMOTE_TICK_MS, Math.max(REMOTE_TICK_MIN_MS, dueIn)) : REMOTE_TICK_MS);
+			});
 		}, delayMs);
 	}
 
@@ -774,6 +780,7 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 		}
 		const threads = shell ? reparent(this.#threads, (id) => shell.rootOf(id)) : this.#threads;
 		const pending = shell?.pendingByRoot() ?? new Map<string, PendingTask[]>();
+		for (const id of linkedBackground(threads, this.#remotes.held())) pending.set(id, [LINKED_BACKGROUND]);
 		const background = backgroundByRoot(threads, pending);
 		const cards = buildCards(threads, {
 			acked: this.#acked,
@@ -924,6 +931,25 @@ export function reparent(threads: readonly ThreadSummary[], rootOf: (threadId: s
 		const root = rootOf(t.threadId);
 		return root && root !== t.threadId && ids.has(root) ? { ...t, parentThreadId: root } : t;
 	});
+}
+
+/**
+ * A linked machine has no task list to show: all the plugin learns is that a
+ * finished thread there still waits on background work.
+ */
+export const LINKED_BACKGROUND: PendingTask = { taskId: "linked-machine-background", kind: "background_task", description: "background" };
+
+/**
+ * Which of the `held` threads get that stand-in task: only a linked machine's
+ * own threads, and not one with a subagent that is listed as running, which
+ * the key already counts.
+ */
+export function linkedBackground(threads: readonly ThreadSummary[], held: ReadonlySet<string>): string[] {
+	if (held.size === 0) return [];
+	const byId = new Map(threads.map((t) => [t.threadId, t] as const));
+	const busyRoots = new Set<string>();
+	for (const t of threads) if (t.parentThreadId && isActive(t.status)) busyRoots.add(rootOf(t.threadId, byId));
+	return [...held].filter((id) => byId.get(id)?.environmentId && !busyRoots.has(id));
 }
 
 /** Root → number of background tasks, minus children whose own thread status already counts them. */

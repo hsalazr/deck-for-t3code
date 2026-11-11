@@ -11,8 +11,8 @@ import { deepLinkFor, type ThreadSummary } from "../src/model.ts";
 import { TokenStore } from "../src/t3/auth.ts";
 import type { WatchTarget } from "../src/t3/context-watcher.ts";
 import { ToolError, UnreachableError } from "../src/t3/mcp.ts";
-import { Monitor, type ContextSource } from "../src/t3/monitor.ts";
-import { linksOf, REMOTE_ACTIVE_MIN_MS, REMOTE_DROP_AFTER_MS } from "../src/t3/remotes.ts";
+import { linkedBackground, Monitor, type ContextSource } from "../src/t3/monitor.ts";
+import { HELD_BATCH, HELD_RETRY_MS, linksOf, REMOTE_ACTIVE_MIN_MS, REMOTE_BUSY_MIN_MS, REMOTE_DROP_AFTER_MS } from "../src/t3/remotes.ts";
 
 const T0 = Date.parse("2026-11-03T12:00:00Z");
 const LOCAL = "env-local";
@@ -49,6 +49,10 @@ interface Env {
 	active: ThreadSummary[];
 	recent: ThreadSummary[];
 	fail?: Error;
+	/** Finished threads that still wait on background work: `t3_thread_wait` times out for them. */
+	held?: Set<string>;
+	/** `t3_thread_wait` refuses. */
+	waitFail?: Error;
 }
 
 const monitors: Monitor[] = [];
@@ -64,6 +68,8 @@ async function setup() {
 		envs: new Map<string, Env>(),
 		links: "on" as "on" | "off" | "weird" | "down",
 		calls: [] as { name: string; args: Record<string, unknown> }[],
+		/** Runs while a `t3_thread_wait` question is still open. */
+		onWait: undefined as (() => Promise<void>) | undefined,
 	};
 	const dir = await fs.mkdtemp(path.join(os.tmpdir(), "deck-remotes-"));
 	const tokens = new TokenStore({ dir, run: async () => "", checkCli: async () => undefined, cooldownMs: 0 });
@@ -85,6 +91,11 @@ async function setup() {
 			const env = typeof args.environmentId === "string" ? server.envs.get(args.environmentId) : undefined;
 			if (args.environmentId !== undefined && !env) throw new ToolError(`unknown environment ${String(args.environmentId)}`);
 			if (env?.fail) throw env.fail;
+			if (name === "t3_thread_wait") {
+				if (env?.waitFail) throw env.waitFail;
+				await server.onWait?.();
+				return { threadId: args.threadId, runId: null, status: "completed", timedOut: env?.held?.has(String(args.threadId)) ?? false };
+			}
 			if (name === "t3_project_list") return { projects: [{ id: env ? `p-${String(args.environmentId)}` : "p", name: env ? env.label : "proj" }], nextCursor: null };
 			const source = env ?? server.local;
 			const list = args.statuses ? source.active : source.recent.slice(0, Number(args.limit));
@@ -98,6 +109,8 @@ async function setup() {
 }
 
 const remoteCalls = (calls: { name: string; args: Record<string, unknown> }[]) => calls.filter((c) => c.args.environmentId !== undefined);
+/** The "does background work still hold this finished thread?" questions, by thread id. */
+const waits = (calls: { name: string; args: Record<string, unknown> }[]) => calls.filter((c) => c.name === "t3_thread_wait").map((c) => String(c.args.threadId));
 
 test("linksOf: keeps well-formed links, drops this machine and junk; null for something that isn't a links answer", () => {
 	assert.deepEqual(
@@ -254,6 +267,235 @@ test("remote active lists are polled at most every REMOTE_ACTIVE_MIN_MS, not on 
 	const remote = remoteCalls(server.calls);
 	assert.equal(remote.filter((c) => c.name === "t3_thread_list" && c.args.statuses).length, 1);
 	m.stop();
+});
+
+test("a linked machine with something running is asked every REMOTE_BUSY_MIN_MS, an idle one stays at REMOTE_ACTIVE_MIN_MS", async () => {
+	const { m, server, setClock } = await setup();
+	server.envs.set("env-busy", { label: "Busy", status: "reachable", active: [summary("b-run", "env-busy", { status: "running" })], recent: [] });
+	server.envs.set("env-idle", { label: "Idle", status: "reachable", active: [], recent: [] });
+	await m.refresh();
+	await m.refreshRemotes();
+	server.calls.length = 0;
+	setClock(T0 + REMOTE_BUSY_MIN_MS - 1);
+	await m.refresh();
+	assert.deepEqual(remoteCalls(server.calls), [], "too soon");
+	setClock(T0 + REMOTE_BUSY_MIN_MS);
+	await m.refresh();
+	assert.deepEqual(
+		remoteCalls(server.calls).map((c) => c.args.environmentId),
+		["env-busy"],
+	);
+	m.stop();
+});
+
+test("a remote run that finishes shows at that machine's next active poll, without waiting for the recent roots' turn", async () => {
+	const { m, server, setClock } = await setup();
+	const env: Env = { label: "Linux box", status: "reachable", active: [summary("r", "env-linux", { status: "running" })], recent: [] };
+	server.envs.set("env-linux", env);
+	await m.refresh();
+	await m.refreshRemotes();
+	server.calls.length = 0;
+	setClock(T0 + REMOTE_BUSY_MIN_MS);
+	env.active = [];
+	env.recent = [summary("r", "env-linux", { updatedAt: new Date(T0 + 2000).toISOString() })];
+	await m.refresh(); // this machine's poll; the linked one it starts runs on
+	await m.refreshRemotes();
+	assert.equal(server.calls.some((c) => c.name === "t3_environment_links"), false, "an active round, not a full one");
+	assert.equal(remoteCalls(server.calls).filter((c) => c.name === "t3_thread_list" && !c.args.statuses).length, 1, "recent roots asked once, because a root left");
+	assert.equal(m.snapshot.cards.get("r")?.state, "done");
+	m.stop();
+});
+
+test("a remote subagent that finishes doesn't send for the recent roots", async () => {
+	const { m, server, setClock } = await setup();
+	const root = summary("r", "env-linux", { status: "running" });
+	const child = summary("r-child", "env-linux", { status: "running", parentThreadId: "r", relationshipToParent: "subagent" });
+	const env: Env = { label: "Linux box", status: "reachable", active: [root, child], recent: [] };
+	server.envs.set("env-linux", env);
+	await m.refresh();
+	await m.refreshRemotes();
+	server.calls.length = 0;
+	setClock(T0 + REMOTE_BUSY_MIN_MS);
+	env.active = [root];
+	await m.refresh();
+	await m.refreshRemotes();
+	assert.equal(server.calls.some((c) => c.name === "t3_environment_links"), false, "an active round, not a full one");
+	assert.deepEqual(
+		remoteCalls(server.calls).map((c) => Boolean(c.args.statuses)),
+		[true],
+		"only the active list",
+	);
+	m.stop();
+});
+
+test("a linked machine that is failing is asked at the idle pace, even if something was running there", async () => {
+	const { m, server, setClock } = await setup();
+	const env: Env = { label: "A", status: "reachable", active: [summary("a-run", "env-a", { status: "running" })], recent: [] };
+	server.envs.set("env-a", env);
+	await m.refresh();
+	await m.refreshRemotes();
+	env.fail = new ToolError("The linked environment stopped answering.");
+	setClock(T0 + REMOTE_BUSY_MIN_MS);
+	await m.refresh();
+	await m.refreshRemotes();
+	assert.equal(m.linkedEnvironments.get("env-a")?.failing, true);
+	server.calls.length = 0;
+	setClock(T0 + 2 * REMOTE_BUSY_MIN_MS);
+	await m.refresh();
+	assert.deepEqual(remoteCalls(server.calls), [], "not at the busy pace");
+	setClock(T0 + REMOTE_BUSY_MIN_MS + REMOTE_ACTIVE_MIN_MS);
+	await m.refresh();
+	assert.equal(remoteCalls(server.calls).filter((c) => c.name === "t3_thread_list" && c.args.statuses).length, 1);
+	m.stop();
+});
+
+test("a remote thread whose turn ended with background work still running stays working, with a chip; done comes when that work ends", async () => {
+	const { m, server, setClock } = await setup();
+	const env: Env = { label: "Linux box", status: "reachable", active: [summary("r", "env-linux", { status: "running" })], recent: [], held: new Set(["r"]) };
+	server.envs.set("env-linux", env);
+	await m.refresh();
+	await m.refreshRemotes();
+	assert.deepEqual(waits(server.calls), [], "nothing finished yet");
+
+	setClock(T0 + REMOTE_BUSY_MIN_MS);
+	env.active = [];
+	env.recent = [summary("r", "env-linux", { updatedAt: new Date(T0 + 2000).toISOString() })];
+	await m.refresh(); // this machine's poll; the linked one it starts runs on
+	await m.refreshRemotes();
+	const asked = server.calls.find((c) => c.name === "t3_thread_wait");
+	assert.deepEqual(asked?.args, { environmentId: "env-linux", threadId: "r", untilDelegatedWorkSettled: true, timeoutMs: 1 });
+	let card = m.snapshot.cards.get("r");
+	assert.equal(card?.state, "working", "not done yet");
+	assert.equal(card?.background, 1);
+	assert.equal(card?.waitingOn, "background");
+
+	// Still held: asked again at the busy pace, though nothing is in the active list.
+	server.calls.length = 0;
+	setClock(T0 + 2 * REMOTE_BUSY_MIN_MS);
+	await m.refresh();
+	await m.refreshRemotes();
+	assert.equal(server.calls.some((c) => c.name === "t3_environment_links"), false, "an active round, not a full one");
+	assert.deepEqual(waits(server.calls), ["r"]);
+	assert.equal(m.snapshot.cards.get("r")?.state, "working");
+
+	// The background work ends: no chip, and after the same short grace as on this machine, done.
+	env.held?.clear();
+	setClock(T0 + 3 * REMOTE_BUSY_MIN_MS);
+	await m.refresh();
+	await m.refreshRemotes();
+	card = m.snapshot.cards.get("r");
+	assert.equal(card?.background, 0);
+	assert.equal(card?.waitingOn, undefined);
+	setClock(T0 + 3 * REMOTE_BUSY_MIN_MS + 31_000);
+	await m.refreshRemotes();
+	assert.equal(m.snapshot.cards.get("r")?.state, "done");
+
+	// Settled for this run: not asked about again.
+	server.calls.length = 0;
+	setClock(T0 + 3 * REMOTE_BUSY_MIN_MS + 62_000);
+	await m.refreshRemotes();
+	assert.deepEqual(waits(server.calls), []);
+	m.stop();
+});
+
+test("a held remote thread never shows as done while the question about it is still open, even if this machine's poll redraws the keys", async () => {
+	const { m, server, setClock } = await setup();
+	const env: Env = { label: "Linux box", status: "reachable", active: [summary("r", "env-linux", { status: "running" })], recent: [], held: new Set(["r"]) };
+	server.envs.set("env-linux", env);
+	await m.refresh();
+	await m.refreshRemotes();
+
+	const seenMidQuestion: (string | undefined)[] = [];
+	server.onWait = async () => {
+		server.onWait = undefined;
+		await m.refresh(); // this machine's poll lands while the linked machine's answer is on its way
+		seenMidQuestion.push(m.snapshot.cards.get("r")?.state);
+	};
+	setClock(T0 + REMOTE_BUSY_MIN_MS);
+	env.active = [];
+	env.recent = [summary("r", "env-linux", { updatedAt: new Date(T0 + 2000).toISOString() })];
+	await m.refresh();
+	await m.refreshRemotes();
+	assert.deepEqual(seenMidQuestion, ["working"], "still the running thread it was, not a finished one");
+	assert.equal(m.snapshot.cards.get("r")?.state, "working");
+	assert.equal(m.snapshot.cards.get("r")?.waitingOn, "background");
+	m.stop();
+});
+
+test("each finished remote root is asked about once per run; one that never ran, or isn't completed, never", async () => {
+	const { m, server, setClock } = await setup();
+	const env: Env = {
+		label: "A",
+		status: "reachable",
+		active: [],
+		recent: [summary("a1", "env-a"), summary("a2", "env-a"), summary("a-new", "env-a", { status: "idle", latestRunId: null }), summary("a-failed", "env-a", { status: "failed" })],
+	};
+	server.envs.set("env-a", env);
+	await m.refresh();
+	await m.refreshRemotes();
+	assert.deepEqual(waits(server.calls).sort(), ["a1", "a2"]);
+
+	server.calls.length = 0;
+	setClock(T0 + 31_000);
+	await m.refreshRemotes();
+	assert.deepEqual(waits(server.calls), [], "same runs: nothing to ask");
+
+	env.recent[0] = summary("a1", "env-a", { latestRunId: "a1-run-2", updatedAt: new Date(T0 + 40_000).toISOString() });
+	setClock(T0 + 62_000);
+	await m.refreshRemotes();
+	assert.deepEqual(waits(server.calls), ["a1"], "a new run is asked about");
+	m.stop();
+});
+
+test("more finished remote roots than one round's worth are asked about over the next rounds, at the busy pace", async () => {
+	const { m, server, setClock } = await setup();
+	const recent = Array.from({ length: HELD_BATCH + 3 }, (_, i) => summary(`a${i}`, "env-a"));
+	server.envs.set("env-a", { label: "A", status: "reachable", active: [], recent });
+	await m.refresh();
+	await m.refreshRemotes();
+	assert.equal(waits(server.calls).length, HELD_BATCH);
+	server.calls.length = 0;
+	setClock(T0 + REMOTE_BUSY_MIN_MS);
+	await m.refresh();
+	await m.refreshRemotes();
+	assert.equal(server.calls.some((c) => c.name === "t3_environment_links"), false, "an active round, not a full one");
+	assert.equal(waits(server.calls).length, 3, "the rest");
+	server.calls.length = 0;
+	setClock(T0 + 2 * REMOTE_BUSY_MIN_MS);
+	await m.refresh();
+	assert.deepEqual(remoteCalls(server.calls), [], "all asked: back to the idle pace");
+	m.stop();
+});
+
+test("a linked machine that refuses the question is left alone for HELD_RETRY_MS, and its threads show as before", async () => {
+	const { m, server, setClock } = await setup();
+	const env: Env = { label: "A", status: "reachable", active: [], recent: [summary("a1", "env-a"), summary("a2", "env-a")], waitFail: new ToolError("t3_thread_wait: unknown tool") };
+	server.envs.set("env-a", env);
+	await m.refresh();
+	await m.refreshRemotes();
+	assert.equal(waits(server.calls).length, 2);
+	assert.equal(m.snapshot.cards.get("a1")?.state, "idle");
+	assert.equal(m.linkedEnvironments.get("env-a")?.failing, false, "the machine itself is fine");
+
+	server.calls.length = 0;
+	setClock(T0 + 60_000);
+	await m.refreshRemotes();
+	assert.deepEqual(waits(server.calls), [], "not asked again yet");
+	env.waitFail = undefined;
+	setClock(T0 + HELD_RETRY_MS);
+	await m.refreshRemotes();
+	assert.deepEqual(waits(server.calls).sort(), ["a1", "a2"]);
+	m.stop();
+});
+
+test("linkedBackground: only a linked machine's own held threads, and not one whose running subagent is already listed", () => {
+	const root = summary("r", "env-a", { environmentId: "env-a" });
+	const child = summary("r-child", "env-a", { environmentId: "env-a", status: "running", parentThreadId: "r", relationshipToParent: "subagent" });
+	const local = summary("local-1");
+	assert.deepEqual(linkedBackground([root, local], new Set(["r"])), ["r"]);
+	assert.deepEqual(linkedBackground([root, child, local], new Set(["r"])), [], "the running subagent already makes it working");
+	assert.deepEqual(linkedBackground([root, local], new Set(["local-1", "gone"])), [], "never this machine's threads, or ones no longer listed");
+	assert.deepEqual(linkedBackground([root, local], new Set()), []);
 });
 
 test("linked machines' threads are never handed to the context watcher", async () => {

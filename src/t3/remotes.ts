@@ -269,12 +269,18 @@ export class RemoteEnvironments {
 				);
 				env.fullAt = opts.now;
 			}
+			// The new lists and what holds their finished threads are published together: this machine's
+			// own poll can redraw the keys at any moment, and a held thread mustn't show as done in between.
+			const held = await this.#askHeld(environmentId, env, active, recent, opts.now);
 			env.active = active;
 			env.recent = recent;
+			env.held = held.held;
+			env.settledFor = held.settledFor;
+			env.backlog = held.backlog;
+			env.heldOffUntil = held.heldOffUntil;
 			env.answered = true;
 			env.failingSince = undefined;
 			this.#note(environmentId, "");
-			await this.#askHeld(environmentId, env, opts.now);
 		} catch (error) {
 			env.polledAt = this.#now();
 			env.failingSince ??= opts.now;
@@ -304,17 +310,26 @@ export class RemoteEnvironments {
 	 * first, then the ones not asked about since their run ended, newest first.
 	 * Never throws: a thread the machine won't answer for counts as settled, and
 	 * a machine that refuses every question is left alone for HELD_RETRY_MS.
+	 * Works on copies and resolves with the machine's new state, for the caller
+	 * to publish along with the lists it was worked out from.
 	 */
-	async #askHeld(environmentId: string, env: RemoteEnv, now: number): Promise<void> {
-		const activeIds = new Set(env.active.map((t) => t.threadId));
-		const finished = env.recent.filter((t) => t.status === "completed" && t.latestRunId && !activeIds.has(t.threadId));
+	async #askHeld(
+		environmentId: string,
+		env: RemoteEnv,
+		active: readonly ThreadSummary[],
+		recent: readonly ThreadSummary[],
+		now: number,
+	): Promise<Pick<RemoteEnv, "held" | "settledFor" | "backlog" | "heldOffUntil">> {
+		const next = { held: new Set(env.held), settledFor: new Map(env.settledFor), backlog: false, heldOffUntil: env.heldOffUntil };
+		const activeIds = new Set(active.map((t) => t.threadId));
+		const finished = recent.filter((t) => t.status === "completed" && t.latestRunId && !activeIds.has(t.threadId));
 		const finishedIds = new Set(finished.map((t) => t.threadId));
-		for (const id of env.held) if (!finishedIds.has(id)) env.held.delete(id);
-		for (const id of env.settledFor.keys()) if (!finishedIds.has(id)) env.settledFor.delete(id);
-		if (now < env.heldOffUntil) return;
-		const due = [...finished.filter((t) => env.held.has(t.threadId)), ...finished.filter((t) => !env.held.has(t.threadId) && env.settledFor.get(t.threadId) !== runKey(t))];
+		for (const id of next.held) if (!finishedIds.has(id)) next.held.delete(id);
+		for (const id of next.settledFor.keys()) if (!finishedIds.has(id)) next.settledFor.delete(id);
+		if (now < next.heldOffUntil) return next;
+		const due = [...finished.filter((t) => next.held.has(t.threadId)), ...finished.filter((t) => !next.held.has(t.threadId) && next.settledFor.get(t.threadId) !== runKey(t))];
 		const batch = due.slice(0, HELD_BATCH);
-		env.backlog = due.length > batch.length;
+		next.backlog = due.length > batch.length;
 		const refused: ThreadSummary[] = [];
 		let lastRefusal = "";
 		let answered = 0;
@@ -332,33 +347,34 @@ export class RemoteEnvironments {
 			for (const r of results) {
 				if ("error" in r) {
 					// This machine's server stopped answering: what we know stands until the next round.
-					if (!(r.error instanceof ToolError)) return;
+					if (!(r.error instanceof ToolError)) return next;
 					refused.push(r.t);
 					lastRefusal = r.error.message;
-					env.held.delete(r.t.threadId);
+					next.held.delete(r.t.threadId);
 					continue;
 				}
 				answered++;
 				const answer = r.result as { status?: unknown; timedOut?: unknown } | undefined;
 				if (answer?.timedOut === true && answer.status === "completed") {
-					env.held.add(r.t.threadId);
+					next.held.add(r.t.threadId);
 				} else {
-					env.held.delete(r.t.threadId);
+					next.held.delete(r.t.threadId);
 					// Not completed any more means it runs again: the active list takes over, and its next run is asked about.
-					if (answer?.timedOut !== true) env.settledFor.set(r.t.threadId, runKey(r.t));
+					if (answer?.timedOut !== true) next.settledFor.set(r.t.threadId, runKey(r.t));
 				}
 			}
 		}
 		if (refused.length > 0 && answered === 0) {
-			env.held.clear();
-			env.backlog = false;
-			env.heldOffUntil = now + HELD_RETRY_MS;
+			next.held.clear();
+			next.backlog = false;
+			next.heldOffUntil = now + HELD_RETRY_MS;
 			this.#note(`${environmentId}:held`, `linked environment ${env.label} can't say whether finished threads still wait on background work (${lastRefusal})`);
-			return;
+			return next;
 		}
 		// It answers for others: the ones it refused count as settled for this run.
-		for (const t of refused) env.settledFor.set(t.threadId, runKey(t));
+		for (const t of refused) next.settledFor.set(t.threadId, runKey(t));
 		if (answered > 0) this.#note(`${environmentId}:held`, "");
+		return next;
 	}
 
 	async #pages(environmentId: string, args: Record<string, unknown>, limit: number): Promise<ThreadSummary[]> {

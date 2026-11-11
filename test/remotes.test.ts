@@ -68,6 +68,8 @@ async function setup() {
 		envs: new Map<string, Env>(),
 		links: "on" as "on" | "off" | "weird" | "down",
 		calls: [] as { name: string; args: Record<string, unknown> }[],
+		/** Runs while a `t3_thread_wait` question is still open. */
+		onWait: undefined as (() => Promise<void>) | undefined,
 	};
 	const dir = await fs.mkdtemp(path.join(os.tmpdir(), "deck-remotes-"));
 	const tokens = new TokenStore({ dir, run: async () => "", checkCli: async () => undefined, cooldownMs: 0 });
@@ -91,6 +93,7 @@ async function setup() {
 			if (env?.fail) throw env.fail;
 			if (name === "t3_thread_wait") {
 				if (env?.waitFail) throw env.waitFail;
+				await server.onWait?.();
 				return { threadId: args.threadId, runId: null, status: "completed", timedOut: env?.held?.has(String(args.threadId)) ?? false };
 			}
 			if (name === "t3_project_list") return { projects: [{ id: env ? `p-${String(args.environmentId)}` : "p", name: env ? env.label : "proj" }], nextCursor: null };
@@ -392,6 +395,30 @@ test("a remote thread whose turn ended with background work still running stays 
 	setClock(T0 + 3 * REMOTE_BUSY_MIN_MS + 62_000);
 	await m.refreshRemotes();
 	assert.deepEqual(waits(server.calls), []);
+	m.stop();
+});
+
+test("a held remote thread never shows as done while the question about it is still open, even if this machine's poll redraws the keys", async () => {
+	const { m, server, setClock } = await setup();
+	const env: Env = { label: "Linux box", status: "reachable", active: [summary("r", "env-linux", { status: "running" })], recent: [], held: new Set(["r"]) };
+	server.envs.set("env-linux", env);
+	await m.refresh();
+	await m.refreshRemotes();
+
+	const seenMidQuestion: (string | undefined)[] = [];
+	server.onWait = async () => {
+		server.onWait = undefined;
+		await m.refresh(); // this machine's poll lands while the linked machine's answer is on its way
+		seenMidQuestion.push(m.snapshot.cards.get("r")?.state);
+	};
+	setClock(T0 + REMOTE_BUSY_MIN_MS);
+	env.active = [];
+	env.recent = [summary("r", "env-linux", { updatedAt: new Date(T0 + 2000).toISOString() })];
+	await m.refresh();
+	await m.refreshRemotes();
+	assert.deepEqual(seenMidQuestion, ["working"], "still the running thread it was, not a finished one");
+	assert.equal(m.snapshot.cards.get("r")?.state, "working");
+	assert.equal(m.snapshot.cards.get("r")?.waitingOn, "background");
 	m.stop();
 });
 

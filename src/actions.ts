@@ -45,6 +45,10 @@ export class ThreadKey extends T3KeyAction {
 @action({ UUID: "io.github.hsalazr.deck-for-t3code.overview" })
 export class OverviewKey extends T3KeyAction {
 	protected readonly kind = "overview";
+
+	override onDidReceiveSettings(ev: DidReceiveSettingsEvent<KeySettings>): void {
+		runtime.deck?.updateSettings(ev.action.id, ev.payload.settings);
+	}
 }
 
 /** Top-left key of the bundled T3 Threads page: back to the previous profile. */

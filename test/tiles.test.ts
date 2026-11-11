@@ -121,6 +121,8 @@ test("no text below 14 px on any key", () => {
 		renderThreadKey({ ...base, card: undefined, connection: { kind: "offline", detail: "", reason: "not-running" } }),
 		overview(counts({ input: 123, working: 45, done: 6 }), { overflow: 999 }),
 		overview(counts({ done: 2 }), { hold: 0.5 }),
+		overview(counts({ input: 2, done: 1 }), { releaseCue: true }),
+		overview(counts({ input: 2, done: 1 }), { releaseCue: true, style: "glance" }),
 		overview(counts({}), { connection: { kind: "offline", detail: "" } }),
 		renderBackKey(true, 12),
 		renderUsageKey({ metric, pace: pace(week, now), ok: true, loading: false }),
@@ -261,6 +263,16 @@ test("glance thread keys schedule the orbit's steps, and paused ones don't tick"
 	const paused = card({ state: "paused", pausedUntil: 3_600_000 });
 	assert.equal(nextThreadFrame(paused, "smooth", 0, "glance"), undefined);
 	assert.notEqual(nextThreadFrame(paused, "smooth", 0), undefined);
+});
+
+test("overview held towards the Threads page: Release for threads over the tile, in both looks", () => {
+	for (const style of ["detailed", "glance"] as const) {
+		const held = overview(counts({ input: 2, done: 1 }), { releaseCue: true, style });
+		assert.ok(held.includes('id="release-cue"') && held.includes(">Release<") && held.includes(">for threads<"), style);
+		assert.ok(held.endsWith("</g></svg>"), `${style}: the cue is drawn last, over the tile`);
+		assert.ok(!overview(counts({ input: 2, done: 1 }), { style }).includes("release-cue"), `${style}: not otherwise`);
+	}
+	assert.ok(!overview(counts({}), { releaseCue: true, connection: { kind: "offline", detail: "" } }).includes("release-cue"), "never over a connection message");
 });
 
 test("glance overview: the most urgent count big, then / all threads, smaller and fainter, joined at one point", () => {

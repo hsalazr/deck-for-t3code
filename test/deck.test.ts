@@ -428,6 +428,78 @@ test("overview: tap opens the Threads page and dismisses nothing; hold 0.8 s cle
 	assert.equal(host.switches.length, 1);
 });
 
+test("overview set to open the most urgent thread: a tap opens it, a hold then release opens the Threads page", async () => {
+	const ov = add("overview", fakeAction("ov", 0), { tap: "urgent" });
+	monitor.setCards([
+		card("working", { state: "working", updatedAt: 9 }),
+		card("done", { state: "done", updatedAt: 8 }),
+		card("asks-old", { state: "input", updatedAt: 1 }),
+		card("asks-new", { state: "input", updatedAt: 2 }),
+	]);
+	await press(ov, 100);
+	assert.deepEqual(host.opened, [["-b", "com.t3tools.t3code", "t3code://threads/env/asks-new"]], "needs you first, the latest update among them");
+	assert.deepEqual(monitor.calls, ["ack:asks-new"], "opening it clears its highlight, and no other");
+	assert.deepEqual(host.switches, []);
+
+	// Between the "Hold to clear all" delay and the long-press threshold it is still a tap.
+	await press(ov, 400);
+	assert.equal(host.opened.length, 2);
+	assert.ok(!ov.images.some((image) => image.includes("clear all")), "no clear-all cue in this mode");
+
+	deck.keyDown(ov.id);
+	mock.timers.tick(450);
+	await flush();
+	assert.ok(!ov.last().includes("Release"));
+	mock.timers.tick(100);
+	await flush();
+	assert.ok(ov.last().includes(">Release<") && ov.last().includes(">for threads<"), "cue once the threshold passes");
+	assert.deepEqual(host.switches, [], "nothing happens while held");
+	mock.timers.tick(CONFIRM_HOLD_MS);
+	await flush();
+	await deck.keyUp(ov.id);
+	await flush();
+	assert.deepEqual(host.switches, ["dev1:profiles/Deck for T3 Code XL:0"]);
+	assert.ok(!ov.last().includes("Release"), "cue cleared after release");
+	assert.equal(host.opened.length, 2, "the hold opened no thread");
+	assert.deepEqual(monitor.calls, ["ack:asks-new", "ack:asks-new"], "and cleared nothing");
+
+	// Nothing active: T3 Code itself.
+	monitor.setCards([card("idle")]);
+	await press(ov, 100);
+	assert.deepEqual(host.opened.at(-1), ["-b", "com.t3tools.t3code"]);
+
+	// Switching the setting back restores the default tap and hold.
+	deck.updateSettings(ov.id, { tap: "threads" });
+	host.switches = [];
+	await press(ov, 100);
+	assert.deepEqual(host.switches, ["dev1:profiles/Deck for T3 Code XL:0"]);
+	await press(ov, CONFIRM_HOLD_MS);
+	assert.deepEqual(monitor.calls.at(-1), "ackAll");
+});
+
+test("overview set to open the most urgent thread: offline it opens T3; without a bundled page a hold still clears all", async () => {
+	const ov = add("overview", fakeAction("ov", 0), { tap: "urgent" });
+	monitor.setCards([card("t1", { state: "done" })], { kind: "offline", detail: "", reason: "not-running" });
+	await press(ov, 600);
+	assert.deepEqual(host.opened, [["-b", "com.t3tools.t3code"]]);
+	assert.deepEqual(host.switches, []);
+	assert.ok(!ov.images.some((image) => image.includes("Release")), "no cue while T3 is unreachable");
+
+	const plus = add("overview", fakeAction("plus", 0, 0, DeviceType.StreamDeckPlus, "dev2"), { tap: "urgent" });
+	monitor.setCards([card("t1", { state: "done" })]);
+	await press(plus, 100);
+	assert.deepEqual(host.opened.at(-1), ["-b", "com.t3tools.t3code", "t3code://threads/env/t1"]);
+	deck.keyDown(plus.id);
+	mock.timers.tick(400);
+	await flush();
+	assert.ok(plus.last().includes("clear all"));
+	mock.timers.tick(400);
+	await flush();
+	assert.deepEqual(monitor.calls.at(-1), "ackAll");
+	await deck.keyUp(plus.id);
+	assert.deepEqual(host.switches, []);
+});
+
 test("offline: the first Thread key says why, the rest are blank; a tap opens T3", async () => {
 	const a = add("thread", fakeAction("a", 1));
 	const b = add("thread", fakeAction("b", 2));

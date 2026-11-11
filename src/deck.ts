@@ -41,10 +41,24 @@ import { pendingUpdates } from "./updates.ts";
 export { DEFAULT_MESSAGES } from "./model.ts";
 
 /**
- * Usage keys: which limit window and style. Machine keys: which stat and which disk.
- * Thread Actions keys (bundled page): which action.
+ * Overview keys: what a tap does. "threads" (default) opens the T3 Threads
+ * page. "urgent" opens the most urgent thread, and a hold opens the page.
  */
-export type KeySettings = { metric?: string; style?: "bar" | "ring" | KeyStyle; stat?: MachineStat | "load"; path?: string; action?: ThreadActionName; index?: number };
+export type OverviewTap = "threads" | "urgent";
+
+/**
+ * Usage keys: which limit window and style. Machine keys: which stat and which disk.
+ * Thread Actions keys (bundled page): which action. Overview keys: what a tap does.
+ */
+export type KeySettings = {
+	metric?: string;
+	style?: "bar" | "ring" | KeyStyle;
+	stat?: MachineStat | "load";
+	path?: string;
+	action?: ThreadActionName;
+	index?: number;
+	tap?: OverviewTap;
+};
 
 export type KeyKind = "thread" | "overview" | "usage" | "machine" | "updates" | "back" | "action";
 
@@ -118,9 +132,12 @@ interface KeyEntry {
 	hintUntil?: number;
 }
 
-/** Hold a Thread tile this long, then release, to open its actions. */
+/**
+ * Hold a Thread tile this long, then release, to open its actions. An Overview
+ * key whose tap opens the most urgent thread opens the T3 Threads page the same way.
+ */
 export const LONG_PRESS_MS = 500;
-/** Hold Stop / Settle / Compact / a message / the Overview this long to fire it. */
+/** Hold Stop / Settle / Compact / a message / the Overview (to clear all) this long to fire it. */
 export const CONFIRM_HOLD_MS = 800;
 /** The Overview shows "Hold to clear all" once held this long; letting go after that cancels. */
 export const HOLD_CUE_MS = 250;
@@ -292,7 +309,9 @@ export class Deck {
 		this.#render((e) => e === entry);
 		if (held) return; // the hold action already ran
 		try {
+			const threadsPage = heldMs >= LONG_PRESS_MS && this.#online ? this.#heldOverviewPage(entry) : undefined;
 			if (entry.kind === "thread" && heldMs >= LONG_PRESS_MS) await this.#onLongPress(entry, downThreadId);
+			else if (threadsPage) await this.#host.switchToProfile(entry.action.device.id, threadsPage, THREADS_PAGE);
 			else if (entry.kind === "overview" && holdable && heldMs >= HOLD_CUE_MS) return; // let go after "Hold to clear all" showed: cancelled
 			else await this.#onTap(entry, downThreadId, holdable === true);
 		} catch (error) {
@@ -300,9 +319,18 @@ export class Deck {
 		}
 	}
 
+	/**
+	 * The T3 Threads page that holding this Overview key, then letting go, opens:
+	 * only when its tap opens the most urgent thread and this deck has a bundled
+	 * page. Any other Overview key clears every highlight on a hold instead.
+	 */
+	#heldOverviewPage(entry: KeyEntry): string | undefined {
+		return entry.kind === "overview" && entry.settings.tap === "urgent" ? DECK_PROFILE[entry.action.device.type] : undefined;
+	}
+
 	/** Whether holding this key (now) leads to a hold action. */
 	#canHold(entry: KeyEntry): boolean {
-		if (entry.kind === "overview") return this.#online;
+		if (entry.kind === "overview") return this.#online && !this.#heldOverviewPage(entry);
 		if (entry.kind !== "action") return false;
 		const action = entry.settings.action;
 		if (!action || !HOLD_ACTIONS.has(action) || !this.#actionsEnabled) return false;
@@ -379,12 +407,12 @@ export class Deck {
 				// A disk key shows that folder in Finder; the others open Activity Monitor.
 				return this.#launch(entry, Promise.resolve(machineStat(entry.settings) === "disk" ? [normalizeDiskPath(entry.settings.path)] : ACTIVITY_MONITOR));
 			case "overview": {
-				// A tap never dismisses anything; that takes a hold.
 				if (!this.#online) return this.#openT3(entry);
-				// Open the full page of thread tiles, like a folder. Devices without a
-				// bundled page fall back to jumping to the most urgent thread.
+				// Open the full page of thread tiles, like a folder; that dismisses nothing.
+				// Keys set to it, and devices without a bundled page, jump to the most urgent
+				// thread instead, which clears that one thread's highlight like a tap on its tile.
 				const profile = DECK_PROFILE[entry.action.device.type];
-				if (profile) return this.#host.switchToProfile(entry.action.device.id, profile, THREADS_PAGE);
+				if (profile && entry.settings.tap !== "urgent") return this.#host.switchToProfile(entry.action.device.id, profile, THREADS_PAGE);
 				const target = this.#mostUrgent();
 				return target ? this.#open(entry, target) : this.#openT3(entry);
 			}
@@ -493,6 +521,7 @@ export class Deck {
 			});
 	}
 
+	/** The thread to jump to: needs you, then failed, done, working; the latest update first. None while every thread is idle. */
 	#mostUrgent(): ThreadCard | undefined {
 		const cards = this.#monitor.snapshot.visible.filter((c) => c.state !== "idle").sort(byUrgency);
 		return cards[0];
@@ -599,6 +628,9 @@ export class Deck {
 				const counts = countStates(snapshot);
 				const holding = entry.holdable && !entry.held && pressedFor !== undefined;
 				const cue = holding && pressedFor >= HOLD_CUE_MS;
+				// A key whose hold opens the T3 Threads page says "Release for threads" once letting go would, like a Thread tile.
+				const releasable = pressedFor !== undefined && online && this.#heldOverviewPage(entry) !== undefined;
+				const armed = releasable && pressedFor >= LONG_PRESS_MS;
 				const markup = renderOverview({
 					connection: snapshot.connection,
 					counts,
@@ -606,9 +638,14 @@ export class Deck {
 					animation,
 					now,
 					hold: cue ? pressedFor / CONFIRM_HOLD_MS : undefined,
+					releaseCue: armed,
 					style: this.#threadStyle,
 				});
-				const next = holding ? (cue ? progressFrame(entry.downAt!, now) : entry.downAt! + HOLD_CUE_MS) : nextOverviewFrame(overviewState(counts), animation, now);
+				const next = holding
+					? cue
+						? progressFrame(entry.downAt!, now)
+						: entry.downAt! + HOLD_CUE_MS
+					: earliest(nextOverviewFrame(overviewState(counts), animation, now), releasable && !armed ? entry.downAt! + LONG_PRESS_MS : undefined);
 				return { markup, next };
 			}
 			case "action": {

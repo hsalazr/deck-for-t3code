@@ -126,8 +126,13 @@ Place as many as you like. Threads fill the Thread keys from top-left to bottom-
 
 Counts threads that need you (needs-you plus failed), are working (background-only waits included), or are done, and shows `+N` for threads this deck's Thread keys can't show. The whole tile takes the most important state: failed (red blink), needs you (amber blink), done (solid green), agents working (blue spinner), only background work (white spinner), idle.
 
-- **Tap:** open the T3 Threads page. On decks without a bundled page, jump to the most urgent thread instead. A tap never clears anything.
+- **Tap:** open the T3 Threads page; that tap never clears anything. On decks without a bundled page, jump to the most urgent thread instead.
 - **Hold:** after a quarter of a second the key shows "Hold to clear all" with a progress bar. At 0.8 s every done and failed highlight is dismissed. Letting go before 0.8 s cancels.
+
+The key's **Tap** setting swaps the two. Set to *Open the most urgent thread*:
+
+- **Tap:** open the most urgent thread in T3 Code and clear its highlight, like a tap on its Thread key. A thread that needs you comes first, then a failed one, a done one, a working one; among threads in the same state, the one updated last. With every thread idle it brings up T3 Code.
+- **Hold 0.5 s or more, then release:** at 0.5 s the key shows "Release for threads", and letting go opens the T3 Threads page. In this mode the key has no "Hold to clear all". On decks without a bundled page there is no page to open, so a hold clears all as above.
 
 ### T3 Threads page
 
@@ -206,7 +211,9 @@ Whether **T3 Code** or a provider CLI it runs (Claude, Codex…) has an update w
 
 ## Settings
 
-Open any key's settings (Property Inspector). The status row at the top says whether the plugin is connected. Everything except the Usage key's limit and style, the Machine key's stat, style and disk, and the Updates key's style is shared by all keys.
+Open any key's settings (Property Inspector). The status row at the top says whether the plugin is connected. Everything except the Overview key's tap, the Usage key's limit and style, the Machine key's stat, style and disk, and the Updates key's style is shared by all keys.
+
+- **Tap** (Overview key): *Open the T3 Threads page* (default) or *Open the most urgent thread*; see [Overview](#overview).
 
 - **Enable thread actions:** off by default. Turns on the actions that change a thread, and with them the 24-hour actions token. Turning it off revokes that token.
 - **Quick messages** (Thread key): see above.

@@ -318,6 +318,8 @@ export interface OverviewInput {
 	now: number;
 	/** Being held: show "Hold to clear all" with this much progress (0–1). */
 	hold?: number;
+	/** Held past the long-press threshold on a key whose hold opens the T3 Threads page: "Release for threads". */
+	releaseCue?: boolean;
 	/** "glance": one big count of the most urgent state. */
 	style?: KeyStyle;
 }
@@ -364,7 +366,8 @@ export function renderOverview(input: OverviewInput): string {
 	const steady = animation === "off" && (state === "failed" || state === "input");
 	const bg = lit ? accent : steady ? mix(accent, BG, 0.72) : BG;
 	const fg = lit ? INK : WHITE;
-	if (input.style === "glance") return renderOverviewGlance(state, counts, lit, bg, accent);
+	const cue = input.releaseCue ? releaseCue("threads") : "";
+	if (input.style === "glance") return overlay(renderOverviewGlance(state, counts, lit, bg, accent), cue);
 
 	const parts: string[] = [`<rect width="${SIZE}" height="${SIZE}" fill="${bg}"/>`];
 	if (state === "working" || state === "background") parts.push(spinner(accent, animation === "off" ? 0 : now));
@@ -392,7 +395,7 @@ export function renderOverview(input: OverviewInput): string {
 	if (input.overflow > 0) {
 		parts.push(text(130, 132, `+${input.overflow}`, { size: 14, weight: 700, fill: lit ? INK : DIM, anchor: "end" }));
 	}
-	return svg(parts.join(""));
+	return svg(parts.join("") + cue);
 }
 
 /** The blink's dark phase keeps a coloured ring round the key, as in the detailed look. */
@@ -560,12 +563,15 @@ function renderHoldCue(lines: string[], progress: number, heading?: string): str
 	);
 }
 
-/** Drawn over a Thread tile held past the long-press threshold. */
-function releaseCue(kind: "open" | "clear"): string {
+/** What letting go does, under "Release": a Thread tile's actions page or cleared highlight, the Overview's T3 Threads page. */
+const RELEASE_CUES = { open: "for actions", clear: "to clear", threads: "for threads" } as const;
+
+/** Drawn over a Thread or Overview tile held past the long-press threshold. */
+function releaseCue(kind: keyof typeof RELEASE_CUES): string {
 	return (
 		`<g id="release-cue"><rect x="0" y="92" width="144" height="52" fill="${WHITE}"/>` +
 		text(72, 114, "Release", { size: 17, weight: 800, fill: INK, anchor: "middle" }) +
-		text(72, 135, kind === "open" ? "for actions" : "to clear", { size: 16, weight: 700, fill: INK, anchor: "middle" }) +
+		text(72, 135, RELEASE_CUES[kind], { size: 16, weight: 700, fill: INK, anchor: "middle" }) +
 		`</g>`
 	);
 }

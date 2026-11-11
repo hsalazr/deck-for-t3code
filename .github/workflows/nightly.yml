@@ -1,7 +1,11 @@
 name: Nightly
 
-# Builds main when new plugin code lands on it and publishes it as the rolling
-# `nightly` pre-release. Stable releases stay on `v*` tags (release.yml).
+# Builds main when new plugin code lands on it and publishes it as the nightly
+# pre-release. Stable releases stay on `v*` tags (release.yml).
+# Releases in this repo are immutable: once a release has used a tag name, GitHub
+# never lets that name be used again, not even after the release is deleted. So
+# each nightly gets its own tag (`nightly-<manifest version>`), and the older
+# nightly is removed after the new one is out.
 # No schedule: a push that changes what ships is the only automatic trigger.
 # Docs, site and changelog-only pushes don't rebuild it; run it by hand to force one.
 on:
@@ -104,6 +108,17 @@ jobs:
           SEMVER: ${{ steps.version.outputs.semver }}
         run: |
           set -euo pipefail
+          tag="nightly-$VERSION"
+          # A re-run of a build that already published has nothing left to do. A draft left
+          # by a failed upload was never published, so its tag name is still free.
+          state=$(gh release view "$tag" --json isDraft --jq '.isDraft' 2>/dev/null || true)
+          if [ "$state" = "false" ]; then
+            echo "$tag is already published."
+            exit 0
+          fi
+          if [ "$state" = "true" ]; then
+            gh release delete "$tag" --yes
+          fi
           short="${GITHUB_SHA:0:7}"
           {
             echo "Nightly build of \`main\` at $short ($SEMVER; Stream Deck shows $VERSION, since its manifest needs four parts), built $(date -u '+%Y-%m-%d %H:%M UTC')."
@@ -117,7 +132,17 @@ jobs:
               on { print }
             ' CHANGELOG.md
           } > notes.md
-          gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
-          gh release create nightly dist/*.streamDeckPlugin dist/SHA256SUMS.txt \
+          gh release create "$tag" dist/*.streamDeckPlugin dist/SHA256SUMS.txt \
             --prerelease --latest=false --target "$GITHUB_SHA" \
             --title "Nightly $SEMVER" --notes-file notes.md
+          # Only the newest nightly stays. The new one is out by now, so trouble here is a
+          # warning, not a failed build.
+          older=$(gh release list --limit 100 --json tagName,isPrerelease \
+            --jq '.[] | select(.isPrerelease and (.tagName | startswith("nightly-"))) | .tagName') || {
+            echo "::warning::Could not list the older nightlies"
+            older=""
+          }
+          for old in $older; do
+            [ "$old" = "$tag" ] && continue
+            gh release delete "$old" --yes --cleanup-tag || echo "::warning::Could not remove the older nightly $old"
+          done

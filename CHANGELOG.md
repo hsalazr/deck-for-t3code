@@ -4,8 +4,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-11
+
 ### Added
 
+- **Tap** setting on the Overview key: *Open the T3 Threads page* (default, as before) or *Open the most urgent thread*. With the second, a tap opens the thread that needs you first (then failed, done, working) in T3 Code and clears its highlight, and holding the key for 0.5 s, then letting go, opens the T3 Threads page. That key has no "Hold to clear all", except on decks without a bundled page.
 - Releases and the nightly come with a `SHA256SUMS.txt` and a GitHub build provenance attestation, so you can check a download was built by this repo's release workflow (`gh attestation verify <file> --repo hsalazr/deck-for-t3code`).
 
 ## [1.2.0] - 2026-11-07
@@ -70,7 +73,8 @@ First public release (manifest version 1.0.0.0). Repeated identical log lines fr
 - Credentials only go to a loopback origin; the T3 home must be an absolute path; the T3 CLI must be a regular file owned by you (or root) and not writable by others before it runs.
 - Log lines are redacted of anything that looks like a token. No telemetry.
 
-[Unreleased]: https://github.com/hsalazr/deck-for-t3code/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/hsalazr/deck-for-t3code/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/hsalazr/deck-for-t3code/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/hsalazr/deck-for-t3code/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/hsalazr/deck-for-t3code/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/hsalazr/deck-for-t3code/releases/tag/v1.0.0

@@ -79,6 +79,8 @@ const sections: [string, [string, string][]][] = [
 		["3 digits", overview(counts({ input: 123, working: 456, done: 789 }), 999, 600)],
 		["idle", overview(counts({ idle: 4 }))],
 		["hold to clear all", overview(counts({ done: 3 }), 0, 0, { hold: 0.55 })],
+		["release for threads", overview(counts({ input: 1, working: 3, done: 2 }), 4, 900, { releaseCue: true })],
+		["release · glance", overview(counts({ input: 1, working: 3, done: 2 }), 4, 900, { releaseCue: true, style: "glance" })],
 	]],
 	["Back keys", [
 		["back", renderBackKey(false)],

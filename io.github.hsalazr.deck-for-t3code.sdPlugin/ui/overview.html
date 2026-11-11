@@ -3,10 +3,24 @@
 <head><meta charset="utf-8"><title>T3 Overview</title><link rel="stylesheet" href="style.css"></head>
 <body>
   <h3>This key</h3>
+  <div class="row"><label>Tap</label><select id="tap"><option value="threads">Open the T3 Threads page</option><option value="urgent">Open the most urgent thread</option></select></div>
   <div class="hint wide">Counts threads that need you, are working, or just finished. "+N" means more threads than this deck's Thread keys can show.</div>
-  <div class="hint wide">Tap: open the T3 Threads page (Stream Deck XL, Stream Deck, Mini and Neo); on other devices, jump to the most urgent thread. Hold 0.8 s: clear every done and failed highlight.</div>
+  <div class="hint wide" id="hint"></div>
   <div id="globals"></div>
   <script src="common.js"></script>
-  <script>mountStatus(); mountGlobals();</script>
+  <script>
+    const tap = document.getElementById("tap");
+    const hint = document.getElementById("hint");
+    const HINTS = {
+      threads: "Tap: open the T3 Threads page (Stream Deck XL, Stream Deck, Mini and Neo); on other devices, jump to the most urgent thread. Hold 0.8 s: clear every done and failed highlight.",
+      urgent: "Tap: open the most urgent thread in T3 Code and clear its highlight. A thread that needs you comes first, then failed, done and working ones; with every thread idle, T3 Code itself. Hold, and release once the key says so: the T3 Threads page (Stream Deck XL, Stream Deck, Mini and Neo). On other devices a 0.8 s hold clears every done and failed highlight.",
+    };
+    const show = () => { hint.textContent = HINTS[tap.value]; };
+    PI.onSettings = () => { tap.value = PI.settings.tap === "urgent" ? "urgent" : "threads"; show(); };
+    tap.addEventListener("change", () => { PI.setSettings({ tap: tap.value }); show(); });
+    show();
+    mountStatus();
+    mountGlobals();
+  </script>
 </body>
 </html>

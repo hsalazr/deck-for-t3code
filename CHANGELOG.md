@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- Threads on linked machines update faster. A machine with something running is asked every 3 seconds instead of every 10; an idle or unreachable one stays at 10. The wait counts from when its last answer came back, so a slow link is never asked faster than it answers. A run that finishes there turns its key green at that next poll. Before, the key could keep showing it as working, or drop off the deck, for up to 30 seconds.
+
 ## [1.2.1] - 2026-11-11
 
 ### Added

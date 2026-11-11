@@ -12,7 +12,7 @@ import { TokenStore } from "../src/t3/auth.ts";
 import type { WatchTarget } from "../src/t3/context-watcher.ts";
 import { ToolError, UnreachableError } from "../src/t3/mcp.ts";
 import { Monitor, type ContextSource } from "../src/t3/monitor.ts";
-import { linksOf, REMOTE_ACTIVE_MIN_MS, REMOTE_DROP_AFTER_MS } from "../src/t3/remotes.ts";
+import { linksOf, REMOTE_ACTIVE_MIN_MS, REMOTE_BUSY_MIN_MS, REMOTE_DROP_AFTER_MS } from "../src/t3/remotes.ts";
 
 const T0 = Date.parse("2026-11-03T12:00:00Z");
 const LOCAL = "env-local";
@@ -253,6 +253,86 @@ test("remote active lists are polled at most every REMOTE_ACTIVE_MIN_MS, not on 
 	await m.refresh();
 	const remote = remoteCalls(server.calls);
 	assert.equal(remote.filter((c) => c.name === "t3_thread_list" && c.args.statuses).length, 1);
+	m.stop();
+});
+
+test("a linked machine with something running is asked every REMOTE_BUSY_MIN_MS, an idle one stays at REMOTE_ACTIVE_MIN_MS", async () => {
+	const { m, server, setClock } = await setup();
+	server.envs.set("env-busy", { label: "Busy", status: "reachable", active: [summary("b-run", "env-busy", { status: "running" })], recent: [] });
+	server.envs.set("env-idle", { label: "Idle", status: "reachable", active: [], recent: [] });
+	await m.refresh();
+	await m.refreshRemotes();
+	server.calls.length = 0;
+	setClock(T0 + REMOTE_BUSY_MIN_MS - 1);
+	await m.refresh();
+	assert.deepEqual(remoteCalls(server.calls), [], "too soon");
+	setClock(T0 + REMOTE_BUSY_MIN_MS);
+	await m.refresh();
+	assert.deepEqual(
+		remoteCalls(server.calls).map((c) => c.args.environmentId),
+		["env-busy"],
+	);
+	m.stop();
+});
+
+test("a remote run that finishes shows at that machine's next active poll, without waiting for the recent roots' turn", async () => {
+	const { m, server, setClock } = await setup();
+	const env: Env = { label: "Linux box", status: "reachable", active: [summary("r", "env-linux", { status: "running" })], recent: [] };
+	server.envs.set("env-linux", env);
+	await m.refresh();
+	await m.refreshRemotes();
+	server.calls.length = 0;
+	setClock(T0 + REMOTE_BUSY_MIN_MS);
+	env.active = [];
+	env.recent = [summary("r", "env-linux", { updatedAt: new Date(T0 + 2000).toISOString() })];
+	await m.refresh(); // this machine's poll; the linked one it starts runs on
+	await m.refreshRemotes();
+	assert.equal(server.calls.some((c) => c.name === "t3_environment_links"), false, "an active round, not a full one");
+	assert.equal(remoteCalls(server.calls).filter((c) => c.name === "t3_thread_list" && !c.args.statuses).length, 1, "recent roots asked once, because a root left");
+	assert.equal(m.snapshot.cards.get("r")?.state, "done");
+	m.stop();
+});
+
+test("a remote subagent that finishes doesn't send for the recent roots", async () => {
+	const { m, server, setClock } = await setup();
+	const root = summary("r", "env-linux", { status: "running" });
+	const child = summary("r-child", "env-linux", { status: "running", parentThreadId: "r", relationshipToParent: "subagent" });
+	const env: Env = { label: "Linux box", status: "reachable", active: [root, child], recent: [] };
+	server.envs.set("env-linux", env);
+	await m.refresh();
+	await m.refreshRemotes();
+	server.calls.length = 0;
+	setClock(T0 + REMOTE_BUSY_MIN_MS);
+	env.active = [root];
+	await m.refresh();
+	await m.refreshRemotes();
+	assert.equal(server.calls.some((c) => c.name === "t3_environment_links"), false, "an active round, not a full one");
+	assert.deepEqual(
+		remoteCalls(server.calls).map((c) => Boolean(c.args.statuses)),
+		[true],
+		"only the active list",
+	);
+	m.stop();
+});
+
+test("a linked machine that is failing is asked at the idle pace, even if something was running there", async () => {
+	const { m, server, setClock } = await setup();
+	const env: Env = { label: "A", status: "reachable", active: [summary("a-run", "env-a", { status: "running" })], recent: [] };
+	server.envs.set("env-a", env);
+	await m.refresh();
+	await m.refreshRemotes();
+	env.fail = new ToolError("The linked environment stopped answering.");
+	setClock(T0 + REMOTE_BUSY_MIN_MS);
+	await m.refresh();
+	await m.refreshRemotes();
+	assert.equal(m.linkedEnvironments.get("env-a")?.failing, true);
+	server.calls.length = 0;
+	setClock(T0 + 2 * REMOTE_BUSY_MIN_MS);
+	await m.refresh();
+	assert.deepEqual(remoteCalls(server.calls), [], "not at the busy pace");
+	setClock(T0 + REMOTE_BUSY_MIN_MS + REMOTE_ACTIVE_MIN_MS);
+	await m.refresh();
+	assert.equal(remoteCalls(server.calls).filter((c) => c.name === "t3_thread_list" && c.args.statuses).length, 1);
 	m.stop();
 });
 

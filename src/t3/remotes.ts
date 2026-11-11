@@ -10,7 +10,10 @@
  * tool is hidden or refuses, and the deck simply shows local threads.
  *
  * Remote threads get status from polling only: the shell stream and context
- * usage come from the local server and describe local threads.
+ * usage come from the local server and describe local threads. So each machine
+ * is polled on its own cadence: often while something runs there, less often
+ * while it is idle or failing, counted from when its last answer came back so
+ * a slow link is never asked faster than it answers.
  */
 import { ACTIVE_STATUSES, type ThreadSummary } from "../model.ts";
 import { ToolError } from "./mcp.ts";
@@ -24,9 +27,11 @@ export interface LinkedEnvironment {
 	status: string;
 }
 
-/** Active list of a linked machine, at most this often (each call is a network round trip). */
+/** Active list of a linked machine with something running, at most this often (each call is a network round trip). */
+export const REMOTE_BUSY_MIN_MS = 3_000;
+/** Active list of a linked machine that is idle or failing, at most this often. */
 export const REMOTE_ACTIVE_MIN_MS = 10_000;
-/** Links and recent roots, this often. */
+/** Links and recent roots, this often. Recent roots also right after one leaves the active list. */
 export const REMOTE_FULL_MS = 30_000;
 /** Look for links again this often while the feature is off or the answer was unusable. */
 export const LINKS_RETRY_MS = 60_000;
@@ -43,6 +48,8 @@ interface RemoteEnv {
 	projects: Map<string, string>;
 	projectsAt: number;
 	fullAt: number;
+	/** When its last active-list call came back, answered or failed. */
+	polledAt: number;
 	/** First failure (or unreachable report) of the current streak. */
 	failingSince?: number;
 	/** It has answered at least once. */
@@ -69,15 +76,16 @@ export function linksOf(result: unknown): LinkedEnvironment[] | null {
 export class RemoteEnvironments {
 	readonly #call: ToolCall;
 	readonly #log: (message: string) => void;
+	readonly #now: () => number;
 	readonly #envs = new Map<string, RemoteEnv>();
 	#linksAt = Number.NEGATIVE_INFINITY;
 	#linksOk = false;
-	#activeAt = Number.NEGATIVE_INFINITY;
 	#lastLog = new Map<string, string>();
 
-	constructor(call: ToolCall, log: (message: string) => void) {
+	constructor(call: ToolCall, log: (message: string) => void, now: () => number = Date.now) {
 		this.#call = call;
 		this.#log = log;
+		this.#now = now;
 	}
 
 	/** Linked machines with threads on the deck right now. */
@@ -107,19 +115,25 @@ export class RemoteEnvironments {
 	clear(): void {
 		this.#envs.clear();
 		this.#linksAt = Number.NEGATIVE_INFINITY;
-		this.#activeAt = Number.NEGATIVE_INFINITY;
 	}
 
-	/** Whether a poll at `now` would do anything; `force` asks for links and recent roots too. */
+	/** Milliseconds until a poll would do something (0: now); `force` asks for links and recent roots too. */
+	dueIn(now: number, pollMs: number, force = false): number {
+		if (force) return 0;
+		let at = this.#linksAt + (this.#linksOk ? REMOTE_FULL_MS : LINKS_RETRY_MS);
+		for (const env of this.#envs.values()) at = Math.min(at, env.polledAt + activeEvery(env, pollMs));
+		return Math.max(0, at - now);
+	}
+
+	/** Whether a poll at `now` would do anything. */
 	due(now: number, pollMs: number, force = false): boolean {
-		if (force || now - this.#linksAt >= (this.#linksOk ? REMOTE_FULL_MS : LINKS_RETRY_MS)) return true;
-		return this.#envs.size > 0 && now - this.#activeAt >= Math.max(pollMs, REMOTE_ACTIVE_MIN_MS);
+		return this.dueIn(now, pollMs, force) === 0;
 	}
 
 	/**
-	 * One round: links (when due), then each reachable machine's active list,
-	 * and its recent roots and project names when due. Never throws; a machine
-	 * that fails keeps its last threads until it has failed for REMOTE_DROP_AFTER_MS.
+	 * One round: links (when due), then the active list of each reachable machine
+	 * that is due, and its recent roots and project names when due. Never throws; a
+	 * machine that fails keeps its last threads until it has failed for REMOTE_DROP_AFTER_MS.
 	 * Resolves with the machines that answered for the first time.
 	 */
 	async poll(opts: { now: number; pollMs: number; showSnoozed: boolean; force?: boolean }): Promise<Set<string>> {
@@ -146,7 +160,7 @@ export class RemoteEnvironments {
 				let env = this.#envs.get(link.environmentId);
 				if (!env && link.status !== "reachable") continue;
 				if (!env) {
-					env = { label: link.label, active: [], recent: [], projects: new Map(), projectsAt: Number.NEGATIVE_INFINITY, fullAt: Number.NEGATIVE_INFINITY, answered: false };
+					env = { label: link.label, active: [], recent: [], projects: new Map(), projectsAt: Number.NEGATIVE_INFINITY, fullAt: Number.NEGATIVE_INFINITY, polledAt: Number.NEGATIVE_INFINITY, answered: false };
 					this.#envs.set(link.environmentId, env);
 				}
 				env.label = link.label;
@@ -157,18 +171,15 @@ export class RemoteEnvironments {
 				}
 			}
 		}
-		const activeDue = linksDue || now - this.#activeAt >= Math.max(opts.pollMs, REMOTE_ACTIVE_MIN_MS);
-		if (activeDue) {
-			this.#activeAt = now;
-			const targets = [...this.#envs].filter(([id]) => !reachable || reachable.has(id));
-			await Promise.all(
-				targets.map(async ([id, env]) => {
-					const before = env.answered;
-					await this.#pollEnv(id, env, opts, linksDue);
-					if (!before && env.answered) firstSeen.add(id);
-				}),
-			);
-		}
+		// A round with the links asks every reachable machine; otherwise only the ones whose turn it is.
+		const targets = [...this.#envs].filter(([id, env]) => (reachable ? reachable.has(id) : linksDue || now - env.polledAt >= activeEvery(env, opts.pollMs)));
+		await Promise.all(
+			targets.map(async ([id, env]) => {
+				const before = env.answered;
+				await this.#pollEnv(id, env, opts, linksDue);
+				if (!before && env.answered) firstSeen.add(id);
+			}),
+		);
 		for (const [id, env] of this.#envs) {
 			if (env.failingSince !== undefined && now - env.failingSince >= REMOTE_DROP_AFTER_MS) this.#envs.delete(id);
 		}
@@ -201,8 +212,12 @@ export class RemoteEnvironments {
 	async #pollEnv(environmentId: string, env: RemoteEnv, opts: { now: number; showSnoozed: boolean }, full: boolean): Promise<void> {
 		try {
 			const active = await this.#pages(environmentId, { includeSubagents: true, statuses: ACTIVE_STATUSES, limit: 100 }, Number.POSITIVE_INFINITY);
+			env.polledAt = this.#now();
+			// A root that left the active list just finished; its entry in the recent list is stale or missing.
+			const activeIds = new Set(active.map((t) => t.threadId));
+			const departed = env.active.some((t) => t.relationshipToParent !== "subagent" && !activeIds.has(t.threadId));
 			let recent = env.recent;
-			if (full || opts.now - env.fullAt >= REMOTE_FULL_MS) {
+			if (full || departed || opts.now - env.fullAt >= REMOTE_FULL_MS) {
 				recent = await this.#pages(
 					environmentId,
 					{ includeSubagents: false, settled: false, ...(opts.showSnoozed ? {} : { snoozed: false }) },
@@ -216,6 +231,7 @@ export class RemoteEnvironments {
 			env.failingSince = undefined;
 			this.#note(environmentId, "");
 		} catch (error) {
+			env.polledAt = this.#now();
 			env.failingSince ??= opts.now;
 			this.#note(environmentId, `linked environment ${env.label}: ${(error as Error)?.message ?? String(error)}`);
 			return;
@@ -260,5 +276,9 @@ export class RemoteEnvironments {
 		if (message) this.#log(message);
 	}
 }
+
+/** How often a machine's active list is asked for: often while something runs there and it answers. */
+const activeEvery = (env: RemoteEnv, pollMs: number): number =>
+	Math.max(pollMs, env.failingSince === undefined && env.active.length > 0 ? REMOTE_BUSY_MIN_MS : REMOTE_ACTIVE_MIN_MS);
 
 const basename = (p?: string): string => (p ? p.split("/").filter(Boolean).pop() ?? "" : "");

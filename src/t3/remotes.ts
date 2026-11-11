@@ -14,6 +14,14 @@
  * is polled on its own cadence: often while something runs there, less often
  * while it is idle or failing, counted from when its last answer came back so
  * a slow link is never asked faster than it answers.
+ *
+ * The thread list says "completed" as soon as a turn ends, also when the thread
+ * still waits on background work. `t3_thread_wait` with `untilDelegatedWorkSettled`
+ * and a 1 ms timeout answers that without waiting: it times out while subagents,
+ * delegated tasks, or commands and monitors the agent said it waits for are
+ * still open (T3's own "Waiting" rule; a command left running, such as a dev
+ * server, doesn't count). Each finished root is asked once per run, and again
+ * every round while it is held.
  */
 import { ACTIVE_STATUSES, type ThreadSummary } from "../model.ts";
 import { ToolError } from "./mcp.ts";
@@ -40,6 +48,11 @@ export const REMOTE_DROP_AFTER_MS = 2 * 60_000;
 const PROJECTS_REFRESH_MS = 60_000;
 const RECENT_LIMIT = 100;
 const MAX_PAGES = 5;
+/** Finished roots asked per round whether background work still holds them (each is a call through the link). */
+export const HELD_BATCH = 12;
+const HELD_PARALLEL = 4;
+/** A machine that refuses the question isn't asked again for this long. */
+export const HELD_RETRY_MS = 10 * 60_000;
 
 interface RemoteEnv {
 	label: string;
@@ -54,7 +67,18 @@ interface RemoteEnv {
 	failingSince?: number;
 	/** It has answered at least once. */
 	answered: boolean;
+	/** Finished roots that still wait on background work. */
+	held: Set<string>;
+	/** Root → the run (and last update) it was found settled for, so it isn't asked again. */
+	settledFor: Map<string, string>;
+	/** Finished roots not asked about yet: more than one round's worth. */
+	backlog: boolean;
+	/** Don't ask about background work before this time (the machine refused). */
+	heldOffUntil: number;
 }
+
+/** What "settled" was recorded for: a new run, or any change to the thread, asks again. */
+const runKey = (t: ThreadSummary): string => `${t.latestRunId ?? ""}|${t.updatedAt}`;
 
 /**
  * Checks a `t3_environment_links` result. Returns null when it isn't one.
@@ -102,6 +126,13 @@ export class RemoteEnvironments {
 			for (const t of env.active) byId.set(t.threadId, t);
 			for (const t of byId.values()) out.push({ ...t, environmentId });
 		}
+		return out;
+	}
+
+	/** Remote roots whose turn ended while background work still holds them. */
+	held(): Set<string> {
+		const out = new Set<string>();
+		for (const env of this.#envs.values()) for (const id of env.held) out.add(id);
 		return out;
 	}
 
@@ -160,7 +191,20 @@ export class RemoteEnvironments {
 				let env = this.#envs.get(link.environmentId);
 				if (!env && link.status !== "reachable") continue;
 				if (!env) {
-					env = { label: link.label, active: [], recent: [], projects: new Map(), projectsAt: Number.NEGATIVE_INFINITY, fullAt: Number.NEGATIVE_INFINITY, polledAt: Number.NEGATIVE_INFINITY, answered: false };
+					env = {
+						label: link.label,
+						active: [],
+						recent: [],
+						projects: new Map(),
+						projectsAt: Number.NEGATIVE_INFINITY,
+						fullAt: Number.NEGATIVE_INFINITY,
+						polledAt: Number.NEGATIVE_INFINITY,
+						answered: false,
+						held: new Set(),
+						settledFor: new Map(),
+						backlog: false,
+						heldOffUntil: Number.NEGATIVE_INFINITY,
+					};
 					this.#envs.set(link.environmentId, env);
 				}
 				env.label = link.label;
@@ -230,6 +274,7 @@ export class RemoteEnvironments {
 			env.answered = true;
 			env.failingSince = undefined;
 			this.#note(environmentId, "");
+			await this.#askHeld(environmentId, env, opts.now);
 		} catch (error) {
 			env.polledAt = this.#now();
 			env.failingSince ??= opts.now;
@@ -252,6 +297,68 @@ export class RemoteEnvironments {
 				env.projectsAt = opts.now - PROJECTS_REFRESH_MS / 2; // retry in 30 s
 			}
 		}
+	}
+
+	/**
+	 * Asks which finished roots still wait on background work: the held ones
+	 * first, then the ones not asked about since their run ended, newest first.
+	 * Never throws: a thread the machine won't answer for counts as settled, and
+	 * a machine that refuses every question is left alone for HELD_RETRY_MS.
+	 */
+	async #askHeld(environmentId: string, env: RemoteEnv, now: number): Promise<void> {
+		const activeIds = new Set(env.active.map((t) => t.threadId));
+		const finished = env.recent.filter((t) => t.status === "completed" && t.latestRunId && !activeIds.has(t.threadId));
+		const finishedIds = new Set(finished.map((t) => t.threadId));
+		for (const id of env.held) if (!finishedIds.has(id)) env.held.delete(id);
+		for (const id of env.settledFor.keys()) if (!finishedIds.has(id)) env.settledFor.delete(id);
+		if (now < env.heldOffUntil) return;
+		const due = [...finished.filter((t) => env.held.has(t.threadId)), ...finished.filter((t) => !env.held.has(t.threadId) && env.settledFor.get(t.threadId) !== runKey(t))];
+		const batch = due.slice(0, HELD_BATCH);
+		env.backlog = due.length > batch.length;
+		const refused: ThreadSummary[] = [];
+		let lastRefusal = "";
+		let answered = 0;
+		for (let i = 0; i < batch.length; i += HELD_PARALLEL) {
+			const results = await Promise.all(
+				batch.slice(i, i + HELD_PARALLEL).map(async (t) => {
+					try {
+						const result = await this.#call<unknown>("t3_thread_wait", { environmentId, threadId: t.threadId, untilDelegatedWorkSettled: true, timeoutMs: 1 });
+						return { t, result };
+					} catch (error) {
+						return { t, error };
+					}
+				}),
+			);
+			for (const r of results) {
+				if ("error" in r) {
+					// This machine's server stopped answering: what we know stands until the next round.
+					if (!(r.error instanceof ToolError)) return;
+					refused.push(r.t);
+					lastRefusal = r.error.message;
+					env.held.delete(r.t.threadId);
+					continue;
+				}
+				answered++;
+				const answer = r.result as { status?: unknown; timedOut?: unknown } | undefined;
+				if (answer?.timedOut === true && answer.status === "completed") {
+					env.held.add(r.t.threadId);
+				} else {
+					env.held.delete(r.t.threadId);
+					// Not completed any more means it runs again: the active list takes over, and its next run is asked about.
+					if (answer?.timedOut !== true) env.settledFor.set(r.t.threadId, runKey(r.t));
+				}
+			}
+		}
+		if (refused.length > 0 && answered === 0) {
+			env.held.clear();
+			env.backlog = false;
+			env.heldOffUntil = now + HELD_RETRY_MS;
+			this.#note(`${environmentId}:held`, `linked environment ${env.label} can't say whether finished threads still wait on background work (${lastRefusal})`);
+			return;
+		}
+		// It answers for others: the ones it refused count as settled for this run.
+		for (const t of refused) env.settledFor.set(t.threadId, runKey(t));
+		if (answered > 0) this.#note(`${environmentId}:held`, "");
 	}
 
 	async #pages(environmentId: string, args: Record<string, unknown>, limit: number): Promise<ThreadSummary[]> {
@@ -277,8 +384,12 @@ export class RemoteEnvironments {
 	}
 }
 
-/** How often a machine's active list is asked for: often while something runs there and it answers. */
+/**
+ * How often a machine's active list is asked for: often while it answers and
+ * something runs there, a finished thread is still held by background work, or
+ * finished threads are left to ask about.
+ */
 const activeEvery = (env: RemoteEnv, pollMs: number): number =>
-	Math.max(pollMs, env.failingSince === undefined && env.active.length > 0 ? REMOTE_BUSY_MIN_MS : REMOTE_ACTIVE_MIN_MS);
+	Math.max(pollMs, env.failingSince === undefined && (env.active.length > 0 || env.held.size > 0 || env.backlog) ? REMOTE_BUSY_MIN_MS : REMOTE_ACTIVE_MIN_MS);
 
 const basename = (p?: string): string => (p ? p.split("/").filter(Boolean).pop() ?? "" : "");

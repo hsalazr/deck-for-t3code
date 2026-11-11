@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- A thread on a linked machine whose turn ended while background work still runs (subagents, delegated tasks, or commands and monitors its agent said it waits for) shows the white spinner and a `background` chip, and turns green when that work ends. Before, it turned green as soon as the turn ended. The plugin asks T3 Code about each thread once when it finishes a run, and again every 3 seconds while it is held (`t3_thread_wait` with `untilDelegatedWorkSettled` and a 1 ms timeout, through this Mac's server). The key doesn't say what the thread waits on, and a command the agent just left running or a pull request watch doesn't count; this Mac's threads show both.
+
 ### Changed
 
 - Threads on linked machines update faster. A machine with something running is asked every 3 seconds instead of every 10; an idle or unreachable one stays at 10. The wait counts from when its last answer came back, so a slow link is never asked faster than it answers. A run that finishes there turns its key green at that next poll. Before, the key could keep showing it as working, or drop off the deck, for up to 30 seconds.

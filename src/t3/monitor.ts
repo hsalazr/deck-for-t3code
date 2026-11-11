@@ -780,6 +780,7 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 		}
 		const threads = shell ? reparent(this.#threads, (id) => shell.rootOf(id)) : this.#threads;
 		const pending = shell?.pendingByRoot() ?? new Map<string, PendingTask[]>();
+		for (const id of linkedBackground(threads, this.#remotes.held())) pending.set(id, [LINKED_BACKGROUND]);
 		const background = backgroundByRoot(threads, pending);
 		const cards = buildCards(threads, {
 			acked: this.#acked,
@@ -930,6 +931,25 @@ export function reparent(threads: readonly ThreadSummary[], rootOf: (threadId: s
 		const root = rootOf(t.threadId);
 		return root && root !== t.threadId && ids.has(root) ? { ...t, parentThreadId: root } : t;
 	});
+}
+
+/**
+ * A linked machine has no task list to show: all the plugin learns is that a
+ * finished thread there still waits on background work.
+ */
+export const LINKED_BACKGROUND: PendingTask = { taskId: "linked-machine-background", kind: "background_task", description: "background" };
+
+/**
+ * Which of the `held` threads get that stand-in task: only a linked machine's
+ * own threads, and not one with a subagent that is listed as running, which
+ * the key already counts.
+ */
+export function linkedBackground(threads: readonly ThreadSummary[], held: ReadonlySet<string>): string[] {
+	if (held.size === 0) return [];
+	const byId = new Map(threads.map((t) => [t.threadId, t] as const));
+	const busyRoots = new Set<string>();
+	for (const t of threads) if (t.parentThreadId && isActive(t.status)) busyRoots.add(rootOf(t.threadId, byId));
+	return [...held].filter((id) => byId.get(id)?.environmentId && !busyRoots.has(id));
 }
 
 /** Root → number of background tasks, minus children whose own thread status already counts them. */

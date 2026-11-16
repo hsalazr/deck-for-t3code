@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { mock, test } from "node:test";
 import vm from "node:vm";
 
 import {
@@ -14,7 +14,10 @@ import {
 	keyCodeFor,
 	parseScriptOutput,
 	scriptArgs,
-	SHORTCUT_REFRESH_MS,
+	isModifierKeyCode,
+	LOOKUP_WAIT_MS,
+	nothingPosted,
+	POST_TARGET,
 	shortcutLabel,
 	type DictationShortcut,
 	type RunScript,
@@ -38,7 +41,7 @@ const id = (name: string) => ({ type: "identifier", name });
 test("the stock rule: mod (Command on macOS) + shift + d", () => {
 	const s = dictationShortcut([rule("terminal.splitVertical", "d", { modKey: true, shiftKey: true }, id("terminalFocus")), STOCK, rule("diff.toggle", "d", { modKey: true }, { type: "not", node: id("terminalFocus") })]);
 	assert.deepEqual(s, { key: "d", command: true, control: false, shift: true, option: false });
-	assert.deepEqual(chordFor(s!), { keyCode: 0x02, flags: FLAG.command | FLAG.shift, label: "shift+cmd+d" });
+	assert.deepEqual(chordFor(s!), { keyCode: 0x02, flags: FLAG.command | FLAG.shift, label: "shift+cmd+d", char: "d" });
 	assert.equal(eventFlags(s!), 0x120000);
 });
 
@@ -119,27 +122,42 @@ test("flags: one CGEventFlags mask per modifier; an unknown key is refused", () 
 	assert.equal(eventFlags(s({ command: true })), 0x100000);
 	assert.equal(eventFlags(s({ command: true, control: true, option: true, shift: true })), 0x1e0000);
 	assert.equal(shortcutLabel(s({ key: " ", control: true, option: true })), "ctrl+option+space");
+	// Only letters carry a letter for the layout check; digits, punctuation, Space and F-keys are positions.
+	assert.equal(chordFor(s({ key: "q" })).char, "q");
+	for (const key of ["1", "/", " ", "f6"]) assert.equal(chordFor(s({ key })).char, undefined, key);
+	// No table entry is a modifier key.
+	for (const code of Object.values(KEY_CODES)) assert.ok(!isModifierKeyCode(code));
+	assert.ok(isModifierKeyCode(54) && isModifierKeyCode(55) && isModifierKeyCode(63) && !isModifierKeyCode(53) && !isModifierKeyCode(64));
 	assert.throws(() => chordFor(s({ key: "enter", command: true })), (e: unknown) => e instanceof DictateRefusal && e.reason === "unmapped" && /cmd\+enter/.test(e.message));
 });
 
 // ---------- Script arguments ----------
 
-const target = { bundleId: "com.t3tools.t3code", chord: { keyCode: 2, flags: 0x120000, label: "shift+cmd+d" } };
+const target = { bundleId: "com.t3tools.t3code", chord: { keyCode: 2, flags: 0x120000, label: "shift+cmd+d", char: "d" } };
+const f6 = { bundleId: "com.t3tools.t3code", chord: { keyCode: 0x61, flags: 0, label: "f6" } };
 
 test("script arguments: tap, down, up and dry run; all after --, all plain values", () => {
-	const base = ["--bundle-id", "com.t3tools.t3code", "--key-code", "2", "--flags", "1179648", "--wait-ms", "1500"];
+	assert.equal(POST_TARGET, "pid");
+	const base = ["--bundle-id", "com.t3tools.t3code", "--key-code", "2", "--flags", "1179648", "--char", "d", "--post", "pid", "--wait-ms", "1500"];
 	assert.deepEqual(scriptArgs("tap", target), ["--", "tap", ...base]);
 	assert.deepEqual(scriptArgs("down", target), ["--", "down", ...base]);
 	assert.deepEqual(scriptArgs("up", target), ["--", "up", ...base]);
 	assert.deepEqual(scriptArgs("tap", target, { dryRun: true, waitMs: 5000 }), ["--", "tap", ...base.slice(0, -1), "5000", "--dry-run"]);
+	// A function key has no letter to check; the post target can be switched.
+	assert.deepEqual(scriptArgs("tap", f6, { post: "hid" }), ["--", "tap", "--bundle-id", "com.t3tools.t3code", "--key-code", "97", "--flags", "0", "--post", "hid", "--wait-ms", "1500"]);
 });
 
-test("script arguments: a bad bundle id, key code or flags never reach osascript", () => {
+test("script arguments: a bad bundle id, key code, letter or flags never reach osascript", () => {
 	assert.throws(() => scriptArgs("tap", { ...target, bundleId: "-e" }), DictateRefusal);
 	assert.throws(() => scriptArgs("tap", { ...target, bundleId: "com.acme;rm" }), DictateRefusal);
 	assert.throws(() => scriptArgs("tap", { ...target, chord: { ...target.chord, keyCode: 128 } }));
 	assert.throws(() => scriptArgs("tap", { ...target, chord: { ...target.chord, keyCode: 1.5 } }));
+	for (const code of [54, 55, 56, 58, 59, 63]) assert.throws(() => scriptArgs("tap", { ...f6, chord: { ...f6.chord, keyCode: code } }), /bad key code/, String(code));
 	assert.throws(() => scriptArgs("tap", { ...target, chord: { ...target.chord, flags: 0x800000 } }));
+	assert.throws(() => scriptArgs("tap", { ...target, chord: { ...target.chord, char: "e" } }), /bad letter/);
+	assert.throws(() => scriptArgs("tap", { ...target, chord: { ...target.chord, char: "D" } }), /bad letter/);
+	assert.throws(() => scriptArgs("tap", { ...target, chord: { ...target.chord, char: "dd" } }), /bad letter/);
+	assert.throws(() => scriptArgs("tap", { ...f6, chord: { ...f6.chord, char: "d" } }), /bad letter/);
 });
 
 test("script output: the last JSON line, type-checked", () => {
@@ -167,16 +185,35 @@ interface FakeEvent {
 	flags: number;
 }
 
+/** What the US layout types on each character key (the table, read backwards). */
+const US: Record<number, string> = Object.fromEntries(Object.entries(KEY_CODES).filter(([k]) => k.length === 1 && k !== " ").map(([k, code]) => [code, k]));
+/** A layout: US with some keys changed. */
+const layout = (changes: Record<number, string>): Record<number, string> => ({ ...US, ...changes });
+/** Dvorak, the letters that matter here: QWERTY's D types "e", H types "d", E types ".". */
+const DVORAK = layout({ 0x02: "e", 0x04: "d", 0x0e: "." });
+/** AZERTY: A and Q swap, Z and W swap, digits type symbols unshifted. */
+const AZERTY = layout({ 0x00: "q", 0x0c: "a", 0x06: "w", 0x0d: "z", 0x12: "&", 0x13: "é" });
+/** A layout with no Latin letters (Cyrillic on the letter keys). */
+const CYRILLIC = Object.fromEntries(Object.entries(US).map(([code, ch]) => [code, /^[a-z]$/.test(ch) ? String.fromCharCode(0x430 + (Number(code) % 32)) : ch]));
+
+const PID = 4242;
+
 /** Runs the script in a sandbox with a fake ObjC bridge: what it would post, print and exit with. */
-function runScript(argv: string[], o: { front?: string[]; permitted?: boolean; bridged?: boolean; frontAfter?: string } = {}) {
-	const posted: FakeEvent[] = [];
+function runScript(
+	argv: string[],
+	o: { front?: string[]; permitted?: boolean; bridged?: boolean; frontAfter?: string; pidAfter?: number; keys?: Record<number, string>; noPostToPid?: boolean } = {},
+) {
+	const posted: (FakeEvent & { to: string })[] = [];
 	const bound: string[] = [];
 	const out: string[] = [];
+	const typedOn: number[] = [];
 	let exitCode: number | undefined;
 	let requested = 0;
 	let polls = 0;
 	const fronts = o.front ?? ["com.t3tools.t3code"];
 	let current = fronts[0]!;
+	let pid = PID;
+	const keys = o.keys ?? US;
 	const cg = {
 		CGEventCreateKeyboardEvent: (source: unknown, code: number, down: boolean): FakeEvent => {
 			assert.equal(source, null);
@@ -188,8 +225,14 @@ function runScript(argv: string[], o: { front?: string[]; permitted?: boolean; b
 		CGEventGetType: (e: FakeEvent) => (e.down ? 10 : 11),
 		CGEventPost: (tap: number, e: FakeEvent) => {
 			assert.equal(tap, 0);
-			posted.push({ ...e });
+			posted.push({ ...e, to: "hid" });
 			if (o.frontAfter) current = o.frontAfter;
+			if (o.pidAfter) pid = o.pidAfter;
+		},
+		CGEventPostToPid: (to: number, e: FakeEvent) => {
+			posted.push({ ...e, to: `pid ${to}` });
+			if (o.frontAfter) current = o.frontAfter;
+			if (o.pidAfter) pid = o.pidAfter;
 		},
 		CGPreflightPostEventAccess: () => o.permitted ?? true,
 		CGRequestPostEventAccess: () => {
@@ -203,17 +246,27 @@ function runScript(argv: string[], o: { front?: string[]; permitted?: boolean; b
 		exit: (code: number) => {
 			exitCode = code;
 		},
-		NSWorkspace: { sharedWorkspace: { get frontmostApplication() { return { bundleIdentifier: { value: current } }; } } },
-		NSRunLoop: { currentRunLoop: { runUntilDate: () => { polls++; current = fronts[Math.min(polls, fronts.length - 1)]!; } } },
+		NSWorkspace: { sharedWorkspace: { get frontmostApplication() { return { bundleIdentifier: { value: current }, processIdentifier: pid }; } } },
+		NSRunLoop: { currentRunLoop: { runUntilDate: () => { polls++; if (polls < fronts.length) current = fronts[polls]!; } } },
 		NSDate: { dateWithTimeIntervalSinceNow: (s: number) => s },
-		NSThread: { sleepForTimeInterval: () => {} },
+		NSEvent: {
+			eventWithCGEvent: (e: FakeEvent) => {
+				assert.equal(e.flags & 0x1e0000, 0, "the layout is read without modifiers");
+				assert.equal(e.down, true);
+				typedOn.push(e.code);
+				return { charactersIgnoringModifiers: { value: keys[e.code] ?? "" } };
+			},
+		},
+		// No sleepForTimeInterval: the gap must let the run loop run.
 	}) as unknown as Record<string, unknown>;
-	const extra = o.bridged === false ? ["CGPreflightPostEventAccess", "CGRequestPostEventAccess"] : [];
-	for (const [name, fn] of Object.entries(cg)) if (!extra.includes(name)) $[name] = fn;
+	const unbridged = o.bridged === false ? ["CGPreflightPostEventAccess", "CGRequestPostEventAccess", "CGEventPostToPid"] : [];
+	for (const [name, fn] of Object.entries(cg)) if (!unbridged.includes(name)) $[name] = fn;
+	if (o.noPostToPid) delete $.CGEventPostToPid;
 	const ObjC = {
 		import: () => {},
 		bindFunction: (name: string, signature: unknown) => {
 			assert.ok(Array.isArray(signature));
+			if (o.noPostToPid && name === "CGEventPostToPid") throw new Error("no such symbol");
 			bound.push(name);
 			$[name] = cg[name as keyof typeof cg];
 		},
@@ -224,53 +277,115 @@ function runScript(argv: string[], o: { front?: string[]; permitted?: boolean; b
 	(sandbox.run as (argv: string[]) => void)(argv);
 	assert.equal(out.length, 1, "exactly one line of output");
 	assert.ok(out[0]!.endsWith("\n"));
-	return { result: JSON.parse(out[0]!) as Record<string, unknown>, exitCode, posted, bound, requested, polls };
+	return { result: JSON.parse(out[0]!) as Record<string, any>, exitCode, posted, bound, requested, polls, typedOn };
 }
 
 const argv = (phase: string, ...more: string[]) => scriptArgs(phase as "tap", target).concat(more);
+const to = `pid ${PID}`;
 
-test("script, tap: key-down with Command+Shift, then a key-up with no flags", () => {
+test("script, tap: key-down with Command+Shift, then a key-up with no flags, to T3 Code's process", () => {
 	const r = runScript(argv("tap"));
 	assert.equal(r.exitCode, 0);
 	assert.equal(r.result.ok, true);
 	assert.equal(r.result.posted, 2);
-	assert.deepEqual(r.posted, [{ code: 2, down: true, flags: 0x120000 }, { code: 2, down: false, flags: 0 }]);
+	assert.equal(r.result.post, "pid");
+	assert.equal(r.result.pid, PID);
+	assert.deepEqual(r.posted, [{ code: 2, down: true, flags: 0x120000, to }, { code: 2, down: false, flags: 0, to }]);
 	assert.deepEqual(r.result.events, [{ type: 10, keyDown: true, keyCode: 2, flags: 0x120000 }, { type: 11, keyDown: false, keyCode: 2, flags: 0 }]);
 	assert.equal(r.result.frontmost, "com.t3tools.t3code");
 	assert.equal(r.result.postPermitted, true);
 	assert.deepEqual(r.bound, []);
+	assert.ok(r.polls >= 1, "the gap between key-down and key-up runs the run loop");
+});
+
+test("script, --post hid: the same events at the HID event tap", () => {
+	const r = runScript(scriptArgs("tap", target, { post: "hid" }));
+	assert.equal(r.exitCode, 0);
+	assert.deepEqual(r.posted.map((p) => p.to), ["hid", "hid"]);
 });
 
 test("script, down and up: one event each", () => {
-	assert.deepEqual(runScript(argv("down")).posted, [{ code: 2, down: true, flags: 0x120000 }]);
-	assert.deepEqual(runScript(argv("up")).posted, [{ code: 2, down: false, flags: 0 }]);
+	assert.deepEqual(runScript(argv("down")).posted, [{ code: 2, down: true, flags: 0x120000, to }]);
+	assert.deepEqual(runScript(argv("up")).posted, [{ code: 2, down: false, flags: 0, to }]);
 	// osascript may or may not pass the "--" through; both work.
-	assert.deepEqual(runScript(argv("up").slice(1)).posted, [{ code: 2, down: false, flags: 0 }]);
+	assert.deepEqual(runScript(argv("up").slice(1)).posted, [{ code: 2, down: false, flags: 0, to }]);
 });
 
-test("script, dry run: builds and reads back, checks front app and permission, posts nothing", () => {
+test("script, dry run: builds and reads back, reads the layout, finds the process, posts nothing", () => {
 	const r = runScript(argv("tap", "--dry-run"));
 	assert.equal(r.exitCode, 0);
 	assert.equal(r.result.ok, true);
 	assert.equal(r.result.dryRun, true);
 	assert.equal(r.result.posted, 0);
+	assert.equal(r.result.pid, PID);
 	assert.deepEqual(r.posted, []);
-	assert.equal((r.result.events as unknown[]).length, 2);
+	assert.equal(r.result.events.length, 2);
+	assert.deepEqual(r.result.layout, { tableKeyCode: 2, read: "d", check: "letter", expected: "d", keyCode: 2, searched: false });
 	assert.deepEqual(r.result.imports, { Foundation: "ok", AppKit: "ok", CoreGraphics: "ok", stdlib: "ok" });
-	assert.deepEqual(r.result.functions, Object.fromEntries(["CGEventCreateKeyboardEvent", "CGEventSetFlags", "CGEventGetFlags", "CGEventGetIntegerValueField", "CGEventGetType", "CGEventPost", "CGPreflightPostEventAccess", "CGRequestPostEventAccess"].map((n) => [n, "bridge"])));
+	assert.deepEqual(
+		r.result.functions,
+		Object.fromEntries(["CGEventCreateKeyboardEvent", "CGEventSetFlags", "CGEventGetFlags", "CGEventGetIntegerValueField", "CGEventGetType", "CGEventPost", "CGEventPostToPid", "CGPreflightPostEventAccess", "CGRequestPostEventAccess"].map((n) => [n, "bridge"])),
+	);
 	// Without permission a dry run says so, and doesn't ask.
 	const denied = runScript(argv("tap", "--dry-run"), { permitted: false });
 	assert.equal(denied.exitCode, 4);
 	assert.equal(denied.result.reason, "not-permitted");
 	assert.equal(denied.requested, 0);
 	assert.deepEqual(denied.posted, []);
+	// A function key: read for the report, no check, no search.
+	const fkey = runScript(scriptArgs("tap", f6, { dryRun: true }));
+	assert.equal(fkey.exitCode, 0);
+	assert.deepEqual(fkey.result.layout, { tableKeyCode: 0x61, read: "", check: "position", keyCode: 0x61, searched: false });
+	assert.deepEqual(fkey.typedOn, [0x61]);
+	// A dry run on another layout shows the search.
+	const dvorak = runScript(argv("tap", "--dry-run"), { keys: DVORAK });
+	assert.equal(dvorak.exitCode, 0);
+	assert.deepEqual(dvorak.result.layout, { tableKeyCode: 2, read: "e", check: "letter", expected: "d", searched: true, keyCode: 0x04, found: "letter" });
+	assert.equal(dvorak.result.events[0].keyCode, 0x04);
+	assert.deepEqual(dvorak.posted, []);
 });
 
-test("script: functions the bridge doesn't import are bound, and reported", () => {
+test("script: functions the bridge doesn't import are bound, and reported; a missing one is an error", () => {
 	const r = runScript(argv("tap", "--dry-run"), { bridged: false });
-	assert.deepEqual(r.bound, ["CGPreflightPostEventAccess", "CGRequestPostEventAccess"]);
-	assert.equal((r.result.functions as Record<string, string>).CGPreflightPostEventAccess, "bound");
+	assert.deepEqual(r.bound, ["CGEventPostToPid", "CGPreflightPostEventAccess", "CGRequestPostEventAccess"]);
+	assert.equal(r.result.functions.CGPreflightPostEventAccess, "bound");
+	assert.equal(r.result.functions.CGEventPostToPid, "bound");
 	assert.equal(r.result.ok, true);
+	const missing = runScript(argv("tap"), { noPostToPid: true });
+	assert.match(missing.result.functions.CGEventPostToPid, /^missing: /);
+	assert.equal(missing.exitCode, 1);
+	assert.deepEqual(missing.posted, []);
+});
+
+test("script, layouts: a letter goes on the key that types it", () => {
+	// Dvorak: "d" is on QWERTY's H.
+	const dvorak = runScript(argv("tap"), { keys: DVORAK });
+	assert.equal(dvorak.exitCode, 0);
+	assert.deepEqual(dvorak.posted.map((p) => p.code), [0x04, 0x04]);
+	// AZERTY: a binding on "a" goes on QWERTY's Q (not Q itself, which would be ⇧⌘Q, Log Out).
+	const a = { ...target, chord: { keyCode: 0x00, flags: 0x120000, label: "shift+cmd+a", char: "a" } };
+	const azerty = runScript(scriptArgs("tap", a), { keys: AZERTY });
+	assert.equal(azerty.result.layout.keyCode, 0x0c);
+	assert.deepEqual(azerty.posted.map((p) => p.code), [0x0c, 0x0c]);
+	// Where the layout already agrees, nothing is searched.
+	const us = runScript(argv("tap"), { keys: AZERTY });
+	assert.equal(us.result.layout.searched, false);
+	assert.deepEqual(us.typedOn, [2]);
+});
+
+test("script, layouts: no Latin letters keeps the position (as T3 Code matches it); a missing letter is refused", () => {
+	const cyrillic = runScript(argv("tap"), { keys: CYRILLIC });
+	assert.equal(cyrillic.exitCode, 0);
+	assert.equal(cyrillic.result.layout.found, "position");
+	assert.deepEqual(cyrillic.posted.map((p) => p.code), [2, 2]);
+	// The key types another Latin letter and no key types "d": refused, nothing posted.
+	const noD = runScript(argv("tap"), { keys: layout({ 0x02: "x" }) });
+	assert.equal(noD.exitCode, 5);
+	assert.equal(noD.result.reason, "no-key");
+	assert.deepEqual(noD.posted, []);
+	// The search never looks at modifier, function, keypad or arrow keys.
+	for (const code of noD.typedOn) assert.ok(code <= 0x32 || code === 0x5d || code === 0x5e, String(code));
+	assert.ok(!noD.typedOn.some((c) => c >= 54 && c <= 63));
 });
 
 test("script: waits for T3 Code to come forward; refuses when another app stays in front", () => {
@@ -288,6 +403,10 @@ test("script: waits for T3 Code to come forward; refuses when another app stays 
 	assert.equal(moved.exitCode, 3);
 	assert.equal(moved.result.posted, 1);
 	assert.equal(moved.posted.length, 1);
+	// T3 Code restarted in between (another process): the same.
+	const restarted = runScript(argv("tap"), { pidAfter: PID + 1 });
+	assert.equal(restarted.exitCode, 3);
+	assert.equal(restarted.posted.length, 1);
 });
 
 test("script: not permitted, asks once and posts nothing", () => {
@@ -299,18 +418,26 @@ test("script: not permitted, asks once and posts nothing", () => {
 });
 
 test("script: bad arguments are refused before anything is built", () => {
+	const ok = ["--bundle-id", "com.t3tools.t3code", "--key-code", "2", "--flags", "0"];
 	const cases: string[][] = [
 		[],
-		["--", "press", "--bundle-id", "com.t3tools.t3code", "--key-code", "2", "--flags", "0"],
+		["--", "press", ...ok],
 		["--", "tap", "--bundle-id", "-x", "--key-code", "2", "--flags", "0"],
 		["--", "tap", "--bundle-id", "com.t3tools.t3code", "--key-code", "200", "--flags", "0"],
 		["--", "tap", "--bundle-id", "com.t3tools.t3code", "--key-code", "-1", "--flags", "0"],
+		["--", "tap", "--bundle-id", "com.t3tools.t3code", "--key-code", "55", "--flags", "0"],
+		["--", "tap", "--bundle-id", "com.t3tools.t3code", "--key-code", "56", "--flags", "0"],
 		["--", "tap", "--bundle-id", "com.t3tools.t3code", "--key-code", "2", "--flags", String(0x800000)],
 		["--", "tap", "--bundle-id", "com.t3tools.t3code", "--key-code", "2", "--flags", String(0x100001)],
 		["--", "tap", "--bundle-id", "com.t3tools.t3code", "--key-code", "2"],
-		["--", "tap", "--bundle-id", "com.t3tools.t3code", "--key-code", "2", "--flags", "0", "--text", "hello"],
-		["--", "tap", "--bundle-id", "com.t3tools.t3code", "--key-code", "2", "--flags"],
+		["--", "tap", ...ok, "--text", "hello"],
+		["--", "tap", ...ok, "--flags"],
 		["--", "tap", "--bundle-id", "com.t3tools.t3code", "--key-code", "0x2", "--flags", "0"],
+		["--", "tap", ...ok, "--char", "D"],
+		["--", "tap", ...ok, "--char", "dd"],
+		["--", "tap", ...ok, "--char", "1"],
+		["--", "tap", "--bundle-id", "com.t3tools.t3code", "--key-code", "97", "--flags", "0", "--char", "d"],
+		["--", "tap", ...ok, "--post", "window"],
 	];
 	for (const c of cases) {
 		const r = runScript(c);
@@ -321,53 +448,62 @@ test("script: bad arguments are refused before anything is built", () => {
 	}
 });
 
-// ---------- Lookup cache and sending ----------
+// ---------- Lookup and sending ----------
 
-test("the shortcut is looked up once, then served from the cache and refreshed in the background", async () => {
-	let now = 1_000;
+test("the shortcut is looked up on every press: a change in T3 Code applies at once, nothing is cached", async () => {
 	let calls = 0;
 	let config: unknown = { keybindings: [STOCK] };
-	const d = new Dictation({ getConfig: async () => (calls++, config), now: () => now, run: async () => ({ code: 0, stdout: '{"ok":true}', stderr: "" }) });
-	assert.deepEqual(await d.chord(), { keyCode: 2, flags: 0x120000, label: "shift+cmd+d" });
-	await d.chord();
-	assert.equal(calls, 1);
-	// Old: the press uses the cached chord while a fresh one is fetched.
-	now += SHORTCUT_REFRESH_MS;
+	const d = new Dictation({ getConfig: async () => (calls++, config) });
+	assert.deepEqual(await d.chord(), { keyCode: 2, flags: 0x120000, label: "shift+cmd+d", char: "d" });
 	config = { keybindings: [STOCK, rule("composer.dictation", "f5")] };
-	assert.equal((await d.chord()).label, "shift+cmd+d");
-	await new Promise((r) => setImmediate(r));
-	assert.equal(calls, 2);
 	assert.equal((await d.chord()).label, "f5");
+	config = { keybindings: [] };
+	await assert.rejects(d.chord(), (e: unknown) => e instanceof DictateRefusal && e.reason === "unbound");
+	config = { keybindings: [STOCK] };
+	assert.equal((await d.chord()).label, "shift+cmd+d");
+	assert.equal(calls, 4);
 });
 
-test("lookups: nothing bound and unmapped keys are refusals; a failed request isn't cached", async () => {
-	let fail = true;
-	const d = new Dictation({ getConfig: async () => { if (fail) throw new Error("socket closed"); return { keybindings: [rule("composer.dictation", "enter", { modKey: true })] }; } });
-	await assert.rejects(d.chord(), (e: unknown) => e instanceof DictateRefusal && e.reason === "lookup-failed");
-	fail = false;
-	await assert.rejects(d.chord(), (e: unknown) => e instanceof DictateRefusal && e.reason === "unmapped");
-	const none = new Dictation({ getConfig: async () => ({ keybindings: [] }) });
-	await assert.rejects(none.chord(), (e: unknown) => e instanceof DictateRefusal && e.reason === "unbound");
+test("lookups: a failed request, a slow one, or a key it can't press are refusals", async () => {
+	const failing = new Dictation({ getConfig: async () => { throw new Error("socket closed"); } });
+	await assert.rejects(failing.chord(), (e: unknown) => e instanceof DictateRefusal && e.reason === "lookup-failed" && /socket closed/.test(e.message));
+	const enter = new Dictation({ getConfig: async () => ({ keybindings: [rule("composer.dictation", "enter", { modKey: true })] }) });
+	await assert.rejects(enter.chord(), (e: unknown) => e instanceof DictateRefusal && e.reason === "unmapped");
+	mock.timers.enable({ apis: ["setTimeout"] });
+	try {
+		const slow = new Dictation({ getConfig: () => new Promise(() => {}) });
+		const pending = assert.rejects(slow.chord(), (e: unknown) => e instanceof DictateRefusal && e.reason === "lookup-failed" && /within 3 s/.test(e.message));
+		mock.timers.tick(LOOKUP_WAIT_MS);
+		await pending;
+	} finally {
+		mock.timers.reset();
+	}
 });
 
-test("send: runs the script with the arguments; failures say why and refresh the shortcut", async () => {
+test("send: runs the script with the arguments; failures say why, and which ones prove nothing was posted", async () => {
 	const runs: string[][] = [];
 	let reply = { code: 0, stdout: '{"ok":true,"posted":2}\n', stderr: "" };
-	let calls = 0;
 	const run: RunScript = async (args) => (runs.push(args), reply);
-	const d = new Dictation({ getConfig: async () => (calls++, { keybindings: [STOCK] }), run });
+	const d = new Dictation({ getConfig: async () => ({ keybindings: [STOCK] }), run });
 	await d.send("tap", target);
 	assert.deepEqual(runs, [scriptArgs("tap", target)]);
-	await d.chord();
-	assert.equal(calls, 1);
-	reply = { code: 4, stdout: '{"ok":false,"reason":"not-permitted"}', stderr: "" };
-	await assert.rejects(d.send("tap", target), (e: unknown) => e instanceof DictateRefusal && e.reason === "not-permitted");
-	await new Promise((r) => setImmediate(r));
-	assert.equal(calls, 2, "a failed send looks the shortcut up again");
-	reply = { code: 3, stdout: '{"ok":false,"reason":"not-frontmost","frontmost":"com.acme.editor"}', stderr: "" };
-	await assert.rejects(d.send("down", target), (e: unknown) => e instanceof DictateRefusal && e.reason === "not-frontmost" && /com\.acme\.editor/.test(e.message));
+	const refused = async (stdout: string, reason: string, message?: RegExp) => {
+		reply = { code: 9, stdout, stderr: "" };
+		const error = await d.send("down", target).then(() => undefined, (e: unknown) => e);
+		assert.ok(error instanceof DictateRefusal && error.reason === reason, stdout);
+		if (message) assert.match(error.message, message);
+		assert.equal(nothingPosted(error), true);
+	};
+	await refused('{"ok":false,"reason":"not-permitted"}', "not-permitted", /Accessibility/);
+	await refused('{"ok":false,"reason":"not-frontmost","frontmost":"com.acme.editor"}', "not-frontmost", /com\.acme\.editor/);
+	await refused('{"ok":false,"reason":"no-key"}', "no-key", /no key on the current keyboard layout types "d"/);
+	await refused('{"ok":false,"reason":"bad-args","detail":"--post must be pid or hid"}', "bad-args", /--post/);
+	// Anything else may have posted: a plain Error.
 	reply = { code: 1, stdout: "", stderr: "execution error: something broke (-2700)" };
-	await assert.rejects(d.send("up", target), /exited 1: execution error: something broke/);
+	const crashed = await d.send("down", target).then(() => undefined, (e: unknown) => e);
+	assert.match((crashed as Error).message, /exited 1: execution error: something broke/);
+	assert.equal(nothingPosted(crashed), false);
+	assert.equal(nothingPosted(new Error("osascript timed out after 5000 ms")), false);
 	// Exit 0 without an ok line is not a success.
 	reply = { code: 0, stdout: "", stderr: "" };
 	await assert.rejects(d.send("tap", target), /exited 0/);

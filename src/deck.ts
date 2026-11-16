@@ -215,13 +215,11 @@ export class Deck {
 	set dictationEnabled(on: boolean) {
 		this.#dictationEnabled = on;
 		if (!on) for (const e of this.#keys.values()) e.presses?.up();
-		this.#syncDictation();
 		this.#render((e) => e.kind === "dictate");
 	}
 
 	attachDictation(port: DictationPort): void {
 		this.#dictation = port;
-		this.#syncDictation();
 	}
 
 	set showLabels(on: boolean) {
@@ -244,7 +242,6 @@ export class Deck {
 		this.#keys.set(action.id, { id: action.id, kind, action, settings, imageSeq: 0 });
 		this.#syncUsage();
 		this.#syncMachine();
-		this.#syncDictation();
 		this.#relayout();
 	}
 
@@ -270,11 +267,6 @@ export class Deck {
 	/** Limit windows T3 currently reports, for the Usage key picker. */
 	usageMetrics(): { key: string; label: string; provider: string; used: number }[] {
 		return metricsOf(this.#usage.snapshot.providers).map((m) => ({ key: m.key, label: m.label, provider: m.provider, used: Math.round(m.window.usedPercent) }));
-	}
-
-	/** Look up the dictation shortcut ahead of the first press, while a Dictate key can use it. */
-	#syncDictation(): void {
-		if (this.#dictationEnabled && [...this.#keys.values()].some((k) => k.kind === "dictate")) this.#dictation?.prefetch();
 	}
 
 	#syncUsage(): void {

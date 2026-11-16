@@ -212,7 +212,7 @@ Whether **T3 Code** or a provider CLI it runs (Claude, Codex…) has an update w
 
 ### Dictate
 
-Starts T3 Code's voice input from a key. T3 Code can only start dictation from its microphone button or its keyboard shortcut (`composer.dictation`, ⇧⌘D by default), so the key presses that shortcut in the T3 Code app, the same as your keyboard would. T3 Code records, transcribes and puts the text in the composer for you to review; the plugin never touches audio or text.
+Starts T3 Code's voice input from a key. T3 Code can only start dictation from its microphone button or its keyboard shortcut (`composer.dictation`, ⇧⌘D by default), so the key presses that shortcut in the T3 Code app, the same as your keyboard would, with the same result (see **Limits** below). T3 Code records, transcribes and puts the text in the composer for you to review; the plugin never touches audio or text.
 
 **Off by default.** Turn on **Enable the Dictate key** in the key's settings. Until then the key says "Enable in settings" and a press does nothing and runs nothing.
 
@@ -226,18 +226,19 @@ Before it works you need, once:
 - **Tap** (let go within 0.2 s): one quick press of the shortcut.
 - **Hold** (longer): the shortcut goes down after 0.2 s and comes up when you let go; the key turns white and says "Holding" meanwhile.
 
-T3 Code's own **Dictation shortcut** setting (Settings → Voice) decides what that means, as it does for your keyboard. In *Auto* (T3 Code's default), a tap starts recording and the next tap finishes; holding records while you hold (T3 Code counts from the moment the shortcut goes down, so hold for more than about half a second). In *Hold to talk* only holding works; in *Toggle* every press starts or finishes. The key can't see whether T3 Code is recording, so it never says it is: after a tap you get Stream Deck's check mark if the shortcut was sent, or its warning triangle if not.
+T3 Code's own **Dictation shortcut** setting (Settings → Voice) decides what that means, as it does for your keyboard. In *Auto* (T3 Code's default), a tap starts recording and the next tap finishes; a hold records while you hold and finishes when you let go. A hold always reads as a hold in T3 Code: the shortcut stays down for at least 0.35 s, even if you let go sooner, because T3 Code takes anything shorter than 0.3 s for a tap and would keep recording. In *Hold to talk* only holding works; in *Toggle* every press starts or finishes. The key can't see whether T3 Code is recording, so it never says it is: after a tap you get Stream Deck's check mark if the shortcut was sent, or its warning triangle if not. A press that failed never shows "Holding".
 
 **Thread** (key setting): *The one open in T3 Code* (default), or *The most urgent thread*, which first opens the thread that needs you most, exactly like the Overview key's "Open the most urgent thread" tap (and clears its highlight). With every thread idle it dictates into whatever is open.
 
-**Which shortcut.** The plugin reads your shortcut for `composer.dictation` from T3 Code (`server.getConfig`, with the read-only token), so a shortcut you changed in T3 Code is the one pressed. It is looked up when the key appears, kept, and checked again every 10 minutes and after a press that failed. Only that one shortcut is ever pressed. Letters, digits, F1–F20, Space and the punctuation keys work; any other key (Enter, arrows…) is refused with a warning in the log.
+**Which shortcut.** On every press the plugin asks T3 Code for your shortcut for `composer.dictation` (`server.getConfig`, with the read-only token, while T3 Code comes forward), so a shortcut you just changed in T3 Code is the one pressed; nothing is cached. If T3 Code doesn't answer within 3 seconds, the press is refused with a warning triangle. Only that one shortcut is ever pressed. Letters, digits, F1–F20, Space and the punctuation keys work; any other key (Enter, arrows…) is refused with a warning in the log.
+
+**Any keyboard layout.** Keys are sent as key positions, so for a letter the plugin first checks what your current layout types there and, if it isn't that letter, uses the key that does: on Dvorak, ⇧⌘D goes on the key labelled D, wherever it sits. On a layout with no Latin letters (Cyrillic, Greek…) it keeps the US position, which is how T3 Code matches letters there. If the layout has the letter nowhere and types another Latin letter on that key, the press is refused (warning triangle, and a line in the log) rather than sending a different shortcut. Digits, punctuation, Space and function keys are sent at their US position on every layout, because that is how T3 Code matches them.
 
 **Limits:**
 
-- **Keyboard layout.** The plugin presses keys by position on a US keyboard. Letter shortcuts work on QWERTY-style layouts (QWERTY, QWERTZ, AZERTY for most letters); on Dvorak, Colemak and other layouts ⇧⌘D lands on another letter. There, bind `composer.dictation` to a function key (say F5) in T3 Code's keybindings; the key picks it up.
-- **T3 Code's terminal.** T3 Code ignores the shortcut while its terminal has focus, or while its command palette is open. Click into the composer first.
+- **What has focus in T3 Code decides what the shortcut does.** The plugin presses the chord bound to `composer.dictation`; what T3 Code does with that chord depends on where its focus is, exactly as with your keyboard. By default ⇧⌘D is also *Split terminal vertically* while T3 Code's terminal has focus, so a Dictate press with the terminal focused splits the terminal pane. While the command palette is open, T3 Code ignores it. Click into the composer first, or give dictation a chord of its own in T3 Code's keybindings (say F5); the key picks it up on the next press.
 - **Secure input.** While an app holds macOS's Secure Event Input (a password field, or T3 Code itself at times; T3 Code's issue #22449), macOS may block keys that software sends. If presses do nothing although the key shows a check mark, that is the likely cause.
-- **It needs T3 Code's app.** The key only sends to the app it found by bundle id (the **T3 app bundle id** setting, or the app running the T3 server). With only the `t3code://` link to go on, it refuses with a warning triangle. The shortcut only ever goes to T3 Code: if T3 Code doesn't come to the front within 1.5 seconds, nothing is sent.
+- **It needs T3 Code's app.** The key only sends to the app it found by bundle id (the **T3 app bundle id** setting, or the app running the T3 server). With only the `t3code://` link to go on, it refuses with a warning triangle. The shortcut only ever goes to T3 Code: if T3 Code doesn't come to the front within 1.5 seconds, nothing is sent, and when it is in front the keys are posted to T3 Code's own process, so a panel like Spotlight or a global hotkey on the same chord doesn't get them.
 
 ## Settings
 
@@ -290,7 +291,7 @@ The plugin uses **up to three tokens**, minted with your local `t3` CLI and stor
 | Live and usage | `Stream Deck (Deck for T3 Code usage)` | `orchestration:read` | Live status, context size, usage limits | 30 days; renewed once less than half is left |
 | Actions | `Stream Deck (Deck for T3 Code actions)` | `orchestration:read`, `orchestration:operate` | Thread Actions keys only: send, snooze, settle, stop | 24 hours. **Opt-in:** minted only while "Enable thread actions" is on, the first time you use an action; revoked when you turn it off |
 
-The first two are read-only. Without the actions token the plugin can't change anything in T3 Code. (The opt-in Dictate key needs no token to act: it presses T3 Code's dictation shortcut in the app, which only starts voice input for you to review.)
+The first two are read-only. Without the actions token the plugin can't change anything in T3 Code. (The opt-in Dictate key needs no token to act: it presses the chord bound to T3 Code's dictation shortcut in the app. That starts voice input, whose text waits in the composer for you to review, unless something else in T3 Code has focus that uses the same chord; see [Dictate](#dictate).)
 
 Replaced tokens are revoked. If a revoke can't happen (T3 Code is closed), the session id is kept in `pending-revoke.json` and retried every time the plugin starts and whenever T3 Code comes back after being unreachable. If T3 Code rejects a token, the plugin mints a new one and revokes the old one.
 
@@ -309,7 +310,7 @@ t3 auth session revoke <id>
 - **T3 home must be absolute** (after expanding a leading `~/`).
 - **A found T3 home is checked.** A `~/.t3-<name>` folder is only used when it is the only one, and only if it and its `userdata` are real folders you own and nobody else can write to. See [SECURITY.md](SECURITY.md).
 - **Finding the app runs nothing from it.** The plugin only reads `Info.plist` files (with `plutil`), asks `ps` for the T3 server's executable path, and calls `open`.
-- **The Dictate key presses one shortcut, only in T3 Code.** Off by default. Its script is fixed in the plugin and every value goes in as an argument; it only posts the `composer.dictation` key (looked up in a fixed key table) with its modifiers, never text or other keys, and only while T3 Code's bundle id is the frontmost app. See [SECURITY.md](SECURITY.md).
+- **The Dictate key presses one shortcut, only in T3 Code.** Off by default. Its script is fixed in the plugin and every value goes in as an argument; it only posts the chord bound to `composer.dictation` (looked up on each press in a fixed key table, letters checked against your keyboard layout), never text or other keys, only while T3 Code's bundle id is the frontmost app, and to T3 Code's own process. See [SECURITY.md](SECURITY.md).
 - **The CLI is vetted before it runs.** `<T3 home>/bin/t3` must be a regular, executable file, owned by you or root, that no other user can write to. Otherwise the key says "T3 CLI missing" and nothing runs. (Fix a loose file with `chmod go-w`.)
 - **No redirects.** Requests that carry a token refuse HTTP redirects.
 - **Logs are redacted.** Any run of 32 or more token-like characters is replaced with `[redacted]` before it reaches a log file.

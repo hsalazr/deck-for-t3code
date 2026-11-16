@@ -13,7 +13,7 @@ import type { MachineMonitor, MachineSnapshot } from "../src/machine.ts";
 import type { UpdatesMonitor } from "../src/t3/updates-monitor.ts";
 import type { UpdatesSnapshot } from "../src/updates.ts";
 import { ALLOW_HINT_MS } from "../src/deck.ts";
-import { DICTATE_TAP_MS, DictateRefusal, type Chord, type DictatePhase, type DictateTarget, type DictationPort } from "../src/dictate.ts";
+import { DICTATE_TAP_MS, DictateRefusal, MIN_HOLD_MS, type Chord, type DictatePhase, type DictateTarget, type DictationPort } from "../src/dictate.ts";
 
 const card = (id: string, extra: Partial<ThreadCard> = {}): ThreadCard => ({
 	threadId: id, projectId: "p", title: `Thread ${id}`, link: `http://127.0.0.1:3773/env/${id}`, state: "idle", ownStatus: "completed",
@@ -720,16 +720,12 @@ test("updates key: polled only while shown; a tap opens T3 Code when something i
 
 class FakeDictation implements DictationPort {
 	sent: string[] = [];
-	prefetches = 0;
 	chordCalls = 0;
 	chordError: Error | undefined;
 	/** When set, each send waits for it. */
 	gate: Promise<void> | undefined;
 	/** Fails sends of these phases. */
 	failWith = new Map<DictatePhase, Error>();
-	prefetch(): void {
-		this.prefetches++;
-	}
 	async chord(): Promise<Chord> {
 		this.chordCalls++;
 		if (this.chordError) throw this.chordError;
@@ -765,8 +761,7 @@ test("dictate: off by default, the key says so, and a press runs nothing", async
 	await advance(1000);
 	assert.deepEqual(host.opened, []);
 	assert.deepEqual(dictation.sent, []);
-	assert.equal(dictation.chordCalls, 0);
-	assert.equal(dictation.prefetches, 0, "not even a lookup");
+	assert.equal(dictation.chordCalls, 0, "not even a lookup");
 	assert.deepEqual(key.events, ["alert"]);
 	// A held press does nothing either.
 	deck.keyDown(key.id);
@@ -774,10 +769,9 @@ test("dictate: off by default, the key says so, and a press runs nothing", async
 	await deck.keyUp(key.id);
 	await settle();
 	assert.deepEqual(dictation.sent, []);
-	// Turned on: the shortcut is looked up ahead of the first press.
 	deck.dictationEnabled = true;
-	assert.equal(dictation.prefetches, 1);
 	assert.match(key.last(), />Dictate</);
+	assert.equal(dictation.chordCalls, 0, "looked up on a press, not ahead of it");
 });
 
 test("dictate: a tap brings T3 Code forward and sends one quick press", async () => {
@@ -792,6 +786,10 @@ test("dictate: a tap brings T3 Code forward and sends one quick press", async ()
 	assert.deepEqual(dictation.sent, ["tap:com.t3tools.t3code:2", "tap done"]);
 	assert.deepEqual(key.events, ["ok"]);
 	assert.doesNotMatch(key.last(), /Holding/);
+	// Every press looks the shortcut up again.
+	await press(key, 50);
+	await settle();
+	assert.equal(dictation.chordCalls, 2);
 });
 
 test("dictate: held past the tap window, key-down then, key-up on release; the key says it is holding", async () => {
@@ -828,6 +826,9 @@ test("dictate: a key-up never goes before its key-down, and a second press waits
 	assert.deepEqual(dictation.sent, ["down:com.t3tools.t3code:2"], "the key-up and the taps wait for the key-down");
 	open();
 	await settle(30);
+	assert.deepEqual(dictation.sent.filter((s) => !s.endsWith("done")), ["down:com.t3tools.t3code:2"], "the key-up waits out the minimum hold");
+	await advance(MIN_HOLD_MS + 50);
+	await settle(30);
 	assert.deepEqual(
 		dictation.sent.filter((s) => !s.endsWith("done")),
 		["down:com.t3tools.t3code:2", "up:com.t3tools.t3code:2", "tap:com.t3tools.t3code:2", "tap:com.t3tools.t3code:2"],
@@ -836,23 +837,79 @@ test("dictate: a key-up never goes before its key-down, and a second press waits
 	assert.equal(host.opened.length, 3);
 });
 
-test("dictate: a failed key-down skips the key-up and alerts; a failed tap alerts and logs", async () => {
+test("dictate: a key-down refused by the script skips the key-up; a failed tap alerts and logs", async () => {
 	const { key, dictation } = dictateKey();
-	dictation.failWith.set("down", new Error("osascript exited 1"));
+	dictation.failWith.set("down", new DictateRefusal("not-frontmost", "T3 Code wasn't the frontmost app"));
 	deck.keyDown(key.id);
 	await advance(DICTATE_TAP_MS + 50);
 	assert.deepEqual(key.events, ["alert"]);
+	assert.doesNotMatch(key.last(), /Holding/, "a failed press never shows Holding");
 	await deck.keyUp(key.id);
+	await advance(MIN_HOLD_MS + 50);
 	await settle();
 	assert.deepEqual(dictation.sent, ["down:com.t3tools.t3code:2"]);
 	assert.equal(host.warnings.length, 1);
-	assert.match(host.warnings[0]!, /dictate failed: osascript exited 1/);
+	assert.match(host.warnings[0]!, /dictate failed: T3 Code wasn't the frontmost app/);
 
-	dictation.failWith.set("tap", new DictateRefusal("not-frontmost", "T3 Code didn't come to the front"));
+	dictation.failWith.set("tap", new DictateRefusal("no-key", "no key on the current keyboard layout types \"d\""));
 	await press(key, 50);
 	await settle();
 	assert.deepEqual(key.events, ["alert", "alert"]);
-	assert.match(host.warnings[1]!, /didn't come to the front/);
+	assert.match(host.warnings[1]!, /keyboard layout/);
+});
+
+test("dictate: a key-down that may have been posted (timeout, crash) still gets its key-up on release", async () => {
+	const { key, dictation } = dictateKey();
+	dictation.failWith.set("down", new Error("osascript timed out after 5000 ms"));
+	deck.keyDown(key.id);
+	await advance(DICTATE_TAP_MS + 50);
+	assert.deepEqual(key.events, ["alert"]);
+	assert.doesNotMatch(key.last(), /Holding/);
+	await advance(1000);
+	await deck.keyUp(key.id);
+	await settle();
+	assert.deepEqual(dictation.sent, ["down:com.t3tools.t3code:2", "up:com.t3tools.t3code:2", "up done"]);
+	assert.deepEqual(key.events, ["alert"], "no check mark for a press that failed");
+});
+
+test("dictate: let go right after the key-down went out, the key-up still waits out the minimum hold", async () => {
+	const { key, dictation } = dictateKey();
+	let open!: () => void;
+	dictation.gate = new Promise((resolve) => (open = resolve));
+	deck.keyDown(key.id);
+	await advance(DICTATE_TAP_MS + 25);
+	await deck.keyUp(key.id);
+	await advance(500); // the key-down script is slow
+	assert.deepEqual(dictation.sent, ["down:com.t3tools.t3code:2"]);
+	dictation.gate = undefined;
+	open();
+	await settle();
+	assert.deepEqual(dictation.sent, ["down:com.t3tools.t3code:2", "down done"], "released long ago, but the key-up waits");
+	await advance(MIN_HOLD_MS - 50);
+	assert.equal(dictation.sent.length, 2);
+	await advance(100);
+	assert.deepEqual(dictation.sent.slice(2), ["up:com.t3tools.t3code:2", "up done"]);
+});
+
+test("dictate: a press whose preparation failed never shows Holding, held or not", async () => {
+	const { key, dictation } = dictateKey();
+	dictation.chordError = new DictateRefusal("lookup-failed", "couldn't read T3 Code's dictation shortcut: socket closed");
+	deck.keyDown(key.id);
+	await advance(DICTATE_TAP_MS + 100);
+	assert.doesNotMatch(key.last(), /Holding/);
+	assert.deepEqual(key.events, ["alert"]);
+	await advance(1000);
+	assert.doesNotMatch(key.last(), /Holding/);
+	await deck.keyUp(key.id);
+	await settle();
+	assert.deepEqual(dictation.sent, []);
+	// The next press, which works, shows it again.
+	dictation.chordError = undefined;
+	deck.keyDown(key.id);
+	await advance(DICTATE_TAP_MS + 100);
+	assert.match(key.last(), />Holding</);
+	await deck.keyUp(key.id);
+	await advance(MIN_HOLD_MS + 50);
 });
 
 test("dictate: without Accessibility permission the key says where to allow it, for a few seconds", async () => {
@@ -932,7 +989,7 @@ test("dictate: a key that goes away, or dictation turned off, mid-hold still let
 	deck.keyDown(key.id);
 	await advance(DICTATE_TAP_MS + 50);
 	deck.dictationEnabled = false;
-	await settle();
+	await advance(MIN_HOLD_MS);
 	assert.deepEqual(dictation.sent, ["down:com.t3tools.t3code:2", "down done", "up:com.t3tools.t3code:2", "up done"]);
 	assert.match(key.last(), />Enable in</);
 	await deck.keyUp(key.id);
@@ -943,7 +1000,7 @@ test("dictate: a key that goes away, or dictation turned off, mid-hold still let
 	deck.keyDown(key.id);
 	await advance(DICTATE_TAP_MS + 50);
 	deck.remove(key.id);
-	await settle();
+	await advance(MIN_HOLD_MS);
 	assert.deepEqual(dictation.sent.slice(4), ["down:com.t3tools.t3code:2", "down done", "up:com.t3tools.t3code:2", "up done"]);
 });
 

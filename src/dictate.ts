@@ -5,11 +5,16 @@
  *
  * This is the one place the plugin sends keystrokes, so it is narrow on purpose:
  * - only the shortcut bound to `composer.dictation`, read from T3 Code's
- *   `server.getConfig` and mapped through a fixed key table, never arbitrary keys or text;
+ *   `server.getConfig` on every press and mapped through a fixed key table
+ *   (letters checked against the keyboard layout), never arbitrary keys or text;
  * - only through one fixed script (DICTATE_SCRIPT) run by `/usr/bin/osascript`,
  *   with every value passed as an argument, never spliced into the script;
- * - only while T3 Code (by bundle id) is the frontmost app, which the script checks itself;
+ * - only while T3 Code (by bundle id) is the frontmost app, which the script
+ *   checks itself, and posted to T3 Code's own process (POST_TARGET);
  * - only on a key press, and only while "Enable the Dictate key" is on (off by default).
+ *
+ * What T3 Code does with the chord is up to T3 Code, as with a keyboard: with
+ * its terminal focused, the default ⇧⌘D splits the terminal instead.
  */
 import { execFile } from "node:child_process";
 
@@ -27,11 +32,16 @@ export interface DictationShortcut {
 	option: boolean;
 }
 
-/** What the script posts: a virtual key code, the modifier flags for the key-down, and a label for logs. */
+/**
+ * What the script posts: a virtual key code (US position), the modifier flags
+ * for the key-down, a label for logs, and for letters the letter, which the
+ * script checks against the current keyboard layout.
+ */
 export interface Chord {
 	keyCode: number;
 	flags: number;
 	label: string;
+	char?: string;
 }
 
 /** Where and what to send for one press. */
@@ -42,7 +52,7 @@ export interface DictateTarget {
 
 export type DictatePhase = "tap" | "down" | "up";
 
-export type RefusalReason = "disabled" | "no-app" | "unbound" | "unmapped" | "lookup-failed" | "not-permitted" | "not-frontmost";
+export type RefusalReason = "disabled" | "no-app" | "unbound" | "unmapped" | "lookup-failed" | "bad-args" | "not-permitted" | "not-frontmost" | "no-key";
 
 /** The plugin decided not to send (or the script refused to post), for a known reason. */
 export class DictateRefusal extends Error {
@@ -152,8 +162,9 @@ export function dictationShortcut(keybindings: unknown): DictationShortcut | und
 /**
  * macOS virtual key codes (`kVK_ANSI_*`, `kVK_F*`, `kVK_Space` in Carbon's
  * Events.h) for the key names T3 Code's keybindings use, US ANSI layout.
- * Key codes are positions, not characters: on a non-QWERTY layout a letter
- * shortcut lands on another letter. Anything not here is refused.
+ * Key codes are positions, not characters. For letters the script checks the
+ * current layout and finds the key that types the letter (see DICTATE_SCRIPT).
+ * Anything not here is refused.
  */
 export const KEY_CODES: Readonly<Record<string, number>> = Object.freeze({
 	a: 0x00, s: 0x01, d: 0x02, f: 0x03, h: 0x04, g: 0x05, z: 0x06, x: 0x07, c: 0x08, v: 0x09,
@@ -169,8 +180,22 @@ export const KEY_CODES: Readonly<Record<string, number>> = Object.freeze({
 
 export const keyCodeFor = (key: string): number | undefined => (Object.hasOwn(KEY_CODES, key) ? KEY_CODES[key] : undefined);
 
+/** Modifier keys (`kVK_RightCommand` 54 … `kVK_Function` 63): never posted, by either side. */
+export const isModifierKeyCode = (code: number): boolean => code >= 54 && code <= 63;
+
+/**
+ * Letters are checked against the layout. T3 Code matches a letter by the
+ * character the layout types (`event.key`), so on Dvorak or AZERTY the US
+ * position of "d" would be another letter, and so another command. Digits and
+ * punctuation are not: T3 Code matches those by physical key (`event.code`,
+ * its EVENT_CODE_SHORTCUT_KEYS), so the US position is the key it expects on
+ * every layout, as are Space and the function keys.
+ */
+export const isLetter = (key: string): boolean => /^[a-z]$/.test(key);
+
 /** CGEventFlags masks (CGEventTypes.h). */
 export const FLAG = { shift: 0x20000, control: 0x40000, option: 0x80000, command: 0x100000 } as const;
+const FLAG_MASK = FLAG.shift | FLAG.control | FLAG.option | FLAG.command;
 
 /** Modifier flags for the key-down. */
 export function eventFlags(s: DictationShortcut): number {
@@ -188,7 +213,7 @@ export function chordFor(s: DictationShortcut): Chord {
 	const keyCode = keyCodeFor(s.key);
 	const label = shortcutLabel(s);
 	if (keyCode === undefined) throw new DictateRefusal("unmapped", `the dictation shortcut ${label} uses a key the Dictate key can't press; bind composer.dictation to a letter, digit or function key in T3 Code`);
-	return { keyCode, flags: eventFlags(s), label };
+	return { keyCode, flags: eventFlags(s), label, ...(isLetter(s.key) ? { char: s.key } : {}) };
 }
 
 // ---------- The script ----------
@@ -199,22 +224,44 @@ export const FRONT_WAIT_MS = 1500;
 export const SCRIPT_TIMEOUT_MS = 5000;
 
 /**
+ * Where the script posts: "pid" (`CGEventPostToPid`, to T3 Code's own process,
+ * so a panel like Spotlight that has the keyboard, or a global hotkey on the
+ * same chord, can't take it) or "hid" (`CGEventPost` at the HID event tap,
+ * like a real keyboard). Not yet seen on a real press which of the two
+ * Electron accepts; switching is this one line.
+ */
+export const POST_TARGET: "pid" | "hid" = "pid";
+
+/**
  * The only script the plugin runs to press keys (JavaScript for Automation).
  * Every input is an argument; nothing is ever added to this text.
  *
- *   osascript -l JavaScript -e DICTATE_SCRIPT -- <tap|down|up> --bundle-id <id> --key-code <n> --flags <n> [--wait-ms <n>] [--dry-run]
+ *   osascript -l JavaScript -e DICTATE_SCRIPT -- <tap|down|up> --bundle-id <id> --key-code <n> --flags <n>
+ *     [--char <a-z>] [--post pid|hid] [--wait-ms <n>] [--dry-run]
  *
  * - `tap`: key-down with the flags, 40 ms, key-up. `down` / `up`: one event each.
  * - Key-ups carry no modifier flags: AppKit may not deliver a key-up while
  *   Command is set on it (T3 Code's own dictation code says so), and T3 Code
  *   ends a held dictation on the key-up of the same physical key (`event.code`),
- *   whatever the modifiers. No modifier key events are ever posted, so nothing can stay held.
- * - Posts only while the frontmost app's bundle id equals `--bundle-id`, waiting up to `--wait-ms` (default 1500) for it.
+ *   whatever the modifiers. No modifier key events are ever posted (modifier key
+ *   codes are refused), so nothing can stay held.
+ * - `--char`: the letter the key must type. The script reads what the current
+ *   layout types on `--key-code` (an unmodified event, through NSEvent); if
+ *   that isn't the letter it looks for the key that types it among the
+ *   character keys. None: where the layout types no Latin letter on that key
+ *   (Cyrillic, Greek…), T3 Code matches the letter by position, so the key code
+ *   is kept; otherwise it refuses. Without `--char` (digits, punctuation,
+ *   Space, function keys) the key code is a position, as T3 Code reads it.
+ * - Posts only while the frontmost app's bundle id equals `--bundle-id`, waiting
+ *   up to `--wait-ms` (default 1500) for it, and then to that app's process
+ *   (`--post pid`, the default) or at the HID event tap (`--post hid`).
  * - Without permission to post events (Accessibility), asks once and posts nothing.
- * - `--dry-run` builds the events and reads them back, checks the front app and
- *   the permission, but posts nothing and asks for nothing.
+ * - `--dry-run` does all of the above except posting and asking: it builds the
+ *   events and reads them back, reads the layout, finds the process, resolves
+ *   every function, and reports it all.
  * - Prints one line of JSON. Exit 0: posted (or, dry run, would post); 1: error;
- *   2: bad arguments; 3: T3 Code not frontmost; 4: not permitted.
+ *   2: bad arguments; 3: T3 Code not frontmost; 4: not permitted; 5: the layout
+ *   has no key for the letter.
  */
 export const DICTATE_SCRIPT = String.raw`
 // What each import gave; CoreGraphics' functions may also come through AppKit, or be bound below.
@@ -233,6 +280,14 @@ var KEYCODE_FIELD = 9; // kCGKeyboardEventKeycode
 var HID_EVENT_TAP = 0; // kCGHIDEventTap
 var TAP_GAP_S = 0.04;
 var BUNDLE_ID = /^[A-Za-z0-9][A-Za-z0-9.-]*$/;
+// Keys that type a character on ANSI, ISO (0x0A) and JIS (0x5D, 0x5E) keyboards: where a letter is looked for.
+// No modifier, function, keypad, arrow or editing keys.
+var CHARACTER_KEYS = [
+	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+	0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
+	0x20, 0x21, 0x22, 0x23, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F, 0x32,
+	0x5D, 0x5E
+];
 
 // Functions the bridge may not import from CoreGraphics' BridgeSupport (the two access checks are macOS 10.15+).
 var SIGNATURES = {
@@ -242,6 +297,7 @@ var SIGNATURES = {
 	CGEventGetIntegerValueField: ["long long", ["void *", "unsigned int"]],
 	CGEventGetType: ["unsigned int", ["void *"]],
 	CGEventPost: ["void", ["unsigned int", "void *"]],
+	CGEventPostToPid: ["void", ["int", "void *"]],
 	CGPreflightPostEventAccess: ["bool", []],
 	CGRequestPostEventAccess: ["bool", []]
 };
@@ -270,7 +326,7 @@ function parse(argv) {
 	var args = [];
 	for (var i = 0; i < argv.length; i++) args.push(String(argv[i]));
 	if (args[0] === "--") args.shift();
-	var o = { mode: args.shift(), dryRun: false, waitMs: 1500 };
+	var o = { mode: args.shift(), dryRun: false, waitMs: 1500, post: "pid" };
 	if (o.mode !== "tap" && o.mode !== "down" && o.mode !== "up") throw fail(2, "bad-args", "mode must be tap, down or up");
 	while (args.length > 0) {
 		var name = args.shift();
@@ -281,12 +337,18 @@ function parse(argv) {
 		else if (name === "--key-code") o.keyCode = integer(name, value, 0, 127);
 		else if (name === "--flags") o.flags = integer(name, value, 0, FLAG_MASK);
 		else if (name === "--wait-ms") o.waitMs = integer(name, value, 0, 5000);
+		else if (name === "--char") o.char = value;
+		else if (name === "--post") o.post = value;
 		else throw fail(2, "bad-args", "unknown argument " + name);
 	}
 	if (typeof o.bundleId !== "string" || o.bundleId.length > 255 || !BUNDLE_ID.test(o.bundleId)) throw fail(2, "bad-args", "--bundle-id is missing or invalid");
 	if (o.keyCode === undefined) throw fail(2, "bad-args", "--key-code is missing");
+	if (o.keyCode >= 54 && o.keyCode <= 63) throw fail(2, "bad-args", "--key-code may not be a modifier key");
 	if (o.flags === undefined) throw fail(2, "bad-args", "--flags is missing");
 	if ((o.flags & ~FLAG_MASK) !== 0) throw fail(2, "bad-args", "--flags may only hold shift, control, option and command");
+	if (o.char !== undefined && !/^[a-z]$/.test(o.char)) throw fail(2, "bad-args", "--char must be one letter a-z");
+	if (o.char !== undefined && CHARACTER_KEYS.indexOf(o.keyCode) < 0) throw fail(2, "bad-args", "--char needs a character key");
+	if (o.post !== "pid" && o.post !== "hid") throw fail(2, "bad-args", "--post must be pid or hid");
 	return o;
 }
 
@@ -312,22 +374,75 @@ function resolveFunctions() {
 	return how;
 }
 
-function frontmost() {
+/** The frontmost app's bundle id and process id. */
+function front() {
 	var app = $.NSWorkspace.sharedWorkspace.frontmostApplication;
-	if (isNil(app)) return "";
+	if (isNil(app)) return { id: "", pid: 0 };
 	var id = app.bundleIdentifier;
-	return isNil(id) ? "" : String(ObjC.unwrap(id));
+	return { id: isNil(id) ? "" : String(ObjC.unwrap(id)), pid: Number(app.processIdentifier) };
 }
 
-/** Waits for the app to come forward, letting the run loop deliver activation changes meanwhile. */
+/** Lets the run loop run, so NSWorkspace sees activation changes. */
+function spin(seconds) {
+	$.NSRunLoop.currentRunLoop.runUntilDate($.NSDate.dateWithTimeIntervalSinceNow(seconds));
+}
+
+/** Waits for the app to come forward. */
 function waitForFront(bundleId, waitMs) {
 	var deadline = Date.now() + waitMs;
-	var seen = frontmost();
-	while (seen !== bundleId && Date.now() < deadline) {
-		$.NSRunLoop.currentRunLoop.runUntilDate($.NSDate.dateWithTimeIntervalSinceNow(0.05));
-		seen = frontmost();
+	var seen = front();
+	while (seen.id !== bundleId && Date.now() < deadline) {
+		spin(0.05);
+		seen = front();
 	}
 	return seen;
+}
+
+/** What the current layout types on a key, unmodified (as an NSEvent built from a CGEvent reads it). */
+function typed(keyCode) {
+	var event = $.CGEventCreateKeyboardEvent(null, keyCode, true);
+	if (isNil(event)) return "";
+	$.CGEventSetFlags(event, 0);
+	var ns = $.NSEvent.eventWithCGEvent(event);
+	if (isNil(ns)) return "";
+	var chars = ns.charactersIgnoringModifiers;
+	return isNil(chars) ? "" : String(ObjC.unwrap(chars));
+}
+
+/** The key code to post: the given one, or for a letter the key that types it on this layout. */
+function chooseKey(o, result) {
+	var layout = { tableKeyCode: o.keyCode, read: typed(o.keyCode) };
+	result.layout = layout;
+	if (o.char === undefined) {
+		layout.check = "position";
+		layout.keyCode = o.keyCode;
+		layout.searched = false;
+		return o.keyCode;
+	}
+	layout.check = "letter";
+	layout.expected = o.char;
+	if (layout.read.toLowerCase() === o.char) {
+		layout.keyCode = o.keyCode;
+		layout.searched = false;
+		return o.keyCode;
+	}
+	layout.searched = true;
+	for (var i = 0; i < CHARACTER_KEYS.length; i++) {
+		var code = CHARACTER_KEYS[i];
+		if (code === o.keyCode) continue;
+		if (typed(code).toLowerCase() === o.char) {
+			layout.keyCode = code;
+			layout.found = "letter";
+			return code;
+		}
+	}
+	// No key types the letter. Where this key types no Latin letter at all, T3 Code matches the letter by position (event.code).
+	if (!/^[a-z]$/i.test(layout.read)) {
+		layout.keyCode = o.keyCode;
+		layout.found = "position";
+		return o.keyCode;
+	}
+	throw fail(5, "no-key", "the keyboard layout has no key that types " + o.char);
 }
 
 /** Key events for the mode: the key-down carries the flags, a key-up none. */
@@ -352,20 +467,28 @@ function build(keyCode, step) {
 	};
 }
 
+function post(o, pid, event) {
+	if (o.post === "pid") $.CGEventPostToPid(pid, event);
+	else $.CGEventPost(HID_EVENT_TAP, event);
+}
+
 /** Fills in result and returns the exit code; posts only when every check passed. */
 function main(argv, result) {
 	var o = parse(argv);
 	result.mode = o.mode;
 	result.dryRun = o.dryRun;
 	result.expected = o.bundleId;
+	result.post = o.post;
 	result.imports = IMPORTS;
 	result.functions = resolveFunctions();
+	var keyCode = chooseKey(o, result);
+	if (keyCode >= 54 && keyCode <= 63) throw fail(1, "error", "refusing a modifier key code");
 	var steps = plan(o);
-	var events = steps.map(function (step) { return build(o.keyCode, step); });
+	var events = steps.map(function (step) { return build(keyCode, step); });
 	result.events = events.map(function (e) { return e.read; });
 	for (var i = 0; i < events.length; i++) {
 		var r = events[i].read;
-		if (r.keyCode !== o.keyCode || (r.flags & FLAG_MASK) !== steps[i].flags) throw fail(1, "error", "a built event reads back differently");
+		if (r.keyCode !== keyCode || (r.flags & FLAG_MASK) !== steps[i].flags) throw fail(1, "error", "a built event reads back differently");
 	}
 	result.postPermitted = Boolean($.CGPreflightPostEventAccess());
 	if (!result.postPermitted && !o.dryRun) {
@@ -374,11 +497,14 @@ function main(argv, result) {
 		$.CGRequestPostEventAccess();
 		return 4;
 	}
-	result.frontmost = waitForFront(o.bundleId, o.waitMs);
-	if (result.frontmost !== o.bundleId) {
+	var seen = waitForFront(o.bundleId, o.waitMs);
+	result.frontmost = seen.id;
+	result.pid = seen.pid;
+	if (seen.id !== o.bundleId) {
 		result.reason = "not-frontmost";
 		return 3;
 	}
+	if (!(seen.pid > 0)) throw fail(1, "error", "no process id for the frontmost app");
 	if (!result.postPermitted) {
 		result.reason = "not-permitted";
 		return 4;
@@ -390,15 +516,16 @@ function main(argv, result) {
 	}
 	for (var j = 0; j < events.length; j++) {
 		if (j > 0) {
-			$.NSThread.sleepForTimeInterval(TAP_GAP_S);
+			spin(TAP_GAP_S);
 			// The key-up only goes where the key-down went.
-			result.frontmost = frontmost();
-			if (result.frontmost !== o.bundleId) {
+			var now = front();
+			result.frontmost = now.id;
+			if (now.id !== o.bundleId || now.pid !== seen.pid) {
 				result.reason = "not-frontmost";
 				return 3;
 			}
 		}
-		$.CGEventPost(HID_EVENT_TAP, events[j].event);
+		post(o, seen.pid, events[j].event);
 		result.posted++;
 	}
 	result.ok = true;
@@ -421,11 +548,13 @@ function run(argv) {
 `;
 
 /** Arguments after `osascript -l JavaScript -e DICTATE_SCRIPT`. */
-export function scriptArgs(phase: DictatePhase, target: DictateTarget, options: { dryRun?: boolean; waitMs?: number } = {}): string[] {
+export function scriptArgs(phase: DictatePhase, target: DictateTarget, options: { dryRun?: boolean; waitMs?: number; post?: "pid" | "hid" } = {}): string[] {
 	const { bundleId, chord } = target;
 	if (!validBundleId(bundleId)) throw new DictateRefusal("no-app", "invalid T3 Code bundle id");
-	if (!Number.isInteger(chord.keyCode) || chord.keyCode < 0 || chord.keyCode > 127) throw new Error(`bad key code ${chord.keyCode}`);
-	if (!Number.isInteger(chord.flags) || (chord.flags & ~(FLAG.shift | FLAG.control | FLAG.option | FLAG.command)) !== 0) throw new Error(`bad flags ${chord.flags}`);
+	if (!Number.isInteger(chord.keyCode) || chord.keyCode < 0 || chord.keyCode > 127 || isModifierKeyCode(chord.keyCode)) throw new Error(`bad key code ${chord.keyCode}`);
+	if (!Number.isInteger(chord.flags) || (chord.flags & ~FLAG_MASK) !== 0) throw new Error(`bad flags ${chord.flags}`);
+	// The letter must be the table's own letter for this key code.
+	if (chord.char !== undefined && (!isLetter(chord.char) || keyCodeFor(chord.char) !== chord.keyCode)) throw new Error(`bad letter ${JSON.stringify(chord.char)} for key code ${chord.keyCode}`);
 	return [
 		"--",
 		phase,
@@ -435,6 +564,9 @@ export function scriptArgs(phase: DictatePhase, target: DictateTarget, options: 
 		String(chord.keyCode),
 		"--flags",
 		String(chord.flags),
+		...(chord.char !== undefined ? ["--char", chord.char] : []),
+		"--post",
+		options.post ?? POST_TARGET,
 		"--wait-ms",
 		String(options.waitMs ?? FRONT_WAIT_MS),
 		...(options.dryRun ? ["--dry-run"] : []),
@@ -475,111 +607,75 @@ export const runOsascript = (args: string[], timeoutMs = SCRIPT_TIMEOUT_MS): Ret
 		}),
 	);
 
+/**
+ * Refusals that prove the script posted nothing. Any other failure of a
+ * key-down (a timeout, a crash, an unexpected exit) may have posted it, so its
+ * key-up is still sent on release.
+ */
+const NOTHING_POSTED: ReadonlySet<RefusalReason> = new Set(["disabled", "no-app", "unbound", "unmapped", "lookup-failed", "bad-args", "not-permitted", "not-frontmost", "no-key"]);
+export const nothingPosted = (error: unknown): boolean => error instanceof DictateRefusal && NOTHING_POSTED.has(error.reason);
+
 // ---------- What the deck uses ----------
 
 /** What a Dictate key needs; swapped out in tests. */
 export interface DictationPort {
-	/** The chord to press. Throws a DictateRefusal when there is none. Only the first call waits on T3 Code. */
+	/** The chord to press, looked up afresh. Throws a DictateRefusal when there is none. */
 	chord(): Promise<Chord>;
-	/** Posts one phase of the shortcut to the app. Throws a DictateRefusal or an Error when nothing (or not all) was posted. */
+	/** Posts one phase of the shortcut to the app. Throws a DictateRefusal (nothing posted) or an Error (maybe posted). */
 	send(phase: DictatePhase, target: DictateTarget): Promise<void>;
-	/** Look the shortcut up now, in the background (a Dictate key appeared, or was enabled). */
-	prefetch(): void;
 }
 
-/** Look the shortcut up again in the background once it is this old. */
-export const SHORTCUT_REFRESH_MS = 10 * 60_000;
-/** A press never waits longer than this for the first lookup. */
-const LOOKUP_WAIT_MS = 3000;
-
-type Lookup = { chord: Chord } | { refusal: DictateRefusal };
+/** A press waits this long at most for T3 Code to say its shortcut; then it is refused. */
+export const LOOKUP_WAIT_MS = 3000;
 
 export interface DictationDeps {
 	/** `server.getConfig` over the read-only socket. */
 	getConfig(): Promise<unknown>;
 	run?: RunScript;
-	now?: () => number;
 }
 
 /**
- * The shortcut cache and the script runner. The shortcut is looked up once,
- * then served from the cache while a fresh copy is fetched in the background
- * when it is older than SHORTCUT_REFRESH_MS or after a failed send.
+ * Looks the shortcut up on every press (one local RPC, run while T3 Code
+ * comes forward), so a shortcut changed in T3 Code is never pressed in its old
+ * form; nothing is cached. And runs the script.
  */
 export class Dictation implements DictationPort {
 	readonly #deps: DictationDeps;
-	#cached: { at: number; lookup: Lookup } | undefined;
-	#inflight: Promise<Lookup> | undefined;
 
 	constructor(deps: DictationDeps) {
 		this.#deps = deps;
 	}
 
-	#now(): number {
-		return (this.#deps.now ?? Date.now)();
-	}
-
-	prefetch(): void {
-		if (!this.#cached || this.#now() - this.#cached.at >= SHORTCUT_REFRESH_MS) void this.#lookup();
-	}
-
 	async chord(): Promise<Chord> {
-		let lookup: Lookup;
-		if (this.#cached) {
-			lookup = this.#cached.lookup;
-			this.prefetch();
-		} else {
-			let timer: NodeJS.Timeout | undefined;
-			lookup = await Promise.race([
-				this.#lookup(),
-				new Promise<Lookup>((resolve) => (timer = setTimeout(() => resolve({ refusal: new DictateRefusal("lookup-failed", "T3 Code didn't say its dictation shortcut in time") }), LOOKUP_WAIT_MS))),
-			]).finally(() => clearTimeout(timer));
+		let timer: NodeJS.Timeout | undefined;
+		const timeout = new Promise<never>((_, reject) => {
+			timer = setTimeout(() => reject(new DictateRefusal("lookup-failed", `T3 Code didn't say its dictation shortcut within ${LOOKUP_WAIT_MS / 1000} s`)), LOOKUP_WAIT_MS);
+		});
+		let config: unknown;
+		try {
+			config = await Promise.race([this.#deps.getConfig(), timeout]);
+		} catch (error) {
+			if (error instanceof DictateRefusal) throw error;
+			throw new DictateRefusal("lookup-failed", `couldn't read T3 Code's dictation shortcut: ${(error as Error)?.message ?? String(error)}`);
+		} finally {
+			clearTimeout(timer);
 		}
-		if ("refusal" in lookup) throw lookup.refusal;
-		return lookup.chord;
-	}
-
-	/** One `server.getConfig`; an answer (even "nothing bound") is cached, a failed request is not. */
-	#lookup(): Promise<Lookup> {
-		this.#inflight ??= (async (): Promise<Lookup> => {
-			try {
-				const config = (await this.#deps.getConfig()) as { keybindings?: unknown } | null;
-				const shortcut = dictationShortcut(config?.keybindings);
-				let lookup: Lookup;
-				if (!shortcut) lookup = { refusal: new DictateRefusal("unbound", "T3 Code has no shortcut bound to composer.dictation") };
-				else {
-					try {
-						lookup = { chord: chordFor(shortcut) };
-					} catch (error) {
-						lookup = { refusal: error as DictateRefusal };
-					}
-				}
-				this.#cached = { at: this.#now(), lookup };
-				return lookup;
-			} catch (error) {
-				return { refusal: new DictateRefusal("lookup-failed", `couldn't read T3 Code's dictation shortcut: ${(error as Error)?.message ?? String(error)}`) };
-			} finally {
-				this.#inflight = undefined;
-			}
-		})();
-		return this.#inflight;
+		const shortcut = dictationShortcut((config as { keybindings?: unknown } | null)?.keybindings);
+		if (!shortcut) throw new DictateRefusal("unbound", "T3 Code has no shortcut bound to composer.dictation");
+		return chordFor(shortcut);
 	}
 
 	async send(phase: DictatePhase, target: DictateTarget): Promise<void> {
 		const run = this.#deps.run ?? ((args: string[]) => runOsascript(args));
-		try {
-			const { code, stdout, stderr } = await run(scriptArgs(phase, target));
-			const out = parseScriptOutput(stdout);
-			if (code === 0 && out?.ok) return;
-			if (out?.reason === "not-permitted") throw new DictateRefusal("not-permitted", "Stream Deck isn't allowed to post key events (System Settings → Privacy & Security → Accessibility)");
-			if (out?.reason === "not-frontmost") throw new DictateRefusal("not-frontmost", `T3 Code (${target.bundleId}) didn't come to the front; the frontmost app was ${out.frontmost || "unknown"}`);
-			throw new Error(`dictation script (${phase} ${target.chord.label}) exited ${code}: ${out?.detail ?? (stderr.trim().slice(0, 300) || "no output")}`);
-		} catch (error) {
-			// The shortcut may have changed in T3 Code: look again before the next press.
-			if (this.#cached) this.#cached.at = -Infinity;
-			this.prefetch();
-			throw error;
-		}
+		const { code, stdout, stderr } = await run(scriptArgs(phase, target));
+		const out = parseScriptOutput(stdout);
+		if (code === 0 && out?.ok) return;
+		const what = `dictation script (${phase} ${target.chord.label})`;
+		if (out?.reason === "not-permitted") throw new DictateRefusal("not-permitted", "Stream Deck isn't allowed to post key events (System Settings → Privacy & Security → Accessibility)");
+		if (out?.reason === "not-frontmost") throw new DictateRefusal("not-frontmost", `T3 Code (${target.bundleId}) wasn't the frontmost app; it was ${out.frontmost || "unknown"}`);
+		if (out?.reason === "no-key") throw new DictateRefusal("no-key", `${what}: no key on the current keyboard layout types "${target.chord.char ?? ""}"; bind composer.dictation to a function key in T3 Code`);
+		if (out?.reason === "bad-args") throw new DictateRefusal("bad-args", `${what} refused its arguments: ${out.detail ?? ""}`);
+		throw new Error(`${what} exited ${code}: ${out?.detail ?? (stderr.trim().slice(0, 300) || "no output")}`);
 	}
 }
 
@@ -595,11 +691,21 @@ export class Dictation implements DictationPort {
  */
 export const DICTATE_TAP_MS = 200;
 
+/**
+ * A held press's key-up goes out no sooner than this after its key-down script
+ * returned. T3 Code ("auto" mode) times a press from its own key-down, which
+ * happens before that script returns, and reads anything under 300 ms
+ * (HOLD_THRESHOLD_MS in useDictationShortcut) as a tap that leaves recording
+ * on. 350 ms keeps a hold a hold even when the deck key was let go while the
+ * key-down was still on its way, so recording stops on release.
+ */
+export const MIN_HOLD_MS = 350;
+
 export interface DictateHooks {
 	/** Brings T3 Code forward (opening a thread first, if set) and resolves where and what to send. */
 	prepare(): Promise<DictateTarget>;
 	send(phase: DictatePhase, target: DictateTarget): Promise<void>;
-	/** The key's look changed (the tap window passed with the key down, or it was let go). */
+	/** The key's look changed (the tap window passed with the key down, it was let go, or the press failed). */
 	changed(): void;
 	/** A tap was sent, or a held press's key-up. */
 	sent(phase: "tap" | "up"): void;
@@ -610,6 +716,8 @@ interface Press {
 	hooks: DictateHooks;
 	holding: boolean;
 	released: boolean;
+	/** Something failed: the key never shows "Holding" for this press. */
+	failed: boolean;
 	timer?: NodeJS.Timeout;
 	/** Resolves at the end of the tap window or on release, whichever is first. */
 	decided: Promise<void>;
@@ -617,6 +725,8 @@ interface Press {
 	releasedSignal: Promise<void>;
 	release(): void;
 }
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * One Dictate key's presses, in order: each press runs only after the one
@@ -626,9 +736,9 @@ export class DictatePresses {
 	#chain: Promise<void> = Promise.resolve();
 	#current: Press | undefined;
 
-	/** Held past the tap window and not let go yet. */
+	/** Held past the tap window, not let go, and nothing failed. */
 	get holding(): boolean {
-		return this.#current?.holding === true;
+		return this.#current?.holding === true && !this.#current.failed;
 	}
 
 	down(hooks: DictateHooks): void {
@@ -639,6 +749,7 @@ export class DictatePresses {
 			hooks,
 			holding: false,
 			released: false,
+			failed: false,
 			decided: new Promise<void>((resolve) => (decide = resolve)),
 			releasedSignal: new Promise<void>((resolve) => (releaseNow = resolve)),
 			release: () => {
@@ -666,7 +777,7 @@ export class DictatePresses {
 		const press = this.#current;
 		if (!press) return;
 		this.#current = undefined;
-		const wasHolding = press.holding;
+		const wasHolding = press.holding && !press.failed;
 		press.release();
 		if (wasHolding) press.hooks.changed();
 	}
@@ -676,22 +787,43 @@ export class DictatePresses {
 		return this.#chain;
 	}
 
+	#fail(press: Press, error: unknown): void {
+		press.failed = true;
+		press.hooks.changed();
+		press.hooks.failed(error);
+	}
+
 	async #run(press: Press): Promise<void> {
 		const { hooks } = press;
+		let target: DictateTarget;
 		try {
-			const target = await hooks.prepare();
+			target = await hooks.prepare();
 			await press.decided;
 			if (!press.holding) {
 				await hooks.send("tap", target);
 				hooks.sent("tap");
 				return;
 			}
-			await hooks.send("down", target);
-			await press.releasedSignal;
-			await hooks.send("up", target);
-			hooks.sent("up");
 		} catch (error) {
-			hooks.failed(error);
+			this.#fail(press, error);
+			return;
+		}
+		let downFailed = false;
+		try {
+			await hooks.send("down", target);
+		} catch (error) {
+			this.#fail(press, error);
+			// Only a refusal proves nothing was posted; otherwise the key-up still goes out on release.
+			if (nothingPosted(error)) return;
+			downFailed = true;
+		}
+		const held = sleep(MIN_HOLD_MS);
+		await Promise.all([press.releasedSignal, held]);
+		try {
+			await hooks.send("up", target);
+			if (!downFailed) hooks.sent("up");
+		} catch (error) {
+			this.#fail(press, error);
 		}
 	}
 }

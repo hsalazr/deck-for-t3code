@@ -55,6 +55,7 @@ Tests, docs, screenshots and issues must not contain real project names, thread 
 
 - **Local only.** The plugin talks to T3 Code on the same machine and nothing else. No analytics, no telemetry, no third-party services.
 - **Least privilege.** Read-only tokens by default. Anything that changes T3 Code state goes through the opt-in actions token (only minted while "Enable thread actions" is on), and Compact, Settle, Stop and quick messages need a 0.8 s hold to confirm.
+- **Keystrokes only through the Dictate key.** The opt-in Dictate key is the one place the plugin posts keyboard events: only T3 Code's `composer.dictation` shortcut, only to T3 Code as the frontmost app, only from the fixed script in `src/dictate.ts` with every value passed as an argument. Don't widen it (other keys, text, other apps) or splice anything into that script.
 - **Credentials stay on loopback.** Tokens are only sent to a `127.0.0.1`, `localhost` or `::1` origin, the `t3` CLI is vetted before it runs, and log lines are redacted. Keep it that way.
 - **No T3 artwork.** Don't add T3's logo, screenshots or other branding. Draw your own.
 - **No donation links in the plugin's Property Inspector** (Elgato's Marketplace rules). Sponsor links belong in the README and the site.

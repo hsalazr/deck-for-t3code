@@ -327,6 +327,10 @@ const GLYPHS: Record<string, { size: number; body: string }> = {
 		size: 20,
 		body: `<rect x="2.5" y="3.5" width="15" height="14" rx="3" ${stroke()}/><path d="M2.5 8h15M6.8 2v3M13.2 2v3" ${stroke()}/><path d="M10 10.6v2.6l1.8 1.1" ${stroke()}/>`,
 	},
+	dictate: {
+		size: 20,
+		body: `<path d="M10 2.5a2.5 2.5 0 0 0-2.5 2.5v5a2.5 2.5 0 0 0 5 0V5A2.5 2.5 0 0 0 10 2.5Z" ${stroke()}/><path d="M15.5 8.5v1a5.5 5.5 0 0 1-11 0v-1M10 15v2.5" ${stroke()}/>`,
+	},
 	back: {
 		size: 20,
 		body: `<path d="M12.5 4 6.5 10l6 6" ${stroke(2.2)}/>`,

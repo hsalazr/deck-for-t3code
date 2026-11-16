@@ -26,6 +26,7 @@ macOS only. T3 Code must be installed and running on the same Mac.
 • Machine keys: this Mac's CPU (performance and efficiency cores apart), memory pressure and free disk space, detailed or as one big glanceable number.
 • Updates key: see when T3 Code or a provider CLI has an update waiting.
 • Scheduled key: when one of T3 Code's scheduled tasks runs next, how its last run went, and hold to run it now.
+• Dictate key (opt-in): start T3 Code's voice input from the deck, tap or hold.
 • Context bar on every thread key.
 • Pull request and goal marks on thread keys, and hold Open to open the pull request in your browser.
 

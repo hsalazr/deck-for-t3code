@@ -1,7 +1,8 @@
 import streamDeck from "@elgato/streamdeck";
 
-import { BackKey, MachineKey, OverviewKey, runtime, ScheduledKey, ThreadActionKey, ThreadKey, UpdatesKey, UsageKey } from "./actions.ts";
+import { BackKey, DictateKey, MachineKey, OverviewKey, runtime, ScheduledKey, ThreadActionKey, ThreadKey, UpdatesKey, UsageKey } from "./actions.ts";
 import { Deck } from "./deck.ts";
+import { Dictation } from "./dictate.ts";
 import { MachineMonitor } from "./machine.ts";
 import type { AnimationMode } from "./render.ts";
 import { defaultTokens } from "./t3/auth.ts";
@@ -15,7 +16,7 @@ import { ShellStream } from "./t3/shell-stream.ts";
 import { UpdatesMonitor, rpcUpdatesSource } from "./t3/updates-monitor.ts";
 import { UsageMonitor } from "./t3/usage-monitor.ts";
 
-type GlobalSettings = Partial<MonitorSettings> & { animation?: AnimationMode; showLabels?: boolean; threadStyle?: "detailed" | "glance"; messages?: string; actionsEnabled?: boolean };
+type GlobalSettings = Partial<MonitorSettings> & { animation?: AnimationMode; showLabels?: boolean; threadStyle?: "detailed" | "glance"; messages?: string; actionsEnabled?: boolean; dictationEnabled?: boolean };
 
 streamDeck.logger.setLevel("info");
 // Every log line, whoever writes it, goes through redact(): no token ever lands in the log files.
@@ -46,6 +47,8 @@ const updates = new UpdatesMonitor(rpcUpdatesSource(rpc));
 const scheduled = new ScheduledMonitor(rpc);
 const deck = new Deck(monitor, usage, commands, undefined, machine, updates, scheduled);
 runtime.deck = deck;
+// Dictate keys: T3 Code's dictation shortcut, read with the read-only token, pressed only while dictationEnabled is on.
+deck.attachDictation(new Dictation({ getConfig: rpcUpdatesSource(rpc).getConfig }));
 
 // A closed T3 makes the shell stream and the usage monitor report the same failure every ~30 s;
 // log it once, then once more with a count after 10 minutes.
@@ -130,6 +133,7 @@ function applyGlobal(settings: GlobalSettings): void {
 	deck.showLabels = settings.showLabels === true;
 	deck.threadStyle = settings.threadStyle === "glance" ? "glance" : "detailed";
 	deck.actionsEnabled = actions;
+	deck.dictationEnabled = settings.dictationEnabled === true;
 	deck.messages = typeof settings.messages === "string" ? settings.messages : undefined;
 }
 
@@ -143,6 +147,7 @@ streamDeck.actions.registerAction(new UpdatesKey());
 streamDeck.actions.registerAction(new ScheduledKey());
 streamDeck.actions.registerAction(new BackKey());
 streamDeck.actions.registerAction(new ThreadActionKey());
+streamDeck.actions.registerAction(new DictateKey());
 
 await streamDeck.connect();
 // Before anything waits on T3: Machine keys work whether or not T3 Code is running.

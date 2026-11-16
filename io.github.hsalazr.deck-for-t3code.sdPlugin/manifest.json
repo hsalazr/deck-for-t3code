@@ -128,6 +128,23 @@
 			]
 		},
 		{
+			"Name": "Dictate",
+			"UUID": "io.github.hsalazr.deck-for-t3code.dictate",
+			"Icon": "imgs/actions/dictate/icon",
+			"Tooltip": "Starts T3 Code's voice input by pressing its dictation shortcut in T3 Code: tap or hold, as T3 Code's Voice settings say. Off until you enable it in this key's settings.",
+			"PropertyInspectorPath": "ui/dictate.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"SupportedInMultiActions": false,
+			"States": [
+				{
+					"Image": "imgs/actions/dictate/key",
+					"ShowTitle": false
+				}
+			]
+		},
+		{
 			"Name": "Back",
 			"UUID": "io.github.hsalazr.deck-for-t3code.back",
 			"Icon": "imgs/actions/back/icon",

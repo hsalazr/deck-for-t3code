@@ -48,6 +48,7 @@ See who's working, who needs you, who's done. Glance, tap, move on.
 - **Machine keys.** This Mac's CPU (performance and efficiency cores apart), memory pressure and free disk space, together on one key or one per key.
 - **Updates key.** Whether T3 Code or a provider CLI (Claude, Codex…) has an update waiting.
 - **Scheduled key.** One of T3 Code's scheduled tasks: when it runs next, how its last run went, and a hold to run it now.
+- **Dictate key (opt-in).** Starts T3 Code's voice input from the deck: it presses T3 Code's dictation shortcut in T3 Code, tap or hold.
 - **Context bar.** A thin bar along the bottom edge shows how full the thread's context window is.
 - **Pull request and goal marks.** A thread's open pull request and its `/goal` get a small mark in the key's footer. Hold **Open** on the Thread Actions page to open the pull request in your browser.
 - **Your other machines too.** With T3 Code's **Linked environments** (Settings → Labs) turned on, threads on your linked machines show up alongside this Mac's.
@@ -266,13 +267,45 @@ One of T3 Code's **scheduled tasks** (Settings → Scheduled tasks in T3 Code): 
 - **Hold 0.8 s:** runs the task now, the same as **Run now** in T3 Code. A *Hold to run now* cue and a progress bar show while you hold; let go early to cancel. It changes T3 Code, so, like the Thread Actions keys, it works only while **Enable thread actions** is on and goes through the actions token. With it off, holding shows *Enable in settings* and runs nothing. T3 Code doesn't allow it for webhook tasks, and the key doesn't offer it while a run is in progress. A paused task can be run by hand, as in T3 Code.
 - The plugin reads each task's title, schedule, next and last run times, last result, enabled state, and the thread it posts into. It never reads the task's prompt, and it doesn't show T3 Code's error text.
 
+### Dictate
+
+Starts T3 Code's voice input from a key. T3 Code can only start dictation from its microphone button or its keyboard shortcut (`composer.dictation`, ⇧⌘D by default), so the key presses that shortcut in the T3 Code app, the same as your keyboard would, with the same result (see **Limits** below). T3 Code records, transcribes and puts the text in the composer for you to review; the plugin never touches audio or text.
+
+**Off by default.** Turn on **Enable the Dictate key** in the key's settings. Until then the key says "Enable in settings" and a press does nothing and runs nothing.
+
+Before it works you need, once:
+
+1. **Voice input set up in T3 Code** (Settings → Voice). Check that the shortcut works from your keyboard first.
+2. **Stream Deck allowed to control your Mac:** System Settings → Privacy & Security → **Accessibility**, turn on **Stream Deck**. macOS lists the Stream Deck app there, not the plugin, because the plugin runs inside it. The first press asks macOS for this; until it is granted, the key says "Allow Stream Deck in Accessibility" for a few seconds and sends nothing.
+
+**What a press does.** Key down brings T3 Code to the front. Then:
+
+- **Tap** (let go within 0.2 s): one quick press of the shortcut.
+- **Hold** (longer): the shortcut goes down after 0.2 s and comes up when you let go; the key turns white and says "Holding" meanwhile.
+
+T3 Code's own **Dictation shortcut** setting (Settings → Voice) decides what that means, as it does for your keyboard. In *Auto* (T3 Code's default), a tap starts recording and the next tap finishes; a hold records while you hold and finishes when you let go. A hold always reads as a hold in T3 Code: the shortcut stays down for at least 0.35 s, even if you let go sooner, because T3 Code takes anything shorter than 0.3 s for a tap and would keep recording. In *Hold to talk* only holding works; in *Toggle* every press starts or finishes. The key can't see whether T3 Code is recording, so it never says it is: after a tap you get Stream Deck's check mark if the shortcut was sent, or its warning triangle if not. A press that failed never shows "Holding".
+
+**Thread** (key setting): *The one open in T3 Code* (default), or *The most urgent thread*, which first opens the thread that needs you most, exactly like the Overview key's "Open the most urgent thread" tap (and clears its highlight). With every thread idle it dictates into whatever is open.
+
+**Which shortcut.** On every press the plugin asks T3 Code for your shortcut for `composer.dictation` (`server.getConfig`, with the read-only token, while T3 Code comes forward), so a shortcut you just changed in T3 Code is the one pressed; nothing is cached. If T3 Code doesn't answer within 3 seconds, the press is refused with a warning triangle. Only that one shortcut is ever pressed. Letters, digits, F1–F20, Space and the punctuation keys work; any other key (Enter, arrows…) is refused with a warning in the log.
+
+**Any keyboard layout.** Keys are sent as key positions, so for a letter the plugin first checks what your current layout types there and, if it isn't that letter, uses the key that does: on Dvorak, ⇧⌘D goes on the key labelled D, wherever it sits. On a layout with no Latin letters (Cyrillic, Greek…) it keeps the US position, which is how T3 Code matches letters there. If the layout has the letter nowhere and types another Latin letter on that key, the press is refused (warning triangle, and a line in the log) rather than sending a different shortcut. Digits, punctuation, Space and function keys are sent at their US position on every layout, because that is how T3 Code matches them. One exception: macOS's *Dvorak – QWERTY ⌘* layout switches to QWERTY while ⌘ is held, but the check reads the layout without ⌘, so it can pick the wrong key for a ⌘ shortcut on a letter. On that layout, give dictation a function key in T3 Code.
+
+**Limits:**
+
+- **What has focus in T3 Code decides what the shortcut does.** The plugin presses the chord bound to `composer.dictation`; what T3 Code does with that chord depends on where its focus is, exactly as with your keyboard. By default ⇧⌘D is also *Split terminal vertically* while T3 Code's terminal has focus, so a Dictate press with the terminal focused splits the terminal pane. While the command palette is open, T3 Code ignores it. Click into the composer first, or give dictation a chord of its own in T3 Code's keybindings (say F5); the key picks it up on the next press.
+- **Secure input.** While an app holds macOS's Secure Event Input (a password field, or T3 Code itself at times; T3 Code's issue #22449), macOS may block keys that software sends. If presses do nothing although the key shows a check mark, that is the likely cause.
+- **It needs T3 Code's app.** The key only sends to the app it found by bundle id (the **T3 app bundle id** setting, or the app running the T3 server). With only the `t3code://` link to go on, it refuses with a warning triangle. The shortcut only ever goes to T3 Code: if T3 Code doesn't come to the front within 1.5 seconds, nothing is sent, and when it is in front the keys are posted to T3 Code's own process, so a panel like Spotlight or a global hotkey on the same chord doesn't get them.
+
 ## Settings
 
 Open any key's settings (Property Inspector). The status row at the top says whether the plugin is connected. Everything except the Overview key's tap, the Usage key's limit and style, the Machine key's stat, style and disk, the Updates key's style, and the Scheduled key's task and look is shared by all keys.
 
 - **Tap** (Overview key): *Open the T3 Threads page* (default) or *Open the most urgent thread*; see [Overview](#overview).
+- **Thread** (Dictate key): *The one open in T3 Code* (default) or *The most urgent thread*; see [Dictate](#dictate).
 
 - **Enable thread actions:** off by default. Turns on the actions that change a thread, and with them the 24-hour actions token. Turning it off revokes that token.
+- **Enable the Dictate key:** off by default, on the Dictate key's settings page. Lets Dictate keys press T3 Code's dictation shortcut in T3 Code. Turning it off stops that at once (a shortcut held down at that moment is let go).
 - **Quick messages** (Thread key): see above.
 - **Show idle for:** how long idle threads stay on the deck after their last update. Active threads only, 1 hour, 4 hours, 8 hours (default), 1 day or 3 days.
 - **Highlight when:** a run finishes (solid green) or fails (blinking red); both on by default. Needs-input always blinks.
@@ -303,6 +336,7 @@ The plugin talks only to the T3 Code server on your Mac, found through T3 Code's
 - **Thread Actions** send the same commands T3 Code's UI sends (interrupt a run, snooze, settle, send a message). A hold on a Scheduled key sends `scheduledTasks.runNow`, the same call as T3 Code's **Run now**.
 - **Opening a thread** uses macOS `open` with a `t3code://` link (or opens the T3 Code app).
 - **Opening a pull request** (holding Open on the Thread Actions page) uses macOS `open` with the link T3 Code has for it, after checking it (see [SECURITY.md](SECURITY.md)). Your default browser loads the page; the plugin itself never connects to it.
+- **Dictate keys**, when enabled, run `/usr/bin/osascript` with a fixed script that presses T3 Code's dictation shortcut in T3 Code; the shortcut comes from `server.getConfig` over the read-only token. See [Dictate](#dictate) and [SECURITY.md](SECURITY.md).
 - **Linked machines.** If **Linked environments** is on in T3 Code (Settings → Labs), the plugin asks this Mac's T3 Code server for its links, and lists each reachable machine's threads and project names through that same local server, which forwards the request over its own link. The plugin never connects to another machine itself. Linked machines are polled: a machine with something running every 3 seconds, an idle one every 10, and its other threads every 30 or as soon as a run there finishes. When a thread there finishes a turn, the plugin also asks T3 once whether background work still holds it (subagents, or commands and monitors its agent said it waits for), and keeps asking while it does, so the key shows the white spinner and a `background` chip, not done. A command the agent just left running, such as a dev server, doesn't count there, and neither does a pull request watch. Linked machines have no live stream, so their keys don't say what the thread waits on and have no "Seen in T3", usage-limit pause, context bar, or pull request or goal marks. A machine that stops answering keeps its keys for 2 minutes, then they go. With the setting off, only this Mac's threads show.
 
 ## Privacy & security
@@ -317,7 +351,7 @@ The plugin uses **up to three tokens**, minted with your local `t3` CLI and stor
 | Live and usage | `Stream Deck (Deck for T3 Code usage)` | `orchestration:read` | Live status, context size, usage limits, reset-ticket counts, hub accounts, scheduled task list | 30 days; renewed once less than half is left |
 | Actions | `Stream Deck (Deck for T3 Code actions)` | `orchestration:read`, `orchestration:operate` | Thread Actions keys (send, snooze, settle, stop) and holding a Scheduled key (run that task now) | 24 hours. **Opt-in:** minted only while "Enable thread actions" is on, the first time you use an action; revoked when you turn it off |
 
-The first two are read-only. Without the actions token the plugin can't change anything in T3 Code.
+The first two are read-only. Without the actions token the plugin can't change anything in T3 Code. (The opt-in Dictate key needs no token to act: it presses the chord bound to T3 Code's dictation shortcut in the app. That starts voice input, whose text waits in the composer for you to review, unless something else in T3 Code has focus that uses the same chord; see [Dictate](#dictate).)
 
 Replaced tokens are revoked. If a revoke can't happen (T3 Code is closed), the session id is kept in `pending-revoke.json` and retried every time the plugin starts and whenever T3 Code comes back after being unreachable. If T3 Code rejects a token, the plugin mints a new one and revokes the old one.
 
@@ -336,6 +370,7 @@ t3 auth session revoke <id>
 - **T3 home must be absolute** (after expanding a leading `~/`).
 - **A found T3 home is checked.** A `~/.t3-<name>` folder is only used when it is the only one, and only if it and its `userdata` are real folders you own and nobody else can write to. See [SECURITY.md](SECURITY.md).
 - **Finding the app runs nothing from it.** The plugin only reads `Info.plist` files (with `plutil`), asks `ps` for the T3 server's executable path, and calls `open`.
+- **The Dictate key presses one shortcut, only in T3 Code.** Off by default. Its script is fixed in the plugin and every value goes in as an argument; it only posts the chord bound to `composer.dictation` (looked up on each press in a fixed key table, letters checked against your keyboard layout), never text or other keys, only while T3 Code's bundle id is the frontmost app, and to T3 Code's own process. See [SECURITY.md](SECURITY.md).
 - **The CLI is vetted before it runs.** `<T3 home>/bin/t3` must be a regular, executable file, owned by you or root, that no other user can write to. Otherwise the key says "T3 CLI missing" and nothing runs. (Fix a loose file with `chmod go-w`.)
 - **No redirects.** Requests that carry a token refuse HTTP redirects.
 - **Logs are redacted.** Any run of 32 or more token-like characters is replaced with `[redacted]` before it reaches a log file.

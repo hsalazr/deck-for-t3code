@@ -9,7 +9,7 @@ import { execFile } from "node:child_process";
 
 import streamDeck, { DeviceType, type KeyAction } from "@elgato/streamdeck";
 
-import { byUrgency, deepLinkFor, layoutThreads, parseQuickMessages, type QuickMessage, type ThreadCard } from "./model.ts";
+import { byUrgency, deepLinkFor, layoutThreads, parseQuickMessages, safeWebUrl, type QuickMessage, type ThreadCard } from "./model.ts";
 import {
 	HOLD_ACTIONS,
 	isBackgroundOnly,
@@ -333,6 +333,8 @@ export class Deck {
 		if (entry.kind === "overview") return this.#online && !this.#heldOverviewPage(entry);
 		if (entry.kind !== "action") return false;
 		const action = entry.settings.action;
+		// Opening a pull request reads nothing and changes nothing in T3 Code, so it needs no actions token.
+		if (action === "open") return this.#pullRequestUrl(entry) !== undefined;
 		if (!action || !HOLD_ACTIONS.has(action) || !this.#actionsEnabled) return false;
 		const card = this.#focused(entry);
 		if (!card || !canOperate(card)) return false;
@@ -341,11 +343,21 @@ export class Deck {
 		return true;
 	}
 
+	/** The focused thread's pull request link, if it is one `open` may be given (`safeWebUrl`). */
+	#pullRequestUrl(entry: KeyEntry): string | undefined {
+		return safeWebUrl(this.#focused(entry)?.pullRequest?.url);
+	}
+
 	/** Fires at CONFIRM_HOLD_MS while the key is still down. */
 	async #onHold(entry: KeyEntry): Promise<void> {
 		if (entry.kind === "overview") {
 			this.#monitor.ackAll();
 			await entry.action.showOk();
+			return;
+		}
+		if (entry.settings.action === "open") {
+			const url = this.#pullRequestUrl(entry);
+			if (url) this.#launch(entry, Promise.resolve([url]));
 			return;
 		}
 		const card = this.#focused(entry);

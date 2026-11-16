@@ -12,6 +12,7 @@
  */
 import { EventEmitter } from "node:events";
 
+import type { GoalStatus, GoalSummary, PullRequestStatus, PullRequestSummary } from "../model.ts";
 import { closeQuietly, handleFrame, request, type RpcAccess } from "./rpc.ts";
 
 export interface PendingTask {
@@ -35,6 +36,10 @@ export interface ShellThread {
 	lineage?: { parentThreadId?: string | null; rootThreadId?: string | null };
 	pendingBackgroundTasks?: PendingTask[];
 	pullRequests?: PullRequestLink[];
+	/** Older servers: the one link a thread had before it could have several. */
+	linkedPullRequest?: unknown;
+	/** The thread's `/goal`; null or absent without one. */
+	goal?: unknown;
 	lastVisitedAt?: string | null;
 	latestRunId?: string | null;
 	latestRunCompletedAt?: string | null;
@@ -58,6 +63,10 @@ export interface ShellExtras {
 	limitResetAt: number | null;
 	/** Something is waiting on you: a question, approval, secret or link request. */
 	pendingInput: boolean;
+	/** The thread's pull request (see `pullRequestOf`); absent without one. */
+	pullRequest?: PullRequestSummary;
+	/** The thread's goal (see `goalOf`); absent without one. */
+	goal?: GoalSummary;
 	updatedAt: number;
 }
 
@@ -138,6 +147,8 @@ export class ShellState {
 		if (root && root !== id) this.#roots.set(id, root);
 		else this.#roots.delete(id);
 		const limitRecovery = isObject(raw.limitRecovery) ? raw.limitRecovery : undefined;
+		const pullRequest = pullRequestOf(thread);
+		const goal = goalOf(raw.goal);
 		this.#extras.set(id, {
 			lastVisitedAt: ms(raw.lastVisitedAt),
 			latestRunId: str(raw.latestRunId),
@@ -147,6 +158,8 @@ export class ShellState {
 			// While a question is open T3 keeps the run "running"; the request itself
 			// lives here. Non-blocking ones (the agent keeps working) still wait on you.
 			pendingInput: isObject(raw.pendingRuntimeRequest),
+			...(pullRequest ? { pullRequest } : {}),
+			...(goal ? { goal } : {}),
 			updatedAt: ms(raw.updatedAt) ?? 0,
 		});
 		const tasks = runningTasks(thread);
@@ -360,6 +373,98 @@ export function runningTasks(thread: ShellThread): PendingTask[] {
 }
 
 const PR_WATCH_PREFIX = "pull-request-watch:";
+
+/** How soon an open pull request needs you: lower comes first. Failing checks, a conflict and requested changes tie. */
+const PR_RANK: Partial<Record<PullRequestStatus, number>> = { failing: 0, conflict: 0, changes: 0, approval: 1, running: 2, review: 3, approved: 4, passing: 4, open: 5, draft: 6 };
+
+const nonEmptyArray = (v: unknown): boolean => Array.isArray(v) && v.length > 0;
+
+/**
+ * What an open pull request needs, from the facts T3 sent and only those.
+ * Forges differ: some links carry no review or check state at all, and then
+ * the answer is plain "open". Checks and review never default to anything.
+ */
+function openStatus(snapshot: Record<string, unknown> | null, watch: Record<string, unknown> | undefined): PullRequestStatus {
+	const checks = snapshot?.checksState;
+	const review = snapshot?.reviewDecision;
+	if (checks === "failing" || nonEmptyArray(watch?.failedChecks)) return "failing";
+	if (snapshot?.mergeability === "conflicting" || watch?.conflicting === true) return "conflict";
+	if (review === "changes-requested") return "changes";
+	if (nonEmptyArray(watch?.awaitingApproval)) return "approval";
+	if (checks === "pending") return "running";
+	if (snapshot?.isDraft === true) return "draft";
+	if (review === "review-required") return "review";
+	if (review === "approved") return "approved";
+	if (checks === "passing" || watch?.passed === true) return "passing";
+	return "open";
+}
+
+/**
+ * The thread's pull request, in one pass over its links (a long-lived thread
+ * links dozens, nearly all merged).
+ *
+ * T3's own sidebar (`resolveThreadCurrentPullRequestLink`, source-control-core)
+ * ignores hidden links (`source: "stack-dismissed"`), counts a link whose
+ * snapshot hasn't synced yet as open, prefers an open one, and with none open
+ * takes the most recently updated. This follows that, with one difference:
+ * among several open pull requests T3 picks the top of the newest stack; this
+ * picks the one that most needs attention (`PR_RANK`), ties going to the most
+ * recently linked, since the key has room for one. Links with a state this
+ * code doesn't know are skipped rather than guessed at.
+ *
+ * With nothing open the result is the most recently updated, merged or closed:
+ * the thread tile draws no mark for it, but the Thread Actions page can still
+ * jump there. Servers from before multiple links send only `linkedPullRequest`.
+ */
+export function pullRequestOf(thread: Pick<ShellThread, "pullRequests" | "linkedPullRequest">): PullRequestSummary | undefined {
+	const links: unknown[] = Array.isArray(thread.pullRequests) ? thread.pullRequests : isObject(thread.linkedPullRequest) ? [thread.linkedPullRequest] : [];
+	let open: { rank: number; linkedAt: number; summary: PullRequestSummary } | undefined;
+	let latest: { at: number; summary: PullRequestSummary } | undefined;
+	for (const raw of links) {
+		if (!isObject(raw) || raw.source === "stack-dismissed") continue;
+		const number = raw.number;
+		const url = str(raw.url);
+		if (typeof number !== "number" || !Number.isInteger(number) || number < 1 || !url) continue;
+		// No snapshot yet (null, or absent): T3 counts it open. Anything else that isn't an object is malformed.
+		if (raw.snapshot != null && !isObject(raw.snapshot)) continue;
+		const snapshot = isObject(raw.snapshot) ? raw.snapshot : null;
+		const state = snapshot?.state;
+		if (snapshot !== null && state !== "open" && state !== "merged" && state !== "closed") continue;
+		if (snapshot === null || state === "open") {
+			const status = openStatus(snapshot, isObject(raw.watch) ? raw.watch : undefined);
+			const rank = PR_RANK[status]!;
+			const linkedAt = ms(raw.linkedAt) ?? 0;
+			if (!open || rank < open.rank || (rank === open.rank && linkedAt >= open.linkedAt)) open = { rank, linkedAt, summary: { number, url, status } };
+		} else if (!open) {
+			const at = ms(snapshot.updatedAt) ?? ms(raw.linkedAt) ?? 0;
+			if (!latest || at >= latest.at) latest = { at, summary: { number, url, status: state as "merged" | "closed" } };
+		}
+	}
+	return (open ?? latest)?.summary;
+}
+
+const GOAL_STATUSES: ReadonlySet<string> = new Set<GoalStatus>(["active", "paused", "blocked", "usage_limited", "budget_limited", "complete"]);
+
+/**
+ * The thread's goal. The shell carries the active provider thread's goal and
+ * T3 clears it with `/goal clear`, so a finished goal stays (status
+ * "complete") until then. Only the status is needed; a status this code
+ * doesn't know (a newer server) gives none. The budget share needs both token
+ * counts and a budget above zero; Claude goals count checks, not tokens, so
+ * they never have one.
+ */
+export function goalOf(raw: unknown): GoalSummary | undefined {
+	if (!isObject(raw)) return undefined;
+	const status = raw.status;
+	if (typeof status !== "string" || !GOAL_STATUSES.has(status)) return undefined;
+	const goal: GoalSummary = { status: status as GoalStatus };
+	const used = raw.tokensUsed;
+	const budget = raw.tokenBudget;
+	if (typeof used === "number" && typeof budget === "number" && Number.isFinite(used) && Number.isFinite(budget) && used >= 0 && budget > 0) {
+		goal.budgetPercent = Math.min(100, Math.round((100 * used) / budget));
+	}
+	return goal;
+}
 
 const ms = (iso: unknown): number | null => {
 	if (typeof iso !== "string" || !iso) return null;

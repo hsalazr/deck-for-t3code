@@ -6,7 +6,7 @@
  * every state that needs you carries a glyph as well as a colour, and bar
  * tracks keep 3:1 against the background.
  */
-import type { CardState, ThreadCard } from "./model.ts";
+import { isOpenPullRequest, safeWebUrl, type CardState, type GoalSummary, type PullRequestStatus, type PullRequestSummary, type ThreadCard } from "./model.ts";
 import { coreLayout, cpuLevel, diskLevel, diskTitle, formatBytes, formatLoadShort, mainCluster, memoryLevel, usedPercent, type CpuStats, type DiskStats, type Level, type MachineSnapshot, type MachineStat, type MemoryStats } from "./machine.ts";
 import { formatDuration, type Pace, type UsageMetric } from "./usage.ts";
 import { displayVersion, pendingUpdates, type UpdatesSnapshot } from "./updates.ts";
@@ -219,15 +219,25 @@ export function renderThreadKey(input: ThreadKeyInput): string {
 		if (line) parts.push(text(i === 0 ? firstX : 12, top + i * lineHeight, line, { size: 18, weight: 650, fill: fg }));
 	});
 
-	// Footer: what it waits on, or project name + badge or context %.
+	// Footer: what it waits on, or project name + badge or context %. The pull request and goal marks
+	// sit between the two, and give way (see `placeMarks`) before the project name does.
 	const agents = card.subagentsWorking + card.subagentsWaiting + card.background;
+	const marks = footerMarks(card, lit, accent);
 	if (backgroundOnly && card.waitingOn) {
-		parts.push(waitingChip(card.waitingOn, lit));
+		// A watch on a pull request already says so in the chip: no second mark for the same one.
+		const watched = /^PR #(\d+) CI$/.exec(card.waitingOn)?.[1];
+		const chipMarks = watched !== undefined && card.pullRequest?.number === Number(watched) ? marks.filter((m) => m.kind !== "pr") : marks;
+		const chipWidth = Math.min(124, 36 + pxWidth(fit(card.waitingOn, 124 - 36, 14), 14));
+		const placed = placeMarks(chipMarks, 134, 10, chipWidth, CHIP_KEEP);
+		parts.push(waitingChip(card.waitingOn, lit, placed ? placed.left - MARK_SEP - 10 : 124));
+		if (placed) parts.push(placed.markup);
 	} else {
 		const badgeWidth = agents > 0 ? 18 + String(agents).length * 9 + 8 : 0;
 		const percent = agents === 0 && card.context !== undefined ? `${contextPercent(card.context)}%` : "";
 		const right = agents > 0 ? SIZE - 10 - badgeWidth - 6 : percent ? 132 - pxWidth(percent, 14) - 6 : 128;
-		parts.push(text(12, 130, fit(input.projectName, right - 12, 14), { size: 14, weight: 550, fill: dim }));
+		const placed = placeMarks(marks, agents > 0 || percent ? right : 132, 12, input.projectName ? pxWidth(sanitize(input.projectName), 14) : 0, NAME_KEEP);
+		parts.push(text(12, 130, fit(input.projectName, (placed ? placed.left - MARK_SEP : right) - 12, 14), { size: 14, weight: 550, fill: dim }));
+		if (placed) parts.push(placed.markup);
 		if (agents > 0) parts.push(agentBadge(SIZE - 10 - badgeWidth, 114, badgeWidth, agents, lit ? INK : backgroundOnly ? BACKGROUND_ORBIT : accent, lit ? accent : BG));
 		else if (percent) parts.push(text(132, 130, percent, { size: 14, weight: 750, fill: lit ? INK : contextColor(card.context!), anchor: "end" }));
 	}
@@ -280,9 +290,9 @@ function spinner(color: string, now: number): string {
 	);
 }
 
-function waitingChip(label: string, lit: boolean): string {
-	const shown = fit(label, 124 - 36, 14);
-	const width = Math.min(124, 36 + pxWidth(shown, 14));
+function waitingChip(label: string, lit: boolean, maxWidth = 124): string {
+	const shown = fit(label, maxWidth - 36, 14);
+	const width = Math.min(maxWidth, 36 + pxWidth(shown, 14));
 	const ink = lit ? INK : WHITE;
 	return (
 		`<rect x="10" y="113" width="${width.toFixed(1)}" height="22" rx="11" fill="${lit ? "rgba(0,0,0,0.14)" : "#1E232B"}"/>` +
@@ -290,6 +300,222 @@ function waitingChip(label: string, lit: boolean): string {
 		`<path d="M21 121.5v2.7l1.8 1.1" stroke="${ink}" stroke-width="1.4" fill="none" stroke-linecap="round"/>` +
 		text(30, 129, shown, { size: 14, weight: 650, fill: ink })
 	);
+}
+
+// ---------- Pull request and goal marks (thread key footer) ----------
+
+/** Both marks are static facts: they never change a key's state, flashing or animation. */
+const MARK_R = 9;
+const MARK_CY = 124;
+/** Glyph to its text, and one mark to the next. */
+const MARK_TEXT_GAP = 3;
+const MARK_SEP = 6;
+/**
+ * What the marks leave the left item (project name, waiting chip): its own
+ * width up to this many px, tried first; for the name, a smaller floor next,
+ * before the marks shrink to bare glyphs or drop. A chip is never cut short
+ * for a mark: it says what the thread waits on.
+ */
+const NAME_KEEP = [64, 40];
+const CHIP_KEEP = [124];
+
+const AMBER = PALETTE.input.accent;
+const GREEN = PALETTE.done.accent;
+const RED = PALETTE.failed.accent;
+const BLUE = PALETTE.working.accent;
+const PURPLE = "#A371F7";
+
+const PR_COLOR: Record<PullRequestStatus, string> = {
+	failing: RED, conflict: AMBER, changes: AMBER, approval: AMBER, running: BLUE, review: WHITE,
+	approved: GREEN, passing: GREEN, open: SOFT, draft: DIM, merged: PURPLE, closed: DIM,
+};
+
+/** What a pull request status is called where there is room for words (the Thread Actions key). */
+export const PULL_REQUEST_WORD: Record<PullRequestStatus, string> = {
+	failing: "Checks failing", conflict: "Conflicts", changes: "Needs changes", approval: "Needs approval", running: "Checks running", review: "Needs review",
+	approved: "Approved", passing: "Checks pass", open: "Open", draft: "Draft", merged: "Merged", closed: "Closed",
+};
+
+/**
+ * A pull request status as a small mark, never by colour alone: a disc with a
+ * cross (checks failing), "!" (conflict, changes asked, approval waiting),
+ * dots (checks running), a tick (approved or passing); a plain ring (open), a
+ * ring with a dot (review needed), a dashed ring (draft); merged and closed
+ * are discs with a chevron and a bar, only drawn on the Thread Actions key.
+ */
+function pullRequestGlyph(status: PullRequestStatus, cx: number, cy: number, r: number, lit: boolean, accent: string): string {
+	const color = lit ? INK : PR_COLOR[status];
+	const ink = lit ? accent : BG;
+	const s = r / 10;
+	const p = (dx: number, dy: number): string => `${(cx + dx * s).toFixed(1)} ${(cy + dy * s).toFixed(1)}`;
+	const line = (w: number, c = ink): string => `stroke="${c}" stroke-width="${(w * s).toFixed(1)}" stroke-linecap="round" stroke-linejoin="round" fill="none"`;
+	const disc = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}"/>`;
+	const ring = (extra = ""): string => `<circle cx="${cx}" cy="${cy}" r="${(r - 1.1 * s).toFixed(1)}" ${line(2.2, color)}${extra}/>`;
+	let body: string;
+	switch (status) {
+		case "failing":
+			body = disc + `<path d="M${p(-3.8, -3.8)}L${p(3.8, 3.8)}M${p(3.8, -3.8)}L${p(-3.8, 3.8)}" ${line(2.8)}/>`;
+			break;
+		case "conflict":
+		case "changes":
+		case "approval":
+			body = disc + `<path d="M${p(0, -5.2)}L${p(0, 1)}" ${line(2.8)}/><circle cx="${cx}" cy="${(cy + 5 * s).toFixed(1)}" r="${(1.8 * s).toFixed(1)}" fill="${ink}"/>`;
+			break;
+		case "running":
+			body = disc + [-4.2, 0, 4.2].map((dx) => `<circle cx="${(cx + dx * s).toFixed(1)}" cy="${cy}" r="${(1.5 * s).toFixed(1)}" fill="${ink}"/>`).join("");
+			break;
+		case "approved":
+		case "passing":
+			body = disc + `<path d="M${p(-4.2, 0.4)}L${p(-1.2, 3.6)}L${p(4.6, -3.4)}" ${line(2.8)}/>`;
+			break;
+		case "merged":
+			body = disc + `<path d="M${p(-4, 2.2)}L${p(0, -2.4)}L${p(4, 2.2)}" ${line(2.8)}/>`;
+			break;
+		case "closed":
+			body = disc + `<path d="M${p(-4, 0)}L${p(4, 0)}" ${line(3)}/>`;
+			break;
+		case "review":
+			body = ring() + `<circle cx="${cx}" cy="${cy}" r="${(2 * s).toFixed(1)}" fill="${color}"/>`;
+			break;
+		case "draft":
+			body = ring(` stroke-dasharray="${(2.6 * s).toFixed(1)} ${(2.4 * s).toFixed(1)}"`);
+			break;
+		default:
+			body = ring();
+	}
+	return `<g id="pr-${status}">${body}</g>`;
+}
+
+const GOAL_COLOR: Record<GoalSummary["status"], string> = { active: "#C9CED6", paused: DIM, blocked: AMBER, usage_limited: AMBER, budget_limited: AMBER, complete: GREEN };
+
+/** The words beside a goal mark: the budget share while it runs, else what stopped it. Empty: nothing to add to the glyph. */
+export function goalText(goal: GoalSummary): string {
+	switch (goal.status) {
+		case "active":
+			return goal.budgetPercent === undefined ? "" : `${goal.budgetPercent}%`;
+		case "paused":
+			return "paused";
+		case "blocked":
+			return "blocked";
+		case "usage_limited":
+			return "limit";
+		case "budget_limited":
+			return "budget";
+		case "complete":
+			return "done";
+	}
+}
+
+/**
+ * A goal as a small rounded square (a disc is the pull request's), with a
+ * target (active), two bars (paused), "!" (blocked), a clock (usage limit), a
+ * part-filled bar (budget used up) or a tick (complete) cut out of it.
+ */
+function goalGlyph(status: GoalSummary["status"], cx: number, cy: number, r: number, lit: boolean, accent: string): string {
+	const color = lit ? INK : GOAL_COLOR[status];
+	const ink = lit ? accent : BG;
+	const s = r / 10;
+	const p = (dx: number, dy: number): string => `${(cx + dx * s).toFixed(1)} ${(cy + dy * s).toFixed(1)}`;
+	const line = (w: number): string => `stroke="${ink}" stroke-width="${(w * s).toFixed(1)}" stroke-linecap="round" stroke-linejoin="round" fill="none"`;
+	const n = (v: number): string => (v * s).toFixed(1);
+	const box = `<rect x="${cx - r}" y="${cy - r}" width="${2 * r}" height="${2 * r}" rx="${n(3.6)}" fill="${color}"/>`;
+	let mark: string;
+	switch (status) {
+		case "active":
+			mark = `<circle cx="${cx}" cy="${cy}" r="${n(4.4)}" ${line(1.8)}/><circle cx="${cx}" cy="${cy}" r="${n(1.6)}" fill="${ink}"/>`;
+			break;
+		case "paused":
+			mark = `<path d="M${p(-2.7, -4)}L${p(-2.7, 4)}M${p(2.7, -4)}L${p(2.7, 4)}" ${line(2.6)}/>`;
+			break;
+		case "blocked":
+			mark = `<path d="M${p(0, -5.2)}L${p(0, 1)}" ${line(2.8)}/><circle cx="${cx}" cy="${(cy + 5 * s).toFixed(1)}" r="${n(1.8)}" fill="${ink}"/>`;
+			break;
+		case "usage_limited":
+			mark = `<circle cx="${cx}" cy="${cy}" r="${n(4.8)}" ${line(1.7)}/><path d="M${p(0, -2.6)}L${p(0, 0.2)}L${p(2.2, 1.6)}" ${line(1.7)}/>`;
+			break;
+		case "budget_limited":
+			mark = `<rect x="${(cx - 4.8 * s).toFixed(1)}" y="${(cy - 3 * s).toFixed(1)}" width="${n(9.6)}" height="${n(6)}" rx="${n(1)}" ${line(1.6)}/><rect x="${(cx - 3.1 * s).toFixed(1)}" y="${(cy - 1.4 * s).toFixed(1)}" width="${n(4.6)}" height="${n(2.8)}" fill="${ink}"/>`;
+			break;
+		case "complete":
+			mark = `<path d="M${p(-4.2, 0.4)}L${p(-1.2, 3.6)}L${p(4.6, -3.4)}" ${line(2.8)}/>`;
+			break;
+	}
+	return `<g id="goal-${status}">${box}${mark}</g>`;
+}
+
+/** One mark the footer can draw as a bare glyph or as glyph plus words, whichever fits. */
+interface FooterMark {
+	kind: "pr" | "goal";
+	/** Width as a bare glyph, and with its words. */
+	glyph: number;
+	full: number;
+	draw(x: number, full: boolean): string;
+}
+
+function footerMarks(card: ThreadCard, lit: boolean, accent: string): FooterMark[] {
+	const marks: FooterMark[] = [];
+	const g = 2 * MARK_R;
+	const { pullRequest: pr, goal } = card;
+	// Only an open pull request is news; a thread that has merged dozens would wear a mark for ever.
+	if (pr && isOpenPullRequest(pr.status)) {
+		const label = `#${pr.number}`;
+		const quiet = pr.status === "draft" || pr.status === "open";
+		marks.push({
+			kind: "pr",
+			glyph: g,
+			full: g + MARK_TEXT_GAP + pxWidth(label, 14),
+			draw: (x, full) =>
+				pullRequestGlyph(pr.status, x + MARK_R, MARK_CY, MARK_R, lit, accent) +
+				(full ? text(x + g + MARK_TEXT_GAP, 130, label, { size: 14, weight: 700, fill: lit ? INK : quiet ? DIM : WHITE }) : ""),
+		});
+	}
+	if (goal) {
+		const label = goalText(goal);
+		const pct = goal.budgetPercent ?? 0;
+		const ink = lit ? INK : goal.status === "active" ? (pct >= 85 ? RED : pct >= 70 ? AMBER : SOFT) : GOAL_COLOR[goal.status];
+		marks.push({
+			kind: "goal",
+			glyph: g,
+			full: label ? g + MARK_TEXT_GAP + pxWidth(label, 14) : g,
+			draw: (x, full) => goalGlyph(goal.status, x + MARK_R, MARK_CY, MARK_R, lit, accent) + (full && label ? text(x + g + MARK_TEXT_GAP, 130, label, { size: 14, weight: 700, fill: ink }) : ""),
+		});
+	}
+	return marks;
+}
+
+/**
+ * Fits the marks into the footer, ending at `end`, after a left item that
+ * starts at `start` and is `leftWidth` px wide. The left item keeps its width
+ * up to each floor in `keep`, tried in turn. Within a floor the marks give way
+ * in this order: words on every mark but the first (the pull request), then
+ * words on the first, then every mark but the first, and when nothing fits at
+ * the last floor, all of them. Returns where they start and their markup.
+ */
+function placeMarks(marks: FooterMark[], end: number, start: number, leftWidth: number, keep: number[]): { left: number; markup: string } | undefined {
+	if (marks.length === 0) return undefined;
+	const forms: { mark: FooterMark; full: boolean }[][] = [
+		marks.map((mark) => ({ mark, full: true })),
+		marks.map((mark, i) => ({ mark, full: i === 0 })),
+		marks.map((mark) => ({ mark, full: false })),
+		[{ mark: marks[0]!, full: false }],
+	];
+	const widthOf = (form: { mark: FooterMark; full: boolean }[]): number => form.reduce((w, f, i) => w + (f.full ? f.mark.full : f.mark.glyph) + (i > 0 ? MARK_SEP : 0), 0);
+	for (const floor of keep) {
+		const room = end - start - (leftWidth > 0 ? Math.min(leftWidth, floor) + MARK_SEP : 0);
+		const form = forms.find((f) => widthOf(f) <= room);
+		if (!form) continue;
+		let x = end - widthOf(form);
+		const left = x;
+		const markup = form
+			.map((f) => {
+				const drawn = f.mark.draw(x, f.full);
+				x += (f.full ? f.mark.full : f.mark.glyph) + MARK_SEP;
+				return drawn;
+			})
+			.join("");
+		return { left, markup };
+	}
+	return undefined;
 }
 
 export const contextPercent = (c: { used: number; max: number }): number => Math.min(100, Math.round((100 * c.used) / c.max));
@@ -1332,6 +1558,7 @@ const ICON = {
 	open: `<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M9 12h7M13 9l3 3-3 3"/>`,
 	clock: `<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>`,
 	check: `<path d="M20 6 9 17l-5-5"/>`,
+	external: `<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>`,
 	compact: `<path d="m14 10 7-7"/><path d="M20 10h-6V4"/><path d="m3 21 7-7"/><path d="M4 14h6v6"/>`, // T3's "Compact context" (minimize-2)
 };
 
@@ -1343,6 +1570,26 @@ const caption = (title: string, sub?: string, color = WHITE): string =>
 
 /** Thread actions are off: the key says where to turn them on, or that the thread is on a linked machine. */
 const disabledNoteFor = (remote: boolean): string => (remote ? caption("On another", "machine", SOFT) : caption("Enable in", "settings", SOFT));
+
+/**
+ * The Open key when the thread has a pull request: a tap still opens the
+ * thread, and holding opens the pull request in the browser. The lower panel
+ * names it and its status; with none open it says "Last: merged" (or closed),
+ * so a hold that lands on an old one isn't a surprise.
+ */
+function openWithPullRequest(pr: PullRequestSummary, progress: number | undefined): string {
+	const open = isOpenPullRequest(pr.status);
+	return (
+		lucide(ICON.open, 40, 72, 30, WHITE) +
+		text(72, 70, "Open in T3 Code", { size: 15, weight: 750, fill: WHITE, anchor: "middle" }) +
+		`<rect x="6" y="82" width="132" height="56" rx="12" fill="#1A1E25"/>` +
+		pullRequestGlyph(pr.status, 24, 102, 9, false, BG) +
+		text(40, 108, fit(`PR #${pr.number}`, 80, 15), { size: 15, weight: 750, fill: WHITE }) +
+		lucide(ICON.external, 16, 124, 101, SOFT) +
+		text(14, 129, progress !== undefined ? "Hold to open" : open ? PULL_REQUEST_WORD[pr.status] : `Last: ${PULL_REQUEST_WORD[pr.status].toLowerCase()}`, { size: 14, weight: 650, fill: progress === undefined ? PR_COLOR[pr.status] === DIM ? SOFT : PR_COLOR[pr.status] : WHITE }) +
+		holdFill(progress)
+	);
+}
 
 export function renderActionKey(input: ActionKeyInput): string {
 	const { action, card } = input;
@@ -1396,7 +1643,12 @@ export function renderActionKey(input: ActionKeyInput): string {
 				holdFill(input.progress),
 		);
 	}
-	if (action === "open") return svg(bg + lucide(ICON.open, 56, 72, 54, WHITE) + caption("Open", "in T3 Code"));
+	if (action === "open") {
+		const pr = card?.pullRequest;
+		// A pull request whose link wouldn't open (see `safeWebUrl`) is not offered.
+		if (pr && safeWebUrl(pr.url)) return svg(bg + openWithPullRequest(pr, input.progress));
+		return svg(bg + lucide(ICON.open, 56, 72, 54, WHITE) + caption("Open", "in T3 Code"));
+	}
 	const icon = action === "compact" ? ICON.compact : action === "settle" ? ICON.check : ICON.clock;
 	const iconSize = action === "settle" ? 56 : 48;
 	if (!enabled) return svg(bg + lucide(icon, iconSize - 8, 72, 50, OFF_ICON) + disabledNote());

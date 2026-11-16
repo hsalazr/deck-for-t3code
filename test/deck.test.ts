@@ -713,3 +713,77 @@ test("updates key: polled only while shown; a tap opens T3 Code when something i
 		d.dispose();
 	}
 });
+
+const PR_URL = "https://git.example.com/acme/api/pulls/42";
+const withPr = (extra: Partial<ThreadCard["pullRequest"] & object> = {}): Partial<ThreadCard> => ({ pullRequest: { number: 42, url: PR_URL, status: "failing", ...extra } });
+
+test("Open key with a pull request: a tap still opens the thread, a hold opens the pull request in the browser", async () => {
+	await focusedPage(withPr());
+	const open = add("action", fakeAction("open", 2), { action: "open" });
+	assert.ok(open.last().includes("PR #42") && open.last().includes("Checks failing"));
+	host.opened = [];
+	await press(open, 100);
+	assert.deepEqual(host.opened, [["-b", "com.t3tools.t3code", "t3code://threads/env/t1"]], "tap: the thread");
+	host.opened = [];
+	monitor.calls = [];
+	await press(open, CONFIRM_HOLD_MS + 50);
+	assert.deepEqual(host.opened, [[PR_URL]], "hold: the pull request, as one argument");
+	assert.deepEqual(monitor.calls, [], "reads and changes nothing in T3 Code, not even the highlight");
+	assert.deepEqual(commands.sent, []);
+	assert.deepEqual(open.events, []);
+});
+
+test("Open key: the hold works with thread actions off", async () => {
+	await focusedPage(withPr());
+	deck.actionsEnabled = false;
+	const open = add("action", fakeAction("open", 2), { action: "open" });
+	host.opened = [];
+	await press(open, CONFIRM_HOLD_MS + 50);
+	assert.deepEqual(host.opened, [[PR_URL]]);
+});
+
+test("Open key: holding shows the usual progress, and with the last (merged) pull request when none is open", async () => {
+	await focusedPage(withPr({ status: "merged" }));
+	const open = add("action", fakeAction("open", 2), { action: "open" });
+	assert.ok(open.last().includes("Last: merged"));
+	deck.keyDown(open.id);
+	mock.timers.tick(400);
+	await flush();
+	assert.ok(open.last().includes('id="hold-progress"') && open.last().includes("Hold to open"));
+	mock.timers.tick(CONFIRM_HOLD_MS);
+	await deck.keyUp(open.id);
+	await flush();
+	assert.deepEqual(host.opened.at(-1), [PR_URL]);
+});
+
+test("Open key: a link that isn't a plain web link is never opened, and the key doesn't offer it", async () => {
+	for (const url of ["javascript:alert(1)", "file:///etc/passwd", "-b com.evil.app", "https://user:pw@git.example.com/x", `https://git.example.com/${"a".repeat(2100)}`, "not a url", ""]) {
+		host.opened = [];
+		const key = await (async () => {
+			await focusedPage(withPr({ url }));
+			return add("action", fakeAction(`open-${host.opened.length}-${url.length}`, 2), { action: "open" });
+		})();
+		assert.ok(!key.last().includes("PR #42"), `not offered: ${url.slice(0, 30)}`);
+		host.opened = [];
+		await press(key, CONFIRM_HOLD_MS + 50);
+		assert.deepEqual(host.opened, [["-b", "com.t3tools.t3code", "t3code://threads/env/t1"]], `held: a long press is only a tap: ${url.slice(0, 30)}`);
+	}
+});
+
+test("Open key without a pull request: unchanged, and a hold opens nothing", async () => {
+	await focusedPage();
+	const open = add("action", fakeAction("open", 2), { action: "open" });
+	assert.ok(open.last().includes("in T3 Code") && !open.last().includes("PR #"));
+	host.opened = [];
+	await press(open, CONFIRM_HOLD_MS + 50);
+	assert.deepEqual(host.opened, [["-b", "com.t3tools.t3code", "t3code://threads/env/t1"]], "a long press is only a tap");
+});
+
+test("Open key: a pull request that fails to open raises the alert", async () => {
+	await focusedPage(withPr());
+	const open = add("action", fakeAction("open", 2), { action: "open" });
+	host.openFails = true;
+	await press(open, CONFIRM_HOLD_MS + 50);
+	await flush();
+	assert.deepEqual(open.events, ["alert"]);
+});

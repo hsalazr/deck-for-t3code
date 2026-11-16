@@ -48,6 +48,7 @@ See who's working, who needs you, who's done. Glance, tap, move on.
 - **Machine keys.** This Mac's CPU (performance and efficiency cores apart), memory pressure and free disk space, together on one key or one per key.
 - **Updates key.** Whether T3 Code or a provider CLI (Claude, Codex…) has an update waiting.
 - **Context bar.** A thin bar along the bottom edge shows how full the thread's context window is.
+- **Pull request and goal marks.** A thread's open pull request and its `/goal` get a small mark in the key's footer. Hold **Open** on the Thread Actions page to open the pull request in your browser.
 - **Your other machines too.** With T3 Code's **Linked environments** (Settings → Labs) turned on, threads on your linked machines show up alongside this Mac's.
 - **Private.** Talks only to T3 Code on your Mac. No account, no telemetry.
 
@@ -93,6 +94,30 @@ Then drag **Overview**, **Thread** and **Usage** keys from the *Deck for T3 Code
 | Plain dark key | Nothing happening. Shown for the "Show idle for" time after the last update. |
 
 A thin bar along the bottom edge shows context use: grey, amber from 70%, red from 85%. When no subagents or background work take the corner of the footer, the percentage shows next to the project name.
+
+#### Pull request and goal marks
+
+Two small marks can sit in the footer of a Thread key in the Detailed look, between the project name and the agent badge or context percentage. They are information only: they never change a key's colour, make it flash or change the Overview's counts.
+
+**Pull request.** A disc, with `#42` when there is room. Only an **open** pull request gets a mark: threads collect pull requests, some dozens, nearly all merged, and a mark for those would be noise. With no open pull request there is no mark. The mark says what T3 Code reports about it, and only that:
+
+| Mark | Meaning |
+|---|---|
+| Red disc, `✕` | Checks are failing. |
+| Amber disc, `!` | A merge conflict, changes requested, or checks waiting for someone to approve them. |
+| Blue disc, three dots | Checks are running. |
+| Ring with a dot | Review required. |
+| Green disc, `✓` | Approved, or checks passing, with nothing against it. |
+| Plain ring | Open, and nothing else known. |
+| Dashed ring | A draft. |
+
+Which facts exist depends on the forge. Some send no review or check state at all, and then you get the plain ring (or the amber `!` for a conflict, from the mergeability or the CI watch): the plugin never guesses a check result. A thread's pull requests are those T3 Code lists for it, except ones hidden from a stack. When a thread has several open ones, the footer shows the one that most needs you, in this order: failing checks, a conflict or changes requested; checks awaiting approval; checks running; review required; approved or passing; plain open; draft. Ties go to the one linked most recently. (T3 Code's own sidebar shows the top of the newest stack instead.) Only the thread's own pull requests count, not those of its subagents: the live stream leaves idle subagents out, so folding them in would come and go.
+
+A thread that is only waiting on a pull request's CI already says `PR #42 CI` in its chip, so that pull request isn't marked a second time.
+
+**Goal.** A rounded square, so it never reads as a pull request: a target while the goal runs, with the share of its token budget used (`62%`, amber from 70%, red from 85%) when T3 Code reports a budget; two bars and `paused`, `!` and `blocked`, a clock and `limit` (usage limit), a part-filled bar and `budget` (token budget used up), a tick and `done` (complete). T3 Code keeps a finished goal on the thread until you clear it with `/goal clear`, so `done` stays until then. Claude goals count checks, not tokens, so they show no percentage.
+
+**When the footer is full,** the words go first (`#42`, `62%`, `blocked`), the goal's before the pull request's; then, if the project name would be cut below about eight characters, the marks shrink to bare glyphs; only then does the name give way, and with a two-digit agent badge the goal mark drops. A waiting chip is never shortened for a mark. The Glance look, a key paused by a usage limit, and threads on a linked machine show no marks.
 
 Only the states that need you blink: needs you (amber, about once a second) and failed (red, a little slower). With **Animation: Off** they turn into a steady tinted key with a ring, and the spinners stop.
 
@@ -143,10 +168,11 @@ Every key is a Thread key except the top-left one, which is **Back**. Tap Back t
 Opened by holding a Thread key. It acts on that one thread.
 
 - **Back** returns to the T3 Threads page. The **thread** key (dotted outline) shows the thread, with its context bar next to Compact; tap it, or **Open**, to open it in T3 Code.
+- **Open** also shows the thread's pull request (`PR #42` and its status) when it has one. **Hold it for 0.8 s** and the pull request opens in your default browser; the key shows the usual progress fill. This reads and changes nothing in T3 Code, so it works with **Enable thread actions** off. With no open pull request it opens the most recently updated one, even merged, and the key says `Last: merged` (or `closed`). A tap, or a hold released early, opens the thread as before. The link must be `https` or `http`, have no user name or password and be at most 2,048 characters; otherwise the key doesn't offer it and a hold does nothing.
 - **Snooze** (1 hour, or tomorrow 9:00 local time) fires on a tap and returns you to the T3 Threads page, because the thread leaves your keys.
 - **Compact** (sends `/compact`), **Settle**, **Stop** and the **quick messages** need a **0.8 s hold**. A tap only shows a hint ("hold to confirm", "Hold to send") for three seconds; while you hold, the key fills with a progress wash. Settle returns you to the T3 Threads page; the others stay on the page.
 - **Stop** is solid red in the corner, apart from the rest. It interrupts the running turn (queued messages stay queued). With nothing running it is dimmed and says "Nothing running".
-- All keys that change the thread say "Enable in settings" until you turn on **Enable thread actions**. Back, the thread key and Open always work.
+- All keys that change the thread say "Enable in settings" until you turn on **Enable thread actions**. Back, the thread key and Open (including its hold for the pull request) always work.
 - For a thread on a **linked machine**, the keys that change the thread say "On another machine" and do nothing: actions go through this Mac's T3 Code server. Open still works.
 
 **Quick messages** are one per line in the Thread key settings, shared by every deck. A line is both the label and the text sent, or write `Label | full text` to show a short label and send the long text. Blank lines are dropped. Until you edit them, you get six defaults (`continue`, `summarize where you are`, `run the tests and report`, `explain the last change`, `what's left to do?`, `write a handoff note`); clear the box for none. Messages go out as if you had typed them in T3 Code, starting an idle thread or steering a running one.
@@ -235,7 +261,7 @@ Open any key's settings (Property Inspector). The status row at the top says whe
 
 The plugin talks only to the T3 Code server on your Mac, found through T3 Code's own runtime file (`userdata/server-runtime.json` under your T3 home, `~/.t3` by default, or a custom build's folder next to it, see **T3 home:** above). It never contacts anything else.
 
-- **Live updates.** The plugin keeps a stream open to the T3 Code server over a local WebSocket, the same one T3 Code's own sidebar uses. It reports background work, running turns, open questions and approvals, when you last visited a thread, and usage-limit pauses.
+- **Live updates.** The plugin keeps a stream open to the T3 Code server over a local WebSocket, the same one T3 Code's own sidebar uses. It reports background work, running turns, open questions and approvals, when you last visited a thread, usage-limit pauses, and each thread's pull requests and goal.
 - **Thread list.** The titles, statuses and parent/child links come from T3 Code's local MCP endpoint. When the live stream reports a change, the plugin re-reads the list within a fraction of a second, but no more often than "Refresh every". Both lists are also reconciled every 30 seconds regardless. If the live stream drops, the plugin polls every "Refresh every" until it is back (2, 5 or 10 s in the settings; the plugin accepts 2 to 30 s). While T3 is unreachable it retries every 5 seconds when T3 isn't running, and backs off from 5 to 30 seconds on other errors.
 - **Context size.** Only for threads that are on a key (or are the one open on a Thread Actions page); a value is kept for 10 minutes after a thread leaves the keys, so flipping between pages does not refetch. The plugin asks T3 Code for a bounded snapshot of a thread (not its full timeline), keeps just the two context numbers, and asks once when a thread first appears on a key, again when its run ends, and at most every 2 minutes while it works. One request at a time; failures back off from 10 seconds to 5 minutes.
 - **Usage limits.** Only while a Usage key is on a deck. Every 5 minutes, backing off to at most 20 while T3 Code reports the same check time, with a retry after 30 seconds on failure. A tap on the key refreshes at once.
@@ -243,7 +269,8 @@ The plugin talks only to the T3 Code server on your Mac, found through T3 Code's
 - **Updates.** Only while an Updates key is on a deck, every 30 minutes (a minute after a failure, at once on a tap): `server.getConfig` for T3 Code's version and its provider update checks, and `server.getNpmRelease` for the newest T3 Code release on your channel, both over the read-only live-status token. T3 Code's server does the npm lookup.
 - **Thread Actions** send the same commands T3 Code's UI sends (interrupt a run, snooze, settle, send a message).
 - **Opening a thread** uses macOS `open` with a `t3code://` link (or opens the T3 Code app).
-- **Linked machines.** If **Linked environments** is on in T3 Code (Settings → Labs), the plugin asks this Mac's T3 Code server for its links, and lists each reachable machine's threads and project names through that same local server, which forwards the request over its own link. The plugin never connects to another machine itself. Linked machines are polled: a machine with something running every 3 seconds, an idle one every 10, and its other threads every 30 or as soon as a run there finishes. When a thread there finishes a turn, the plugin also asks T3 once whether background work still holds it (subagents, or commands and monitors its agent said it waits for), and keeps asking while it does, so the key shows the white spinner and a `background` chip, not done. A command the agent just left running, such as a dev server, doesn't count there, and neither does a pull request watch. Linked machines have no live stream, so their keys don't say what the thread waits on and have no "Seen in T3", usage-limit pause or context bar. A machine that stops answering keeps its keys for 2 minutes, then they go. With the setting off, only this Mac's threads show.
+- **Opening a pull request** (holding Open on the Thread Actions page) uses macOS `open` with the link T3 Code has for it, after checking it (see [SECURITY.md](SECURITY.md)). Your default browser loads the page; the plugin itself never connects to it.
+- **Linked machines.** If **Linked environments** is on in T3 Code (Settings → Labs), the plugin asks this Mac's T3 Code server for its links, and lists each reachable machine's threads and project names through that same local server, which forwards the request over its own link. The plugin never connects to another machine itself. Linked machines are polled: a machine with something running every 3 seconds, an idle one every 10, and its other threads every 30 or as soon as a run there finishes. When a thread there finishes a turn, the plugin also asks T3 once whether background work still holds it (subagents, or commands and monitors its agent said it waits for), and keeps asking while it does, so the key shows the white spinner and a `background` chip, not done. A command the agent just left running, such as a dev server, doesn't count there, and neither does a pull request watch. Linked machines have no live stream, so their keys don't say what the thread waits on and have no "Seen in T3", usage-limit pause, context bar, or pull request or goal marks. A machine that stops answering keeps its keys for 2 minutes, then they go. With the setting off, only this Mac's threads show.
 
 ## Privacy & security
 

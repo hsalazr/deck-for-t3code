@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- Usage key: banked reset tickets. When a provider or hub account has reset credits, the key shows a small ticket mark with the count in both the Bar and the Ring style, and the Bar style adds `exp 2d` when the next ticket lapses within 3 days and there is room. The plugin only shows them; redeeming one needs a permission it doesn't use.
+- Usage key: accounts served through a CLIProxyAPI hub are in the limit picker, under the hub's name, the driver, the account's email (or name) and plan. On the key itself they read as the driver and plan (`CODEX PLUS WEEKLY`) or the hub's name, never an email. They come from T3 Code's config stream, which the plugin opens for a moment on each refresh and closes; there is still no connection between refreshes. The saved choice holds the hub's id and a hash of the account's id.
+- Usage key: a key set to a limit that its provider doesn't report now says why (`No plan limits`, `Couldn't read limits`, `No limits reported`, `Limit not reported`, `Hub unavailable`) instead of "No usage data".
+- `scripts/usage.ts` also prints reset tickets, hub accounts and why a provider has no windows.
+
+### Changed
+
+- Usage key: every provider T3 Code reports gets a name: its own, else the known name for its driver (Grok, Kiro, Muse Code, Pi, Antigravity, fx, ACP Registry…), else the driver's id tidied up. Two instances with the same name are told apart by their instance id.
+- Usage key: with no limit picked, the key still shows Claude's weekly window, but for other providers it now finds a weekly limit by its kind rather than by Claude's window id, preferring one that covers all models.
+
 ### Fixed
 
 - The nightly pre-release is published again. It had failed since 2026-11-11: releases in this repo are immutable now, and GitHub never lets a tag name be used again once a release has used it, so the rolling `nightly` tag stopped working. Each nightly now has its own tag (`nightly-1.2.2.N`) and replaces the one before it. Find it under [pre-releases](https://github.com/hsalazr/deck-for-t3code/releases?q=prerelease%3Atrue).

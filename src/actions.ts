@@ -94,6 +94,6 @@ export class UsageKey extends T3KeyAction {
 	/** The property inspector asks which limit windows exist, to fill its picker. */
 	override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, KeySettings>): Promise<void> {
 		if ((ev.payload as { type?: string } | null)?.type !== "listMetrics" || !runtime.deck) return;
-		await streamDeck.ui.sendToPropertyInspector({ type: "metrics", metrics: runtime.deck.usageMetrics() });
+		await streamDeck.ui.sendToPropertyInspector({ type: "metrics", metrics: runtime.deck.usageMetrics(), defaultKey: runtime.deck.usageDefaultKey() ?? null });
 	}
 }

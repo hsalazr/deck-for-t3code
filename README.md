@@ -44,7 +44,7 @@ See who's working, who needs you, who's done. Glance, tap, move on.
 - **Overview key.** Counts of threads that need you, are working, or are done. One tile, one state.
 - **T3 Threads page.** Press Overview to fill the whole deck with Thread keys. A Back key returns you to your previous profile.
 - **Thread Actions page.** Hold a thread key, then let go, to send a quick message, compact the context, snooze, settle or stop the thread.
-- **Usage keys.** Any usage limit T3 Code reports, as a bar or a ring, with a tick at even pace.
+- **Usage keys.** Any usage limit T3 Code reports (every provider, and accounts served through a CLIProxyAPI hub), as a bar or a ring, with a tick at even pace and a ticket mark when you have banked reset tickets.
 - **Machine keys.** This Mac's CPU (performance and efficiency cores apart), memory pressure and free disk space, together on one key or one per key.
 - **Updates key.** Whether T3 Code or a provider CLI (Claude, Codex…) has an update waiting.
 - **Context bar.** A thin bar along the bottom edge shows how full the thread's context window is.
@@ -167,6 +167,12 @@ Lines beyond a deck's maximum are ignored on that deck. On Neo and Mini there is
 
 One usage limit (weekly, per model, 5-hour: whatever T3 Code reports for your providers). Pick it and a style in the key settings. The tile shows percent used, a bar with a white tick at *even pace* (the share of the window that has passed), how far ahead or under pace you are, and time to reset (`resets in 3d 8h`). Within 3 points counts as on pace. Tap to refresh now. If T3 Code goes away the numbers turn grey and the tile says "stale".
 
+**Which limits.** Every provider T3 Code reports shows up in the picker under the name T3 gives it (for a driver without one, the plugin tidies the driver's id). With no pick, the key shows Claude's weekly window as before; without Claude, the first provider's weekly limit that covers all models; otherwise the first limit. **Hub accounts:** if T3 Code has a CLIProxyAPI hub set up as a usage-limit source, each account it reports is listed in the picker under a heading with the hub's name, the driver, the account's email (or its name when it has none) and plan. On the key itself there is no email: it reads the driver and plan (`CODEX PLUS WEEKLY`), or the hub's name when the account has no plan. A limit you saved keeps working across refreshes.
+
+**Reset tickets.** When a provider or hub account has banked reset tickets, its keys show a small ticket mark and the count at the top right (`99+` beyond 99); the Bar style adds `exp 2d` under it when the next ticket lapses within 3 days and there is room. The plugin only shows them: redeeming one needs a permission it doesn't ask for, so do that in T3 Code. A count of zero draws nothing.
+
+**When there is nothing to show.** A key set to a limit of a provider that reports none says why in a few words instead: `No plan limits` (T3 says the account has none), `Couldn't read limits` (T3's last probe failed), `No limits reported`, `Limit not reported` (the provider is there but that window isn't) or, for a hub account, `Hub unavailable` while T3 can't read the hub.
+
 The bar's fill is green under pace, blue on pace, amber ahead and red from 90% used; the pace line turns red when you're more than 15 points ahead, and the big number goes amber from 75% and red from 90%.
 
 **Style: Ring** draws one segment per day for weekly limits or per hour for a 5-hour limit, filling clockwise from the top, with the percentage in the middle. Fill colour shows pace: green under, blue on pace, amber ahead, red when more than 15 points ahead or at 90% or more.
@@ -227,7 +233,7 @@ Open any key's settings (Property Inspector). The status row at the top says whe
 - **T3 home:** if T3 Code keeps its data somewhere other than `~/.t3`. Must be an absolute path (a leading `~/` is fine). The `T3CODE_HOME` environment variable is honoured too. With neither set and no `~/.t3/userdata`, the plugin uses a custom build's folder next to it (such as `~/.t3-custom`) if there is exactly one. Once its server has answered, the plugin keeps it until T3 home changes or the plugin restarts. With several, set T3 home.
 - **T3 app bundle id:** only for a T3 Code build the plugin doesn't find on its own. Set it to the app's bundle id (`osascript -e 'id of app "Your T3 App"'` prints it) and the plugin opens that app and skips detection.
 - **Sign out / revoke tokens:** click twice to confirm. Revokes every token the plugin minted and deletes them from your Mac. Nothing is minted again until you press **Sign in again** (the same button) or restart the plugin. The result line says `Signed out`, or `Signed out — N token(s) will be revoked later` when T3 Code was unreachable for some revokes (they are retried when T3 Code is back and each time the plugin starts).
-- **Usage key:** which limit (default: the weekly one) and Bar or Ring.
+- **Usage key:** which limit (default: Claude's weekly one, else another provider's weekly one) and Bar or Ring. Hub accounts are listed by hub, driver, email or name, and plan; ticket counts show next to the limits that have them.
 - **Machine key:** Summary, CPU, Memory pressure or Disk space; Detailed or Glance; and for Summary and Disk space, which disk (blank: the startup disk).
 - **Updates key:** Detailed or Glance.
 
@@ -238,7 +244,7 @@ The plugin talks only to the T3 Code server on your Mac, found through T3 Code's
 - **Live updates.** The plugin keeps a stream open to the T3 Code server over a local WebSocket, the same one T3 Code's own sidebar uses. It reports background work, running turns, open questions and approvals, when you last visited a thread, and usage-limit pauses.
 - **Thread list.** The titles, statuses and parent/child links come from T3 Code's local MCP endpoint. When the live stream reports a change, the plugin re-reads the list within a fraction of a second, but no more often than "Refresh every". Both lists are also reconciled every 30 seconds regardless. If the live stream drops, the plugin polls every "Refresh every" until it is back (2, 5 or 10 s in the settings; the plugin accepts 2 to 30 s). While T3 is unreachable it retries every 5 seconds when T3 isn't running, and backs off from 5 to 30 seconds on other errors.
 - **Context size.** Only for threads that are on a key (or are the one open on a Thread Actions page); a value is kept for 10 minutes after a thread leaves the keys, so flipping between pages does not refetch. The plugin asks T3 Code for a bounded snapshot of a thread (not its full timeline), keeps just the two context numbers, and asks once when a thread first appears on a key, again when its run ends, and at most every 2 minutes while it works. One request at a time; failures back off from 10 seconds to 5 minutes.
-- **Usage limits.** Only while a Usage key is on a deck. Every 5 minutes, backing off to at most 20 while T3 Code reports the same check time, with a retry after 30 seconds on failure. A tap on the key refreshes at once.
+- **Usage limits.** Only while a Usage key is on a deck. Every 5 minutes, backing off to at most 20 while T3 Code reports the same check time, with a retry after 30 seconds on failure. A tap on the key refreshes at once. Each refresh opens T3 Code's config stream (`subscribeServerConfig`, asking for usage-limit sources too), takes the first snapshot (providers, their limits and banked reset tickets) and the first hub-accounts event, then closes it: no connection stays open between refreshes. If that fails it asks `server.getConfig` instead, which has the providers but not hub accounts. It reads the hubs' labels, each account's driver, plan, email or file-style name, windows and ticket counts. Emails and account names are shown only in the key settings' picker and in `scripts/usage.ts`; they aren't logged or written to disk. The limit you pick is saved in the key's settings, and for a hub account that saved choice holds the hub's id and a hash of the account's id, never the email.
 - **Machine keys** don't involve T3 Code. Only while one is on a deck, every 5 seconds, the plugin reads per-core CPU times and load averages from Node's `os` module, memory with `/usr/sbin/sysctl -n kern.memorystatus_level kern.memorystatus_vm_pressure_level vm.swapusage`, and each disk those keys show with `statfs`. Once, when the first Machine key appears, it reads the core layout with `/usr/sbin/ioreg -rd1 -c IOPlatformDevice` and `/usr/sbin/sysctl hw.perflevel*`. See [How the Machine key measures](#how-the-machine-key-measures).
 - **Updates.** Only while an Updates key is on a deck, every 30 minutes (a minute after a failure, at once on a tap): `server.getConfig` for T3 Code's version and its provider update checks, and `server.getNpmRelease` for the newest T3 Code release on your channel, both over the read-only live-status token. T3 Code's server does the npm lookup.
 - **Thread Actions** send the same commands T3 Code's UI sends (interrupt a run, snooze, settle, send a message).
@@ -254,7 +260,7 @@ The plugin uses **up to three tokens**, minted with your local `t3` CLI and stor
 | Token | Label in `t3 auth session list` | Scope | Used for | Lifetime |
 |---|---|---|---|---|
 | Threads | `Stream Deck (Deck for T3 Code)` | `orchestration:read` (session subject `mcp-client`) | The thread list | 30 days; renewed once less than half is left |
-| Live and usage | `Stream Deck (Deck for T3 Code usage)` | `orchestration:read` | Live status, context size, usage limits | 30 days; renewed once less than half is left |
+| Live and usage | `Stream Deck (Deck for T3 Code usage)` | `orchestration:read` | Live status, context size, usage limits, reset-ticket counts, hub accounts | 30 days; renewed once less than half is left |
 | Actions | `Stream Deck (Deck for T3 Code actions)` | `orchestration:read`, `orchestration:operate` | Thread Actions keys only: send, snooze, settle, stop | 24 hours. **Opt-in:** minted only while "Enable thread actions" is on, the first time you use an action; revoked when you turn it off |
 
 The first two are read-only. Without the actions token the plugin can't change anything in T3 Code.
@@ -294,7 +300,7 @@ npm run watch                   # rebuild and restart on change
 
 node --experimental-strip-types scripts/snapshot.ts          # print what the deck would show, without Stream Deck
 node --experimental-strip-types scripts/preview.ts out.html  # contact sheet of every key state
-node --experimental-strip-types scripts/usage.ts             # print the usage metrics T3 Code reports
+node --experimental-strip-types scripts/usage.ts             # print the usage metrics T3 Code reports: providers, reset tickets, hub accounts (shows emails; mints the read-only token if missing)
 npm run profile                                              # rebuild the bundled T3 Threads and Thread Actions profiles
 npm run notices                                              # refresh THIRD_PARTY_NOTICES.md (before a release)
 

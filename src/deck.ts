@@ -35,7 +35,7 @@ import type { Monitor, Snapshot } from "./t3/monitor.ts";
 import type { UsageMonitor } from "./t3/usage-monitor.ts";
 import type { UpdatesMonitor } from "./t3/updates-monitor.ts";
 import { MachineMonitor, machineStatOf, normalizeDiskPath, type MachineStat } from "./machine.ts";
-import { metricsOf, pace, pickMetric } from "./usage.ts";
+import { defaultMetric, emptyState, hubDescription, metricsOf, pace, pickMetric } from "./usage.ts";
 import { pendingUpdates } from "./updates.ts";
 
 export { DEFAULT_MESSAGES } from "./model.ts";
@@ -238,9 +238,25 @@ export class Deck {
 		this.#render();
 	}
 
-	/** Limit windows T3 currently reports, for the Usage key picker. */
-	usageMetrics(): { key: string; label: string; provider: string; used: number }[] {
-		return metricsOf(this.#usage.snapshot.providers).map((m) => ({ key: m.key, label: m.label, provider: m.provider, used: Math.round(m.window.usedPercent) }));
+	/**
+	 * Limit windows T3 currently reports, for the Usage key picker. Hub accounts
+	 * carry `account` (hub label, email or account name, plan): the only place an
+	 * email is shown, never on a key. `defaultKey` is what a key with no pick shows.
+	 */
+	usageMetrics(): { key: string; label: string; provider: string; used: number; account?: string; tickets?: number }[] {
+		return metricsOf(this.#usage.snapshot.providers).map((m) => ({
+			key: m.key,
+			label: m.label,
+			provider: m.provider,
+			used: Math.round(m.window.usedPercent),
+			...(m.hub ? { account: hubDescription(m.hub) } : {}),
+			...(m.credits ? { tickets: m.credits.count } : {}),
+		}));
+	}
+
+	/** The key a Usage key with no pick shows, so the picker can name it. */
+	usageDefaultKey(): string | undefined {
+		return defaultMetric(metricsOf(this.#usage.snapshot.providers))?.key;
 	}
 
 	#syncUsage(): void {
@@ -612,6 +628,8 @@ export class Deck {
 					markup: renderUsageKey({
 						metric,
 						pace: metric ? pace(metric.window, now) : undefined,
+						empty: metric ? undefined : emptyState(usage.providers, usage.hubs ?? [], entry.settings.metric),
+						now,
 						ok: usage.ok,
 						loading: usage.fetchedAt === 0 && usage.ok === false && usage.detail === "Loading…",
 						style: entry.settings.style === "ring" ? "ring" : "bar",

@@ -8,7 +8,7 @@
  */
 import type { CardState, ThreadCard } from "./model.ts";
 import { coreLayout, cpuLevel, diskLevel, diskTitle, formatBytes, formatLoadShort, mainCluster, memoryLevel, usedPercent, type CpuStats, type DiskStats, type Level, type MachineSnapshot, type MachineStat, type MemoryStats } from "./machine.ts";
-import { formatDuration, type Pace, type UsageMetric } from "./usage.ts";
+import { formatDuration, type EmptyState, type Pace, type UsageMetric } from "./usage.ts";
 import { displayVersion, pendingUpdates, type UpdatesSnapshot } from "./updates.ts";
 import type { Connection } from "./t3/monitor.ts";
 
@@ -818,6 +818,47 @@ export interface UsageKeyInput {
 	loading: boolean;
 	/** "bar" (default): bar, pace text, reset time. "ring": segmented ring, % in the middle. */
 	style?: "bar" | "ring";
+	/** Why the limit isn't there, when T3 said (the provider reports no limits, or the hub failed). Used only when there is no metric. */
+	empty?: EmptyState;
+	/** The clock, for a ticket's expiry. Without it the bar style leaves the expiry out. */
+	now?: number;
+}
+
+/** A banked ticket that lapses within this long is called out on the bar style. */
+export const TICKET_SOON_MS = 3 * 86_400_000;
+
+/** "9+" beyond what fits next to the ticket. */
+const ticketCount = (n: number): string => (n > 99 ? "99+" : String(n));
+
+/** A small ticket: a rounded card with a notch on each side and a dashed tear line, `w`×`h` at (x, y). */
+function ticketGlyph(x: number, y: number, w: number, h: number, fill: string): string {
+	const r = 2.5;
+	const n = h * 0.2;
+	const m = y + h / 2;
+	const path =
+		`M${x + r} ${y}H${x + w - r}a${r} ${r} 0 0 1 ${r} ${r}V${(m - n).toFixed(1)}a${n.toFixed(1)} ${n.toFixed(1)} 0 0 0 0 ${(2 * n).toFixed(1)}V${y + h - r}` +
+		`a${r} ${r} 0 0 1 -${r} ${r}H${x + r}a${r} ${r} 0 0 1 -${r} -${r}V${(m + n).toFixed(1)}a${n.toFixed(1)} ${n.toFixed(1)} 0 0 0 0 -${(2 * n).toFixed(1)}V${y + r}a${r} ${r} 0 0 1 ${r} -${r}Z`;
+	const tear = x + w * 0.66;
+	return `<path d="${path}" fill="${fill}"/><line x1="${tear.toFixed(1)}" y1="${y + 2.5}" x2="${tear.toFixed(1)}" y2="${y + h - 2.5}" stroke="${BG}" stroke-width="1.5" stroke-dasharray="2 2"/>`;
+}
+
+/**
+ * Bar style: the ticket and its count at the right of the big number, right-aligned
+ * to the bar's end, and under it "exp 3d" when the next ticket lapses within
+ * `TICKET_SOON_MS`: only with room (a 3-digit % reaches that far), and not when stale.
+ */
+function ticketBadge(count: number, nextExpiresAt: string | undefined, now: number | undefined, room: boolean, stale: boolean): string {
+	const ink = stale ? STALE : WHITE;
+	const label = ticketCount(count);
+	const w = 22;
+	const right = 132;
+	const left = right - w - 4 - pxWidth(label, 16);
+	let out = ticketGlyph(left, 35, w, 15, ink) + text(left + w + 4, 49, label, { size: 16, weight: 800, fill: ink });
+	const expires = nextExpiresAt ? Date.parse(nextExpiresAt) : NaN;
+	if (room && !stale && now !== undefined && Number.isFinite(expires) && expires - now > 0 && expires - now <= TICKET_SOON_MS) {
+		out += text(right, 66, `exp ${formatDuration(expires - now).split(" ")[0]}`, { size: 14, weight: 700, fill: PACE_COLOR.ahead, anchor: "end" });
+	}
+	return out;
 }
 
 const PACE_COLOR = { ahead: "#F5A524", over: "#FF242F", on: "#297EFF", under: "#00E069", unknown: DIM };
@@ -831,10 +872,12 @@ const STALE_FILL = DIM;
 export function renderUsageKey(input: UsageKeyInput): string {
 	const { metric, pace } = input;
 	if (!metric || !pace) {
+		if (!input.loading && input.ok && input.empty) return renderMessage(input.empty.text, SOFT, fit(input.empty.name.toUpperCase(), 120, 14, 1.2));
 		const message = input.loading ? "Loading…" : input.ok ? "No usage data" : "T3 offline";
 		return renderMessage(message, SOFT, "USAGE");
 	}
-	if (input.style === "ring") return renderUsageRing(metric, pace, !input.ok);
+	const tickets = metric.credits && metric.credits.count > 0 ? metric.credits : undefined;
+	if (input.style === "ring") return renderUsageRing(metric, pace, !input.ok, tickets?.count);
 	const used = Math.round(pace.used);
 	const severity = used >= 90 ? PACE_COLOR.over : used >= 75 ? PACE_COLOR.ahead : WHITE;
 	const fill = used >= 90 ? PACE_COLOR.over : pace.state === "ahead" ? PACE_COLOR.ahead : pace.state === "under" ? PACE_COLOR.under : PACE_COLOR.on;
@@ -847,6 +890,7 @@ export function renderUsageKey(input: UsageKeyInput): string {
 
 	parts.push(text(12, 68, `${used}`, { size: 40, weight: 800, fill: stale ? STALE : severity }));
 	parts.push(text(12 + String(used).length * 23 + 2, 68, "%", { size: 20, weight: 700, fill: stale ? STALE : severity }));
+	if (tickets) parts.push(ticketBadge(tickets.count, tickets.nextExpiresAt, input.now, String(used).length < 3, stale));
 
 	// Bar with the even-pace tick.
 	const x0 = 12;
@@ -1247,7 +1291,7 @@ const RING = { cx: 72, cy: 82, r: 45, width: 12, gapDeg: 5 };
  * clockwise from the top with usage. The white tick marks even pace (how much
  * of the window has passed); the fill colour says ahead or under.
  */
-function renderUsageRing(metric: UsageMetric, p: Pace, stale: boolean): string {
+function renderUsageRing(metric: UsageMetric, p: Pace, stale: boolean, tickets?: number): string {
 	const segments = ringSegments(metric.window.windowDurationMins);
 	const gap = segments > 1 ? RING.gapDeg : 0;
 	const span = 360 / segments;
@@ -1275,8 +1319,17 @@ function renderUsageRing(metric: UsageMetric, p: Pace, stale: boolean): string {
 	const used = Math.round(p.used);
 	const digits = String(used).length;
 	const size = digits >= 3 ? 26 : 32;
-	parts.push(text(RING.cx - 4, RING.cy + size * 0.36, String(used), { size, weight: 800, fill: stale ? STALE : WHITE, anchor: "middle" }));
-	parts.push(text(RING.cx - 4 + digits * size * 0.29 + 2, RING.cy + size * 0.36, "%", { size: 15, weight: 700, fill: stale ? STALE : DIM }));
+	// With tickets the % lifts a little, and the ticket sits under it, inside the ring.
+	const lift = tickets ? 8 : 0;
+	parts.push(text(RING.cx - 4, RING.cy + size * 0.36 - lift, String(used), { size, weight: 800, fill: stale ? STALE : WHITE, anchor: "middle" }));
+	parts.push(text(RING.cx - 4 + digits * size * 0.29 + 2, RING.cy + size * 0.36 - lift, "%", { size: 15, weight: 700, fill: stale ? STALE : DIM }));
+	if (tickets) {
+		const ink = stale ? STALE : WHITE;
+		const label = ticketCount(tickets);
+		const w = 20;
+		const left = RING.cx - (w + 3 + pxWidth(label, 15)) / 2;
+		parts.push(ticketGlyph(left, 91, w, 14, ink) + text(left + w + 3, 104, label, { size: 15, weight: 800, fill: ink }));
+	}
 	return svg(parts.join(""));
 }
 

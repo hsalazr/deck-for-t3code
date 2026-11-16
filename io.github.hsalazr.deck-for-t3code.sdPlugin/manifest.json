@@ -111,6 +111,23 @@
 			]
 		},
 		{
+			"Name": "Scheduled",
+			"UUID": "io.github.hsalazr.deck-for-t3code.scheduled",
+			"Icon": "imgs/actions/scheduled/icon",
+			"Tooltip": "One T3 Code scheduled task: when it runs next, how its last run went. Tap to open its thread; hold 0.8 s to run it now (needs Enable thread actions).",
+			"PropertyInspectorPath": "ui/scheduled.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"SupportedInMultiActions": false,
+			"States": [
+				{
+					"Image": "imgs/actions/scheduled/key",
+					"ShowTitle": false
+				}
+			]
+		},
+		{
 			"Name": "Back",
 			"UUID": "io.github.hsalazr.deck-for-t3code.back",
 			"Icon": "imgs/actions/back/icon",

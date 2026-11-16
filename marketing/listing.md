@@ -22,10 +22,12 @@ macOS only. T3 Code must be installed and running on the same Mac.
 • Subagents fold into their main thread, with a badge and a flash if one is waiting.
 • Overview key: counts of threads that need you, are working, or are done. Tap for a full page of threads.
 • Hold a thread key, then let go, for quick messages, Compact, Snooze, Settle and Stop. Compact, Settle, Stop and messages need a hold. Pages for Stream Deck XL, Stream Deck, Neo and Mini.
-• Usage keys: any usage limit T3 Code reports, as a bar or a ring with an even-pace tick.
+• Usage keys: any usage limit T3 Code reports, for every provider and hub account, as a bar or a ring with an even-pace tick and a count of banked reset tickets where T3 Code reports them.
 • Machine keys: this Mac's CPU (performance and efficiency cores apart), memory pressure and free disk space, detailed or as one big glanceable number.
 • Updates key: see when T3 Code or a provider CLI has an update waiting.
+• Scheduled key: when one of T3 Code's scheduled tasks runs next, how its last run went, and hold to run it now.
 • Context bar on every thread key.
+• Pull request and goal marks on thread keys, and hold Open to open the pull request in your browser.
 
 Private by design: the plugin talks only to the T3 Code app on your Mac. No account, no cloud, no telemetry. Two read-only tokens come from your local T3 CLI. An optional 24-hour actions token exists only while you enable thread actions. Sign out any time.
 
@@ -48,8 +50,8 @@ Development (or Productivity, whichever the form offers)
 - Platform: macOS 13 or later (macOS only at launch)
 - Stream Deck app 7.1 or later
 - Requires T3 Code installed and running locally
-- Bundled T3 Threads and Thread Actions pages for Stream Deck XL, Stream Deck (15 keys, including MK.2), Stream Deck Neo and Stream Deck Mini. Not Stream Deck +: it gets the Thread, Overview, Usage, Machine and Updates keys only (Overview jumps to the most urgent thread).
-- Thread, Overview, Usage, Machine and Updates keys work on any key-based Stream Deck.
+- Bundled T3 Threads and Thread Actions pages for Stream Deck XL, Stream Deck (15 keys, including MK.2), Stream Deck Neo and Stream Deck Mini. Not Stream Deck +: it gets the Thread, Overview, Usage, Machine, Updates and Scheduled keys only (Overview jumps to the most urgent thread).
+- Thread, Overview, Usage, Machine, Updates and Scheduled keys work on any key-based Stream Deck.
 
 ## Release notes: 1.0.0
 
@@ -62,6 +64,7 @@ First public release.
 - Usage keys as a bar or a ring, with a pace marker
 - Machine keys: CPU per core type, memory pressure and disk space for this Mac
 - Updates key for T3 Code and provider CLIs
+- Scheduled key: next run, last result, hold to run now
 - Context-window bar on each key
 - Two read-only tokens (30 days); opt-in 24-hour actions token, revoked when you turn actions off
 

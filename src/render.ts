@@ -6,10 +6,11 @@
  * every state that needs you carries a glyph as well as a colour, and bar
  * tracks keep 3:1 against the background.
  */
-import type { CardState, ThreadCard } from "./model.ts";
+import { isOpenPullRequest, safeWebUrl, type CardState, type GoalSummary, type PullRequestStatus, type PullRequestSummary, type ThreadCard } from "./model.ts";
 import { coreLayout, cpuLevel, diskLevel, diskTitle, formatBytes, formatLoadShort, mainCluster, memoryLevel, usedPercent, type CpuStats, type DiskStats, type Level, type MachineSnapshot, type MachineStat, type MemoryStats } from "./machine.ts";
-import { formatDuration, type Pace, type UsageMetric } from "./usage.ts";
+import { formatDuration, type EmptyState, type Pace, type UsageMetric } from "./usage.ts";
 import { displayVersion, pendingUpdates, type UpdatesSnapshot } from "./updates.ts";
+import { agoText, countdownText, nextAgoChange, nextCountdownChange, scheduleText, type ScheduledTask, type TaskPick } from "./scheduled.ts";
 import type { Connection } from "./t3/monitor.ts";
 
 const SIZE = 144;
@@ -219,15 +220,25 @@ export function renderThreadKey(input: ThreadKeyInput): string {
 		if (line) parts.push(text(i === 0 ? firstX : 12, top + i * lineHeight, line, { size: 18, weight: 650, fill: fg }));
 	});
 
-	// Footer: what it waits on, or project name + badge or context %.
+	// Footer: what it waits on, or project name + badge or context %. The pull request and goal marks
+	// sit between the two, and give way (see `placeMarks`) before the project name does.
 	const agents = card.subagentsWorking + card.subagentsWaiting + card.background;
+	const marks = footerMarks(card, lit, accent);
 	if (backgroundOnly && card.waitingOn) {
-		parts.push(waitingChip(card.waitingOn, lit));
+		// A watch on a pull request already says so in the chip: no second mark for the same one.
+		const watched = /^PR #(\d+) CI$/.exec(card.waitingOn)?.[1];
+		const chipMarks = watched !== undefined && card.pullRequest?.number === Number(watched) ? marks.filter((m) => m.kind !== "pr") : marks;
+		const chipWidth = Math.min(124, 36 + pxWidth(fit(card.waitingOn, 124 - 36, 14), 14));
+		const placed = placeMarks(chipMarks, 134, 10, chipWidth, CHIP_KEEP);
+		parts.push(waitingChip(card.waitingOn, lit, placed ? placed.left - MARK_SEP - 10 : 124));
+		if (placed) parts.push(placed.markup);
 	} else {
 		const badgeWidth = agents > 0 ? 18 + String(agents).length * 9 + 8 : 0;
 		const percent = agents === 0 && card.context !== undefined ? `${contextPercent(card.context)}%` : "";
 		const right = agents > 0 ? SIZE - 10 - badgeWidth - 6 : percent ? 132 - pxWidth(percent, 14) - 6 : 128;
-		parts.push(text(12, 130, fit(input.projectName, right - 12, 14), { size: 14, weight: 550, fill: dim }));
+		const placed = placeMarks(marks, agents > 0 || percent ? right : 132, 12, input.projectName ? pxWidth(sanitize(input.projectName), 14) : 0, NAME_KEEP);
+		parts.push(text(12, 130, fit(input.projectName, (placed ? placed.left - MARK_SEP : right) - 12, 14), { size: 14, weight: 550, fill: dim }));
+		if (placed) parts.push(placed.markup);
 		if (agents > 0) parts.push(agentBadge(SIZE - 10 - badgeWidth, 114, badgeWidth, agents, lit ? INK : backgroundOnly ? BACKGROUND_ORBIT : accent, lit ? accent : BG));
 		else if (percent) parts.push(text(132, 130, percent, { size: 14, weight: 750, fill: lit ? INK : contextColor(card.context!), anchor: "end" }));
 	}
@@ -280,9 +291,9 @@ function spinner(color: string, now: number): string {
 	);
 }
 
-function waitingChip(label: string, lit: boolean): string {
-	const shown = fit(label, 124 - 36, 14);
-	const width = Math.min(124, 36 + pxWidth(shown, 14));
+function waitingChip(label: string, lit: boolean, maxWidth = 124): string {
+	const shown = fit(label, maxWidth - 36, 14);
+	const width = Math.min(maxWidth, 36 + pxWidth(shown, 14));
 	const ink = lit ? INK : WHITE;
 	return (
 		`<rect x="10" y="113" width="${width.toFixed(1)}" height="22" rx="11" fill="${lit ? "rgba(0,0,0,0.14)" : "#1E232B"}"/>` +
@@ -290,6 +301,222 @@ function waitingChip(label: string, lit: boolean): string {
 		`<path d="M21 121.5v2.7l1.8 1.1" stroke="${ink}" stroke-width="1.4" fill="none" stroke-linecap="round"/>` +
 		text(30, 129, shown, { size: 14, weight: 650, fill: ink })
 	);
+}
+
+// ---------- Pull request and goal marks (thread key footer) ----------
+
+/** Both marks are static facts: they never change a key's state, flashing or animation. */
+const MARK_R = 9;
+const MARK_CY = 124;
+/** Glyph to its text, and one mark to the next. */
+const MARK_TEXT_GAP = 3;
+const MARK_SEP = 6;
+/**
+ * What the marks leave the left item (project name, waiting chip): its own
+ * width up to this many px, tried first; for the name, a smaller floor next,
+ * before the marks shrink to bare glyphs or drop. A chip is never cut short
+ * for a mark: it says what the thread waits on.
+ */
+const NAME_KEEP = [64, 40];
+const CHIP_KEEP = [124];
+
+const AMBER = PALETTE.input.accent;
+const GREEN = PALETTE.done.accent;
+const RED = PALETTE.failed.accent;
+const BLUE = PALETTE.working.accent;
+const PURPLE = "#A371F7";
+
+const PR_COLOR: Record<PullRequestStatus, string> = {
+	failing: RED, conflict: AMBER, changes: AMBER, approval: AMBER, running: BLUE, review: WHITE,
+	approved: GREEN, passing: GREEN, open: SOFT, draft: DIM, merged: PURPLE, closed: DIM,
+};
+
+/** What a pull request status is called where there is room for words (the Thread Actions key). */
+export const PULL_REQUEST_WORD: Record<PullRequestStatus, string> = {
+	failing: "Checks failing", conflict: "Conflicts", changes: "Needs changes", approval: "Needs approval", running: "Checks running", review: "Needs review",
+	approved: "Approved", passing: "Checks pass", open: "Open", draft: "Draft", merged: "Merged", closed: "Closed",
+};
+
+/**
+ * A pull request status as a small mark, never by colour alone: a disc with a
+ * cross (checks failing), "!" (conflict, changes asked, approval waiting),
+ * dots (checks running), a tick (approved or passing); a plain ring (open), a
+ * ring with a dot (review needed), a dashed ring (draft); merged and closed
+ * are discs with a chevron and a bar, only drawn on the Thread Actions key.
+ */
+function pullRequestGlyph(status: PullRequestStatus, cx: number, cy: number, r: number, lit: boolean, accent: string): string {
+	const color = lit ? INK : PR_COLOR[status];
+	const ink = lit ? accent : BG;
+	const s = r / 10;
+	const p = (dx: number, dy: number): string => `${(cx + dx * s).toFixed(1)} ${(cy + dy * s).toFixed(1)}`;
+	const line = (w: number, c = ink): string => `stroke="${c}" stroke-width="${(w * s).toFixed(1)}" stroke-linecap="round" stroke-linejoin="round" fill="none"`;
+	const disc = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}"/>`;
+	const ring = (extra = ""): string => `<circle cx="${cx}" cy="${cy}" r="${(r - 1.1 * s).toFixed(1)}" ${line(2.2, color)}${extra}/>`;
+	let body: string;
+	switch (status) {
+		case "failing":
+			body = disc + `<path d="M${p(-3.8, -3.8)}L${p(3.8, 3.8)}M${p(3.8, -3.8)}L${p(-3.8, 3.8)}" ${line(2.8)}/>`;
+			break;
+		case "conflict":
+		case "changes":
+		case "approval":
+			body = disc + `<path d="M${p(0, -5.2)}L${p(0, 1)}" ${line(2.8)}/><circle cx="${cx}" cy="${(cy + 5 * s).toFixed(1)}" r="${(1.8 * s).toFixed(1)}" fill="${ink}"/>`;
+			break;
+		case "running":
+			body = disc + [-4.2, 0, 4.2].map((dx) => `<circle cx="${(cx + dx * s).toFixed(1)}" cy="${cy}" r="${(1.5 * s).toFixed(1)}" fill="${ink}"/>`).join("");
+			break;
+		case "approved":
+		case "passing":
+			body = disc + `<path d="M${p(-4.2, 0.4)}L${p(-1.2, 3.6)}L${p(4.6, -3.4)}" ${line(2.8)}/>`;
+			break;
+		case "merged":
+			body = disc + `<path d="M${p(-4, 2.2)}L${p(0, -2.4)}L${p(4, 2.2)}" ${line(2.8)}/>`;
+			break;
+		case "closed":
+			body = disc + `<path d="M${p(-4, 0)}L${p(4, 0)}" ${line(3)}/>`;
+			break;
+		case "review":
+			body = ring() + `<circle cx="${cx}" cy="${cy}" r="${(2 * s).toFixed(1)}" fill="${color}"/>`;
+			break;
+		case "draft":
+			body = ring(` stroke-dasharray="${(2.6 * s).toFixed(1)} ${(2.4 * s).toFixed(1)}"`);
+			break;
+		default:
+			body = ring();
+	}
+	return `<g id="pr-${status}">${body}</g>`;
+}
+
+const GOAL_COLOR: Record<GoalSummary["status"], string> = { active: "#C9CED6", paused: DIM, blocked: AMBER, usage_limited: AMBER, budget_limited: AMBER, complete: GREEN };
+
+/** The words beside a goal mark: the budget share while it runs, else what stopped it. Empty: nothing to add to the glyph. */
+export function goalText(goal: GoalSummary): string {
+	switch (goal.status) {
+		case "active":
+			return goal.budgetPercent === undefined ? "" : `${goal.budgetPercent}%`;
+		case "paused":
+			return "paused";
+		case "blocked":
+			return "blocked";
+		case "usage_limited":
+			return "limit";
+		case "budget_limited":
+			return "budget";
+		case "complete":
+			return "done";
+	}
+}
+
+/**
+ * A goal as a small rounded square (a disc is the pull request's), with a
+ * target (active), two bars (paused), "!" (blocked), a clock (usage limit), a
+ * part-filled bar (budget used up) or a tick (complete) cut out of it.
+ */
+function goalGlyph(status: GoalSummary["status"], cx: number, cy: number, r: number, lit: boolean, accent: string): string {
+	const color = lit ? INK : GOAL_COLOR[status];
+	const ink = lit ? accent : BG;
+	const s = r / 10;
+	const p = (dx: number, dy: number): string => `${(cx + dx * s).toFixed(1)} ${(cy + dy * s).toFixed(1)}`;
+	const line = (w: number): string => `stroke="${ink}" stroke-width="${(w * s).toFixed(1)}" stroke-linecap="round" stroke-linejoin="round" fill="none"`;
+	const n = (v: number): string => (v * s).toFixed(1);
+	const box = `<rect x="${cx - r}" y="${cy - r}" width="${2 * r}" height="${2 * r}" rx="${n(3.6)}" fill="${color}"/>`;
+	let mark: string;
+	switch (status) {
+		case "active":
+			mark = `<circle cx="${cx}" cy="${cy}" r="${n(4.4)}" ${line(1.8)}/><circle cx="${cx}" cy="${cy}" r="${n(1.6)}" fill="${ink}"/>`;
+			break;
+		case "paused":
+			mark = `<path d="M${p(-2.7, -4)}L${p(-2.7, 4)}M${p(2.7, -4)}L${p(2.7, 4)}" ${line(2.6)}/>`;
+			break;
+		case "blocked":
+			mark = `<path d="M${p(0, -5.2)}L${p(0, 1)}" ${line(2.8)}/><circle cx="${cx}" cy="${(cy + 5 * s).toFixed(1)}" r="${n(1.8)}" fill="${ink}"/>`;
+			break;
+		case "usage_limited":
+			mark = `<circle cx="${cx}" cy="${cy}" r="${n(4.8)}" ${line(1.7)}/><path d="M${p(0, -2.6)}L${p(0, 0.2)}L${p(2.2, 1.6)}" ${line(1.7)}/>`;
+			break;
+		case "budget_limited":
+			mark = `<rect x="${(cx - 4.8 * s).toFixed(1)}" y="${(cy - 3 * s).toFixed(1)}" width="${n(9.6)}" height="${n(6)}" rx="${n(1)}" ${line(1.6)}/><rect x="${(cx - 3.1 * s).toFixed(1)}" y="${(cy - 1.4 * s).toFixed(1)}" width="${n(4.6)}" height="${n(2.8)}" fill="${ink}"/>`;
+			break;
+		case "complete":
+			mark = `<path d="M${p(-4.2, 0.4)}L${p(-1.2, 3.6)}L${p(4.6, -3.4)}" ${line(2.8)}/>`;
+			break;
+	}
+	return `<g id="goal-${status}">${box}${mark}</g>`;
+}
+
+/** One mark the footer can draw as a bare glyph or as glyph plus words, whichever fits. */
+interface FooterMark {
+	kind: "pr" | "goal";
+	/** Width as a bare glyph, and with its words. */
+	glyph: number;
+	full: number;
+	draw(x: number, full: boolean): string;
+}
+
+function footerMarks(card: ThreadCard, lit: boolean, accent: string): FooterMark[] {
+	const marks: FooterMark[] = [];
+	const g = 2 * MARK_R;
+	const { pullRequest: pr, goal } = card;
+	// Only an open pull request is news; a thread that has merged dozens would wear a mark for ever.
+	if (pr && isOpenPullRequest(pr.status)) {
+		const label = `#${pr.number}`;
+		const quiet = pr.status === "draft" || pr.status === "open";
+		marks.push({
+			kind: "pr",
+			glyph: g,
+			full: g + MARK_TEXT_GAP + pxWidth(label, 14),
+			draw: (x, full) =>
+				pullRequestGlyph(pr.status, x + MARK_R, MARK_CY, MARK_R, lit, accent) +
+				(full ? text(x + g + MARK_TEXT_GAP, 130, label, { size: 14, weight: 700, fill: lit ? INK : quiet ? DIM : WHITE }) : ""),
+		});
+	}
+	if (goal) {
+		const label = goalText(goal);
+		const pct = goal.budgetPercent ?? 0;
+		const ink = lit ? INK : goal.status === "active" ? (pct >= 85 ? RED : pct >= 70 ? AMBER : SOFT) : GOAL_COLOR[goal.status];
+		marks.push({
+			kind: "goal",
+			glyph: g,
+			full: label ? g + MARK_TEXT_GAP + pxWidth(label, 14) : g,
+			draw: (x, full) => goalGlyph(goal.status, x + MARK_R, MARK_CY, MARK_R, lit, accent) + (full && label ? text(x + g + MARK_TEXT_GAP, 130, label, { size: 14, weight: 700, fill: ink }) : ""),
+		});
+	}
+	return marks;
+}
+
+/**
+ * Fits the marks into the footer, ending at `end`, after a left item that
+ * starts at `start` and is `leftWidth` px wide. The left item keeps its width
+ * up to each floor in `keep`, tried in turn. Within a floor the marks give way
+ * in this order: words on every mark but the first (the pull request), then
+ * words on the first, then every mark but the first, and when nothing fits at
+ * the last floor, all of them. Returns where they start and their markup.
+ */
+function placeMarks(marks: FooterMark[], end: number, start: number, leftWidth: number, keep: number[]): { left: number; markup: string } | undefined {
+	if (marks.length === 0) return undefined;
+	const forms: { mark: FooterMark; full: boolean }[][] = [
+		marks.map((mark) => ({ mark, full: true })),
+		marks.map((mark, i) => ({ mark, full: i === 0 })),
+		marks.map((mark) => ({ mark, full: false })),
+		[{ mark: marks[0]!, full: false }],
+	];
+	const widthOf = (form: { mark: FooterMark; full: boolean }[]): number => form.reduce((w, f, i) => w + (f.full ? f.mark.full : f.mark.glyph) + (i > 0 ? MARK_SEP : 0), 0);
+	for (const floor of keep) {
+		const room = end - start - (leftWidth > 0 ? Math.min(leftWidth, floor) + MARK_SEP : 0);
+		const form = forms.find((f) => widthOf(f) <= room);
+		if (!form) continue;
+		let x = end - widthOf(form);
+		const left = x;
+		const markup = form
+			.map((f) => {
+				const drawn = f.mark.draw(x, f.full);
+				x += (f.full ? f.mark.full : f.mark.glyph) + MARK_SEP;
+				return drawn;
+			})
+			.join("");
+		return { left, markup };
+	}
+	return undefined;
 }
 
 export const contextPercent = (c: { used: number; max: number }): number => Math.min(100, Math.round((100 * c.used) / c.max));
@@ -818,6 +1045,47 @@ export interface UsageKeyInput {
 	loading: boolean;
 	/** "bar" (default): bar, pace text, reset time. "ring": segmented ring, % in the middle. */
 	style?: "bar" | "ring";
+	/** Why the limit isn't there, when T3 said (the provider reports no limits, or the hub failed). Used only when there is no metric. */
+	empty?: EmptyState;
+	/** The clock, for a ticket's expiry. Without it the bar style leaves the expiry out. */
+	now?: number;
+}
+
+/** A banked ticket that lapses within this long is called out on the bar style. */
+export const TICKET_SOON_MS = 3 * 86_400_000;
+
+/** "9+" beyond what fits next to the ticket. */
+const ticketCount = (n: number): string => (n > 99 ? "99+" : String(n));
+
+/** A small ticket: a rounded card with a notch on each side and a dashed tear line, `w`×`h` at (x, y). */
+function ticketGlyph(x: number, y: number, w: number, h: number, fill: string): string {
+	const r = 2.5;
+	const n = h * 0.2;
+	const m = y + h / 2;
+	const path =
+		`M${x + r} ${y}H${x + w - r}a${r} ${r} 0 0 1 ${r} ${r}V${(m - n).toFixed(1)}a${n.toFixed(1)} ${n.toFixed(1)} 0 0 0 0 ${(2 * n).toFixed(1)}V${y + h - r}` +
+		`a${r} ${r} 0 0 1 -${r} ${r}H${x + r}a${r} ${r} 0 0 1 -${r} -${r}V${(m + n).toFixed(1)}a${n.toFixed(1)} ${n.toFixed(1)} 0 0 0 0 -${(2 * n).toFixed(1)}V${y + r}a${r} ${r} 0 0 1 ${r} -${r}Z`;
+	const tear = x + w * 0.66;
+	return `<path d="${path}" fill="${fill}"/><line x1="${tear.toFixed(1)}" y1="${y + 2.5}" x2="${tear.toFixed(1)}" y2="${y + h - 2.5}" stroke="${BG}" stroke-width="1.5" stroke-dasharray="2 2"/>`;
+}
+
+/**
+ * Bar style: the ticket and its count at the right of the big number, right-aligned
+ * to the bar's end, and under it "exp 3d" when the next ticket lapses within
+ * `TICKET_SOON_MS`: only with room (a 3-digit % reaches that far), and not when stale.
+ */
+function ticketBadge(count: number, nextExpiresAt: string | undefined, now: number | undefined, room: boolean, stale: boolean): string {
+	const ink = stale ? STALE : WHITE;
+	const label = ticketCount(count);
+	const w = 22;
+	const right = 132;
+	const left = right - w - 4 - pxWidth(label, 16);
+	let out = ticketGlyph(left, 35, w, 15, ink) + text(left + w + 4, 49, label, { size: 16, weight: 800, fill: ink });
+	const expires = nextExpiresAt ? Date.parse(nextExpiresAt) : NaN;
+	if (room && !stale && now !== undefined && Number.isFinite(expires) && expires - now > 0 && expires - now <= TICKET_SOON_MS) {
+		out += text(right, 66, `exp ${formatDuration(expires - now).split(" ")[0]}`, { size: 14, weight: 700, fill: PACE_COLOR.ahead, anchor: "end" });
+	}
+	return out;
 }
 
 const PACE_COLOR = { ahead: "#F5A524", over: "#FF242F", on: "#297EFF", under: "#00E069", unknown: DIM };
@@ -831,10 +1099,12 @@ const STALE_FILL = DIM;
 export function renderUsageKey(input: UsageKeyInput): string {
 	const { metric, pace } = input;
 	if (!metric || !pace) {
+		if (!input.loading && input.ok && input.empty) return renderMessage(input.empty.text, SOFT, fit(input.empty.name.toUpperCase(), 120, 14, 1.2));
 		const message = input.loading ? "Loading…" : input.ok ? "No usage data" : "T3 offline";
 		return renderMessage(message, SOFT, "USAGE");
 	}
-	if (input.style === "ring") return renderUsageRing(metric, pace, !input.ok);
+	const tickets = metric.credits && metric.credits.count > 0 ? metric.credits : undefined;
+	if (input.style === "ring") return renderUsageRing(metric, pace, !input.ok, tickets?.count);
 	const used = Math.round(pace.used);
 	const severity = used >= 90 ? PACE_COLOR.over : used >= 75 ? PACE_COLOR.ahead : WHITE;
 	const fill = used >= 90 ? PACE_COLOR.over : pace.state === "ahead" ? PACE_COLOR.ahead : pace.state === "under" ? PACE_COLOR.under : PACE_COLOR.on;
@@ -847,6 +1117,7 @@ export function renderUsageKey(input: UsageKeyInput): string {
 
 	parts.push(text(12, 68, `${used}`, { size: 40, weight: 800, fill: stale ? STALE : severity }));
 	parts.push(text(12 + String(used).length * 23 + 2, 68, "%", { size: 20, weight: 700, fill: stale ? STALE : severity }));
+	if (tickets) parts.push(ticketBadge(tickets.count, tickets.nextExpiresAt, input.now, String(used).length < 3, stale));
 
 	// Bar with the even-pace tick.
 	const x0 = 12;
@@ -1247,7 +1518,7 @@ const RING = { cx: 72, cy: 82, r: 45, width: 12, gapDeg: 5 };
  * clockwise from the top with usage. The white tick marks even pace (how much
  * of the window has passed); the fill colour says ahead or under.
  */
-function renderUsageRing(metric: UsageMetric, p: Pace, stale: boolean): string {
+function renderUsageRing(metric: UsageMetric, p: Pace, stale: boolean, tickets?: number): string {
 	const segments = ringSegments(metric.window.windowDurationMins);
 	const gap = segments > 1 ? RING.gapDeg : 0;
 	const span = 360 / segments;
@@ -1275,8 +1546,17 @@ function renderUsageRing(metric: UsageMetric, p: Pace, stale: boolean): string {
 	const used = Math.round(p.used);
 	const digits = String(used).length;
 	const size = digits >= 3 ? 26 : 32;
-	parts.push(text(RING.cx - 4, RING.cy + size * 0.36, String(used), { size, weight: 800, fill: stale ? STALE : WHITE, anchor: "middle" }));
-	parts.push(text(RING.cx - 4 + digits * size * 0.29 + 2, RING.cy + size * 0.36, "%", { size: 15, weight: 700, fill: stale ? STALE : DIM }));
+	// With tickets the % lifts a little, and the ticket sits under it, inside the ring.
+	const lift = tickets ? 8 : 0;
+	parts.push(text(RING.cx - 4, RING.cy + size * 0.36 - lift, String(used), { size, weight: 800, fill: stale ? STALE : WHITE, anchor: "middle" }));
+	parts.push(text(RING.cx - 4 + digits * size * 0.29 + 2, RING.cy + size * 0.36 - lift, "%", { size: 15, weight: 700, fill: stale ? STALE : DIM }));
+	if (tickets) {
+		const ink = stale ? STALE : WHITE;
+		const label = ticketCount(tickets);
+		const w = 20;
+		const left = RING.cx - (w + 3 + pxWidth(label, 15)) / 2;
+		parts.push(ticketGlyph(left, 91, w, 14, ink) + text(left + w + 3, 104, label, { size: 15, weight: 800, fill: ink }));
+	}
 	return svg(parts.join(""));
 }
 
@@ -1332,6 +1612,7 @@ const ICON = {
 	open: `<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M9 12h7M13 9l3 3-3 3"/>`,
 	clock: `<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>`,
 	check: `<path d="M20 6 9 17l-5-5"/>`,
+	external: `<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>`,
 	compact: `<path d="m14 10 7-7"/><path d="M20 10h-6V4"/><path d="m3 21 7-7"/><path d="M4 14h6v6"/>`, // T3's "Compact context" (minimize-2)
 };
 
@@ -1343,6 +1624,26 @@ const caption = (title: string, sub?: string, color = WHITE): string =>
 
 /** Thread actions are off: the key says where to turn them on, or that the thread is on a linked machine. */
 const disabledNoteFor = (remote: boolean): string => (remote ? caption("On another", "machine", SOFT) : caption("Enable in", "settings", SOFT));
+
+/**
+ * The Open key when the thread has a pull request: a tap still opens the
+ * thread, and holding opens the pull request in the browser. The lower panel
+ * names it and its status; with none open it says "Last: merged" (or closed),
+ * so a hold that lands on an old one isn't a surprise.
+ */
+function openWithPullRequest(pr: PullRequestSummary, progress: number | undefined): string {
+	const open = isOpenPullRequest(pr.status);
+	return (
+		lucide(ICON.open, 40, 72, 30, WHITE) +
+		text(72, 70, "Open in T3 Code", { size: 15, weight: 750, fill: WHITE, anchor: "middle" }) +
+		`<rect x="6" y="82" width="132" height="56" rx="12" fill="#1A1E25"/>` +
+		pullRequestGlyph(pr.status, 24, 102, 9, false, BG) +
+		text(40, 108, fit(`PR #${pr.number}`, 80, 15), { size: 15, weight: 750, fill: WHITE }) +
+		lucide(ICON.external, 16, 124, 101, SOFT) +
+		text(14, 129, progress !== undefined ? "Hold to open" : open ? PULL_REQUEST_WORD[pr.status] : `Last: ${PULL_REQUEST_WORD[pr.status].toLowerCase()}`, { size: 14, weight: 650, fill: progress === undefined ? PR_COLOR[pr.status] === DIM ? SOFT : PR_COLOR[pr.status] : WHITE }) +
+		holdFill(progress)
+	);
+}
 
 export function renderActionKey(input: ActionKeyInput): string {
 	const { action, card } = input;
@@ -1396,7 +1697,12 @@ export function renderActionKey(input: ActionKeyInput): string {
 				holdFill(input.progress),
 		);
 	}
-	if (action === "open") return svg(bg + lucide(ICON.open, 56, 72, 54, WHITE) + caption("Open", "in T3 Code"));
+	if (action === "open") {
+		const pr = card?.pullRequest;
+		// A pull request whose link wouldn't open (see `safeWebUrl`) is not offered.
+		if (pr && safeWebUrl(pr.url)) return svg(bg + openWithPullRequest(pr, input.progress));
+		return svg(bg + lucide(ICON.open, 56, 72, 54, WHITE) + caption("Open", "in T3 Code"));
+	}
 	const icon = action === "compact" ? ICON.compact : action === "settle" ? ICON.check : ICON.clock;
 	const iconSize = action === "settle" ? 56 : 48;
 	if (!enabled) return svg(bg + lucide(icon, iconSize - 8, 72, 50, OFF_ICON) + disabledNote());
@@ -1405,4 +1711,216 @@ export function renderActionKey(input: ActionKeyInput): string {
 	if (action === "compact") return svg(bg + lucide(ICON.compact, iconSize, 72, 54, WHITE) + caption("Compact", input.hint ? "hold to send" : "hold") + holdFill(input.progress));
 	// settle
 	return svg(bg + lucide(ICON.check, iconSize, 72, 54, WHITE) + caption("Settle", input.hint ? "hold to confirm" : "hold") + holdFill(input.progress));
+}
+
+// ---------- Scheduled ----------
+
+/** What the Scheduled key is leading with, most pressing first. */
+export type TaskFace = "running" | "blocked" | "disabled" | "webhook" | "counting" | "finished";
+
+export function faceOf(task: ScheduledTask): TaskFace {
+	if (task.lastRunStatus === "running") return "running";
+	if (task.blocked) return "blocked";
+	if (!task.enabled) return "disabled";
+	if (task.schedule.kind === "webhook") return "webhook";
+	return task.nextRunAt !== null ? "counting" : "finished";
+}
+
+/** Held on a Scheduled key: towards "run now" (0–1), or the actions are off so holding can't run anything. */
+export type ScheduledCue = { kind: "run"; progress: number } | { kind: "enable" };
+
+export interface ScheduledKeyInput {
+	connection: Connection;
+	/** The monitor's stream: only "live" has tasks. */
+	stream: "loading" | "live" | "down";
+	pick: TaskPick;
+	now: number;
+	animation: AnimationMode;
+	style?: KeyStyle;
+	cue?: ScheduledCue;
+}
+
+/** Big text for each face; the countdown re-renders on the minute (see `nextScheduledFrame`). */
+function faceText(task: ScheduledTask, face: TaskFace, now: number): string {
+	switch (face) {
+		case "running":
+			return "Running";
+		case "blocked":
+			return "Blocked";
+		case "disabled":
+			return "Disabled";
+		case "webhook":
+			return "Webhook";
+		case "counting":
+			return countdownText(task.nextRunAt! - now, formatDuration);
+		case "finished":
+			return task.schedule.kind === "once" ? "Finished" : "No next run";
+	}
+}
+
+/** The line under the big text in the detailed look: the schedule, or why there is no countdown. */
+function faceCaption(task: ScheduledTask, face: TaskFace): string {
+	if (face === "webhook") return "runs when called";
+	if (face === "blocked") return "stopped by policy";
+	return scheduleText(task.schedule);
+}
+
+/** The next frame the key needs on its own (the countdown's minute, the "ago" text, the spinner); undefined when static. */
+export function nextScheduledFrame(task: ScheduledTask | undefined, animation: AnimationMode, now: number, style: KeyStyle = "detailed"): number | undefined {
+	if (!task) return undefined;
+	const face = faceOf(task);
+	const times: (number | undefined)[] = [];
+	if (face === "running" && animation === "smooth") times.push(nextBoundary(now, SPIN_STEP_MS));
+	if (face === "counting") times.push(nextCountdownChange(task.nextRunAt!, now));
+	if (style === "detailed" && task.lastRunAt !== null && task.lastRunStatus !== "never") times.push(nextAgoChange(task.lastRunAt, now));
+	let best: number | undefined;
+	for (const t of times) if (t !== undefined && (best === undefined || t < best)) best = t;
+	return best;
+}
+
+/** A spinner of any size and place: the same arc as the thread tiles'. */
+function spinnerAt(cx: number, cy: number, r: number, color: string, now: number): string {
+	const step = Math.floor(((now % SPIN_PERIOD_MS) / SPIN_PERIOD_MS) * SPIN_FRAMES);
+	const angle = (step * 360) / SPIN_FRAMES;
+	const w = Math.max(3, r / 3);
+	return (
+		`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="${w.toFixed(1)}" opacity="0.22"/>` +
+		`<path d="M${cx} ${cy - r} A${r} ${r} 0 0 1 ${cx + r} ${cy}" fill="none" stroke="${color}" stroke-width="${w.toFixed(1)}" stroke-linecap="round" transform="rotate(${angle} ${cx} ${cy})"/>`
+	);
+}
+
+/** A grey disc with a mark cut out: two bars (paused) or a ring with a slash (blocked). */
+function greyGlyph(kind: "paused" | "blocked", cx: number, cy: number, r: number): string {
+	let mark: string;
+	if (kind === "paused") {
+		const w = r * 0.28;
+		const h = r * 0.95;
+		mark = `<rect x="${(cx - r * 0.42).toFixed(1)}" y="${(cy - h / 2).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${(w / 3).toFixed(1)}" fill="${INK}"/><rect x="${(cx + r * 0.14).toFixed(1)}" y="${(cy - h / 2).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${(w / 3).toFixed(1)}" fill="${INK}"/>`;
+	} else {
+		const q = r * 0.5;
+		mark = `<circle cx="${cx}" cy="${cy}" r="${(r * 0.55).toFixed(1)}" fill="none" stroke="${INK}" stroke-width="${(r * 0.22).toFixed(1)}"/><path d="M${(cx - q * 0.7).toFixed(1)} ${(cy + q * 0.7).toFixed(1)}L${(cx + q * 0.7).toFixed(1)} ${(cy - q * 0.7).toFixed(1)}" stroke="${INK}" stroke-width="${(r * 0.22).toFixed(1)}" stroke-linecap="round"/>`;
+	}
+	return `<g id="glyph-${kind}"><circle cx="${cx}" cy="${cy}" r="${r}" fill="${DIM}"/>${mark}</g>`;
+}
+
+const TASK_ICON = {
+	calendar: `<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>`,
+	zap: `<path d="M13 2 3 14h9l-1 8 10-12h-9z"/>`,
+};
+
+/** The hold cue over a finished key: a chip saying what holding does, and the progress when it can run. */
+function scheduledCue(cue: ScheduledCue | undefined): string {
+	if (!cue) return "";
+	const label = cue.kind === "run" ? "Hold to run now" : "Enable in settings";
+	return (
+		`<g id="hold-cue"><rect x="5" y="106" width="134" height="30" rx="15" fill="${WHITE}"/>` +
+		text(72, 126, label, { size: 14, weight: 750, fill: INK, anchor: "middle" }) +
+		`</g>` +
+		(cue.kind === "run" ? holdFill(cue.progress) : "")
+	);
+}
+
+/** Title in two lines at most; the first stops short of a glyph in the corner. */
+function taskTitle(title: string, withGlyph: boolean): string {
+	const unit = 15 * EM;
+	const first = withGlyph ? (SPINNER_LEFT - SPINNER_GAP - 12) / unit : 120 / unit;
+	return wrapWidths(title, [first, 120 / unit])
+		.map((line, i) => text(12, 24 + i * 18, line, { size: 15, weight: 700, fill: WHITE }))
+		.join("");
+}
+
+/** The last result: a red band with a cross while the last run failed, otherwise a quiet line. */
+function lastResult(task: ScheduledTask, now: number): string {
+	const since = task.lastRunAt === null ? undefined : agoText(now - task.lastRunAt);
+	if (task.lastRunStatus === "failed") {
+		return (
+			`<g id="last-failed"><rect x="0" y="112" width="144" height="32" fill="${RED}"/>` +
+			stateGlyph("failed", 19, 128, 8.5, true, RED) +
+			text(32, 133, fit(since ? `Failed ${since}` : "Failed", 106, 14), { size: 14, weight: 800, fill: INK }) +
+			`</g>`
+		);
+	}
+	if (task.lastRunStatus === "running") return text(12, 133, fit(since ? `Started ${since}` : "Running", 120, 14), { size: 14, weight: 650, fill: SOFT });
+	if (task.lastRunStatus === "succeeded") return text(12, 133, fit(since ? `✓ Ran ${since}` : "✓ Ran", 120, 14), { size: 14, weight: 700, fill: GREEN });
+	if (task.lastRunStatus === "never" || !since) return text(12, 133, "Never run", { size: 14, weight: 650, fill: SOFT });
+	return text(12, 133, fit(`Last ran ${since}`, 120, 14), { size: 14, weight: 650, fill: SOFT });
+}
+
+function renderTaskDetailed(task: ScheduledTask, face: TaskFace, animation: AnimationMode, now: number): string {
+	const cornerGlyph = face === "running" || face === "blocked" || face === "disabled";
+	const parts = [`<rect width="${SIZE}" height="${SIZE}" fill="${BG}"/>`, taskTitle(task.title, cornerGlyph)];
+	if (face === "running") parts.push(spinner(PALETTE.working.accent, animation === "off" ? 0 : now));
+	else if (face === "blocked") parts.push(greyGlyph("blocked", SPIN.cx, SPIN.cy, 10));
+	else if (face === "disabled") parts.push(greyGlyph("paused", SPIN.cx, SPIN.cy, 10));
+	const big = faceText(task, face, now);
+	const size = Math.max(20, Math.min(36, Math.floor(120 / (textWidth(big) * EM))));
+	const quiet = face === "disabled" || face === "blocked" || face === "finished";
+	parts.push(text(12, 86, big, { size, weight: 800, fill: quiet ? DIM : WHITE }));
+	parts.push(text(12, 106, fit(faceCaption(task, face), 120, 14), { size: 14, weight: 650, fill: SOFT }));
+	parts.push(lastResult(task, now));
+	return svg(parts.join(""));
+}
+
+/** Short heading over the glance countdown. */
+function glanceCaption(task: ScheduledTask, face: TaskFace): string {
+	const base = { running: "RUNNING NOW", blocked: "BLOCKED", disabled: "PAUSED", webhook: "WEBHOOK", counting: "NEXT RUN", finished: "DONE" }[face];
+	if (task.lastRunStatus !== "failed" || face === "running") return base;
+	return face === "counting" ? "FAILED · NEXT" : `FAILED · ${base}`;
+}
+
+/** The glance glyph: what state the task is in, in one picture. */
+function glanceGlyph(task: ScheduledTask, face: TaskFace, animation: AnimationMode, now: number): string {
+	const cx = 72;
+	const cy = 118;
+	if (face === "running") return spinnerAt(cx, cy, 12, PALETTE.working.accent, animation === "off" ? 0 : now);
+	if (task.lastRunStatus === "failed") return stateGlyph("failed", cx, cy, 14, false, RED);
+	if (face === "blocked") return greyGlyph("blocked", cx, cy, 14);
+	if (face === "disabled") return greyGlyph("paused", cx, cy, 14);
+	if (face === "webhook") return lucide(TASK_ICON.zap, 28, cx, cy, WHITE);
+	if (face === "finished") return stateGlyph("done", cx, cy, 14, false, GREEN);
+	return lucide(ICON.clock, 28, cx, cy, WHITE);
+}
+
+function renderTaskGlance(task: ScheduledTask, face: TaskFace, animation: AnimationMode, now: number): string {
+	const failed = task.lastRunStatus === "failed" && face !== "running";
+	const big = faceText(task, face, now);
+	const size = Math.max(20, Math.min(46, Math.floor(124 / (textWidth(big) * EM))));
+	const quiet = face === "disabled" || face === "blocked" || face === "finished";
+	return svg(
+		`<rect width="${SIZE}" height="${SIZE}" fill="${BG}"/>` +
+			(failed ? blinkRing(RED) : "") +
+			text(72, 25, fit(glanceCaption(task, face), 128, 14, 0.3), { size: 14, weight: 800, fill: failed ? RED : SOFT, anchor: "middle", spacing: 0.3 }) +
+			text(72, 82 + size * 0.2, big, { size, weight: 800, fill: quiet ? DIM : WHITE, anchor: "middle" }) +
+			glanceGlyph(task, face, animation, now),
+	);
+}
+
+/** A message with a calendar over it: no tasks, or the chosen one is gone. */
+function renderTaskNote(lines: string[], sub: string[]): string {
+	return svg(
+		`<rect width="${SIZE}" height="${SIZE}" fill="${BG}"/>` +
+			text(12, 28, "SCHEDULED", { size: 14, weight: 800, fill: DIM, spacing: 1.2 }) +
+			lucide(TASK_ICON.calendar, 28, 72, 52, TRACK) +
+			lines.map((line, i) => text(72, 90 + i * 20, line, { size: 17, weight: 700, fill: WHITE, anchor: "middle" })).join("") +
+			sub.map((line, i) => text(72, 90 + lines.length * 20 + 2 + i * 17, line, { size: 14, weight: 600, fill: SOFT, anchor: "middle" })).join(""),
+	);
+}
+
+/**
+ * Scheduled key: one task's next run as a countdown, how its last run went,
+ * and what it is doing now. Never draws task state while T3 is unreachable or
+ * the stream is down (the monitor drops what it knew).
+ */
+export function renderScheduledKey(input: ScheduledKeyInput): string {
+	const { connection, stream, pick, now, animation } = input;
+	if (connection.kind !== "ok") return renderMessage(connectionText(connection), SOFT, "SCHEDULED");
+	if (stream === "loading") return renderMessage("Loading…", SOFT, "SCHEDULED");
+	if (stream === "down") return renderMessage("Tasks unavailable", SOFT, "SCHEDULED");
+	if (!pick.task) {
+		return pick.reason === "none" ? renderTaskNote(["No scheduled", "tasks"], ["Add one in T3"]) : renderTaskNote(["Task not found"], ["Pick another in", "settings"]);
+	}
+	const task = pick.task;
+	const face = faceOf(task);
+	const markup = input.style === "glance" ? renderTaskGlance(task, face, animation, now) : renderTaskDetailed(task, face, animation, now);
+	return overlay(markup, scheduledCue(input.cue));
 }

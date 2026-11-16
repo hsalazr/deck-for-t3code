@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>T3 Scheduled</title><link rel="stylesheet" href="style.css"></head>
+<body>
+  <h3>This key</h3>
+  <div class="row"><label>Task</label><select id="task" disabled><option>Loading…</option></select></div>
+  <div class="row"><label>Look</label><select id="style"><option value="detailed">Detailed: title, countdown, last result</option><option value="glance">Glance: a big countdown and a glyph</option></select></div>
+  <div class="hint wide">Shows when one of T3 Code's <b>scheduled tasks</b> runs next, and how its last run went. A failed run stays red until the next run succeeds. <b>Tap</b> opens the task's thread in T3 Code (or T3 Code itself when it has none yet). <b>Hold 0.8 s</b> runs the task now; that changes T3 Code, so it works only while <b>Enable thread actions</b> is on below. Webhook tasks can't be run by hand. Only the task's title, schedule and results are read, never its prompt.</div>
+  <div id="globals"></div>
+  <script src="common.js"></script>
+  <script>
+    const select = document.getElementById("task");
+    const style = document.getElementById("style");
+    let tasks = null;
+    function render() {
+      const saved = PI.settings.task;
+      select.innerHTML = "";
+      select.append(new Option("Whichever runs next", ""));
+      for (const t of tasks ?? []) select.append(new Option(t.title + "  (" + t.schedule + (t.enabled ? "" : ", paused") + ")", t.id));
+      // A task T3 no longer reports: keep it listed so the choice isn't silently lost; the key says "Task not found".
+      if (saved && !(tasks ?? []).some((t) => t.id === saved)) select.append(new Option(tasks === null ? "Saved task" : "Saved task (not found)", saved));
+      select.value = saved ?? "";
+      select.disabled = tasks === null;
+    }
+    // T3 may still be answering when the inspector opens: ask every 2 s until it has sent a list (an empty one counts).
+    let poll;
+    const ask = () => PI.toPlugin({ type: "listScheduled" });
+    PI.onSettings = () => { style.value = PI.settings.style === "glance" ? "glance" : "detailed"; if (tasks) render(); };
+    PI.on("scheduled", (msg) => {
+      const list = Array.isArray(msg.tasks) ? msg.tasks : [];
+      // The plugin sends [] until the stream has answered; a real empty list looks the same, so stop asking only once there is something.
+      tasks = list;
+      render();
+      if (list.length > 0) { clearInterval(poll); poll = undefined; }
+    });
+    PI.whenReady(() => { ask(); poll = setInterval(ask, 2000); });
+    select.addEventListener("change", () => PI.setSettings({ task: select.value || undefined }));
+    style.addEventListener("change", () => PI.setSettings({ style: style.value }));
+    mountStatus();
+    mountGlobals();
+  </script>
+</body>
+</html>

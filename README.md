@@ -44,10 +44,12 @@ See who's working, who needs you, who's done. Glance, tap, move on.
 - **Overview key.** Counts of threads that need you, are working, or are done. One tile, one state.
 - **T3 Threads page.** Press Overview to fill the whole deck with Thread keys. A Back key returns you to your previous profile.
 - **Thread Actions page.** Hold a thread key, then let go, to send a quick message, compact the context, snooze, settle or stop the thread.
-- **Usage keys.** Any usage limit T3 Code reports, as a bar or a ring, with a tick at even pace.
+- **Usage keys.** Any usage limit T3 Code reports (every provider, and accounts served through a CLIProxyAPI hub), as a bar or a ring, with a tick at even pace and a ticket mark when T3 Code reports banked reset tickets.
 - **Machine keys.** This Mac's CPU (performance and efficiency cores apart), memory pressure and free disk space, together on one key or one per key.
 - **Updates key.** Whether T3 Code or a provider CLI (Claude, Codex…) has an update waiting.
+- **Scheduled key.** One of T3 Code's scheduled tasks: when it runs next, how its last run went, and a hold to run it now.
 - **Context bar.** A thin bar along the bottom edge shows how full the thread's context window is.
+- **Pull request and goal marks.** A thread's open pull request and its `/goal` get a small mark in the key's footer. Hold **Open** on the Thread Actions page to open the pull request in your browser.
 - **Your other machines too.** With T3 Code's **Linked environments** (Settings → Labs) turned on, threads on your linked machines show up alongside this Mac's.
 - **Private.** Talks only to T3 Code on your Mac. No account, no telemetry.
 
@@ -56,7 +58,7 @@ See who's working, who needs you, who's done. Glance, tap, move on.
 - macOS 13 or later (macOS only)
 - Stream Deck app 7.1 or later
 - T3 Code, installed and running, with its command-line tool at `<T3 home>/bin/t3`, `~/.t3/bin/t3` by default (T3 Code installs it)
-- Any Stream Deck with keys. The bundled T3 Threads and Thread Actions pages cover the **Stream Deck XL**, the 15-key **Stream Deck** (including MK.2), the **Stream Deck Neo** and the **Stream Deck Mini**. Other models, such as the **Stream Deck +**, get the Thread, Overview, Usage, Machine and Updates keys but no bundled pages (details [below](#supported-decks)).
+- Any Stream Deck with keys. The bundled T3 Threads and Thread Actions pages cover the **Stream Deck XL**, the 15-key **Stream Deck** (including MK.2), the **Stream Deck Neo** and the **Stream Deck Mini**. Other models, such as the **Stream Deck +**, get the Thread, Overview, Usage, Machine, Updates and Scheduled keys but no bundled pages (details [below](#supported-decks)).
 
 ## Install
 
@@ -93,6 +95,30 @@ Then drag **Overview**, **Thread** and **Usage** keys from the *Deck for T3 Code
 | Plain dark key | Nothing happening. Shown for the "Show idle for" time after the last update. |
 
 A thin bar along the bottom edge shows context use: grey, amber from 70%, red from 85%. When no subagents or background work take the corner of the footer, the percentage shows next to the project name.
+
+#### Pull request and goal marks
+
+Two small marks can sit in the footer of a Thread key in the Detailed look, between the project name and the agent badge or context percentage. They are information only: they never change a key's colour, make it flash or change the Overview's counts.
+
+**Pull request.** A disc, with `#42` when there is room. Only an **open** pull request gets a mark: threads collect pull requests, some dozens, nearly all merged, and a mark for those would be noise. With no open pull request there is no mark. The mark says what T3 Code reports about it, and only that:
+
+| Mark | Meaning |
+|---|---|
+| Red disc, `✕` | Checks are failing. |
+| Amber disc, `!` | A merge conflict, changes requested, or checks waiting for someone to approve them. |
+| Blue disc, three dots | Checks are running. |
+| Ring with a dot | Review required. |
+| Green disc, `✓` | Approved, or checks passing, with nothing against it. |
+| Plain ring | Open, and nothing else known. |
+| Dashed ring | A draft. |
+
+Which facts exist depends on the forge. Some send no review or check state at all, and then you get the plain ring (or the amber `!` for a conflict, from the mergeability or the CI watch): the plugin never guesses a check result. A thread's pull requests are those T3 Code lists for it, except ones hidden from a stack. When a thread has several open ones, the footer shows the one that most needs you, in this order: failing checks, a conflict or changes requested; checks awaiting approval; checks running; review required; approved or passing; plain open; draft. Ties go to the one linked most recently. (T3 Code's own sidebar shows the top of the newest stack instead.) Only the thread's own pull requests count, not those of its subagents: the live stream leaves idle subagents out, so folding them in would come and go.
+
+A thread that is only waiting on a pull request's CI already says `PR #42 CI` in its chip, so that pull request isn't marked a second time.
+
+**Goal.** A rounded square, so it never reads as a pull request: a target while the goal runs, with the share of its token budget used (`62%`, amber from 70%, red from 85%) when T3 Code reports a budget; two bars and `paused`, `!` and `blocked`, a clock and `limit` (usage limit), a part-filled bar and `budget` (token budget used up), a tick and `done` (complete). T3 Code keeps a finished goal on the thread until you clear it with `/goal clear`, so `done` stays until then. Claude goals count checks, not tokens, so they show no percentage.
+
+**When the footer is full,** the words go first (`#42`, `62%`, `blocked`), the goal's before the pull request's; then, if the project name would be cut below about eight characters, the marks shrink to bare glyphs; only then does the name give way, and with a two-digit agent badge the goal mark drops. A waiting chip is never shortened for a mark. The Glance look, a key paused by a usage limit, and threads on a linked machine show no marks.
 
 Only the states that need you blink: needs you (amber, about once a second) and failed (red, a little slower). With **Animation: Off** they turn into a steady tinted key with a ring, and the spinners stop.
 
@@ -143,10 +169,11 @@ Every key is a Thread key except the top-left one, which is **Back**. Tap Back t
 Opened by holding a Thread key. It acts on that one thread.
 
 - **Back** returns to the T3 Threads page. The **thread** key (dotted outline) shows the thread, with its context bar next to Compact; tap it, or **Open**, to open it in T3 Code.
+- **Open** also shows the thread's pull request (`PR #42` and its status) when it has one. **Hold it for 0.8 s** and the pull request opens in your default browser; the key shows the usual progress fill. This reads and changes nothing in T3 Code, so it works with **Enable thread actions** off. With no open pull request it opens the most recently updated one, even merged, and the key says `Last: merged` (or `closed`). A tap, or a hold released early, opens the thread as before. The link must be `https` or `http`, have no user name or password and be at most 2,048 characters; otherwise the key doesn't offer it and a hold does nothing.
 - **Snooze** (1 hour, or tomorrow 9:00 local time) fires on a tap and returns you to the T3 Threads page, because the thread leaves your keys.
 - **Compact** (sends `/compact`), **Settle**, **Stop** and the **quick messages** need a **0.8 s hold**. A tap only shows a hint ("hold to confirm", "Hold to send") for three seconds; while you hold, the key fills with a progress wash. Settle returns you to the T3 Threads page; the others stay on the page.
 - **Stop** is solid red in the corner, apart from the rest. It interrupts the running turn (queued messages stay queued). With nothing running it is dimmed and says "Nothing running".
-- All keys that change the thread say "Enable in settings" until you turn on **Enable thread actions**. Back, the thread key and Open always work.
+- All keys that change the thread say "Enable in settings" until you turn on **Enable thread actions**. Back, the thread key and Open (including its hold for the pull request) always work.
 - For a thread on a **linked machine**, the keys that change the thread say "On another machine" and do nothing: actions go through this Mac's T3 Code server. Open still works.
 
 **Quick messages** are one per line in the Thread key settings, shared by every deck. A line is both the label and the text sent, or write `Label | full text` to show a short label and send the long text. Blank lines are dropped. Until you edit them, you get six defaults (`continue`, `summarize where you are`, `run the tests and report`, `explain the last change`, `what's left to do?`, `write a handoff note`); clear the box for none. Messages go out as if you had typed them in T3 Code, starting an idle thread or steering a running one.
@@ -161,11 +188,19 @@ Opened by holding a Thread key. It acts on that one thread.
 | Stream Deck Mini (3×2) | 5 | Back, thread, Snooze 1 h; Compact, Settle, Stop | 0 |
 | Any other model, e.g. Stream Deck + | n/a | none | n/a |
 
-Lines beyond a deck's maximum are ignored on that deck. On Neo and Mini there is no Open key (tap the thread key), and Mini has no tomorrow-9:00 snooze. On decks without a bundled page, Thread, Overview, Usage, Machine and Updates keys work as usual; Overview jumps to the most urgent thread, and a long press on a Thread key clears its highlight. The Stream Deck + dials and touch strip aren't used.
+Lines beyond a deck's maximum are ignored on that deck. On Neo and Mini there is no Open key (tap the thread key), and Mini has no tomorrow-9:00 snooze. On decks without a bundled page, Thread, Overview, Usage, Machine, Updates and Scheduled keys work as usual; Overview jumps to the most urgent thread, and a long press on a Thread key clears its highlight. The Stream Deck + dials and touch strip aren't used.
 
 ### Usage
 
 One usage limit (weekly, per model, 5-hour: whatever T3 Code reports for your providers). Pick it and a style in the key settings. The tile shows percent used, a bar with a white tick at *even pace* (the share of the window that has passed), how far ahead or under pace you are, and time to reset (`resets in 3d 8h`). Within 3 points counts as on pace. Tap to refresh now. If T3 Code goes away the numbers turn grey and the tile says "stale".
+
+**Which limits.** Every provider T3 Code reports shows up in the picker under the name T3 gives it (for a driver without one, the plugin tidies the driver's id). With no pick, the key shows Claude's weekly window as before; without Claude, the first provider's weekly limit that covers all models; otherwise the first limit. **Hub accounts:** if T3 Code has a CLIProxyAPI hub set up as a usage-limit source, each account it reports is listed in the picker under a heading with the hub's name, the driver, the account's email (or its name when it has none) and plan. On the key itself there is no email: it reads the driver and plan (`CODEX PLUS WEEKLY`), or the hub's name when the account has no plan. A limit you saved keeps working across refreshes.
+
+**Reset tickets.** When a provider or hub account has banked reset tickets, its keys show a small ticket mark and the count at the top right (`99+` beyond 99); the Bar style adds `exp 2d` under it when the next ticket lapses within 3 days and there is room. The plugin only shows them: redeeming one needs a permission it doesn't ask for, so do that in T3 Code. A count of zero draws nothing.
+
+**A Claude account signed in on this Mac shows no tickets.** The plugin shows what this Mac's T3 Code server reports, and on macOS T3 Code doesn't read Claude's reset tickets at all (as of 0.1.9). T3 Code's own usage view can still list your Claude resets, because the app also asks the other machines you linked, and a machine that isn't a Mac can report them; the plugin can't ask those machines for usage. Codex accounts and accounts served through a hub aren't affected.
+
+**When there is nothing to show.** A key set to a limit of a provider that reports none says why in a few words instead: `No plan limits` (T3 says the account has none), `Couldn't read limits` (T3's last probe failed), `No limits reported`, `Limit not reported` (the provider is there but that window isn't) or, for a hub account, `Hub unavailable` while T3 can't read the hub.
 
 The bar's fill is green under pace, blue on pace, amber ahead and red from 90% used; the pace line turns red when you're more than 15 points ahead, and the big number goes amber from 75% and red from 90%.
 
@@ -209,9 +244,31 @@ Whether **T3 Code** or a provider CLI it runs (Claude, Codex…) has an update w
 - Checked every 30 minutes while an Updates key is on a deck. Tap to open T3 Code (where updates are installed) when something is waiting, or to check again when nothing is.
 - **Style:** *Detailed* (default) lists versions; *Glance* is a green disc with a check, or an amber one with the count, as big as the Usage ring, with what it means on top.
 
+### Scheduled
+
+One of T3 Code's **scheduled tasks** (Settings → Scheduled tasks in T3 Code): when it runs next, how its last run went, and a hold to run it now. The *Detailed* look shows the task's title, a large countdown (`2h 15m`), the schedule in a few words (`every 2h`, `daily 09:00`, `weekdays 08:30`, `Mon Wed 09:00`, `once`, `webhook`) and the last result: a green `✓ Ran 3h ago`, `Never run`, or, while the last run failed, a red band with a cross, `✕ Failed 25m ago`. The failure stays on the key until the next run succeeds, and the countdown to that run stays too. The *Glance* look is the countdown in large type, a glyph for the state under it, and a caption on top; a failed task gets a red border and a red cross.
+
+| Key shows | Meaning |
+|---|---|
+| `2h 15m`, `<1m`, `Due now` | Time to the next run. It updates on the minute. `Due now` holds until T3 Code reports the next run. |
+| `Running`, with the blue spinner | A run is in progress (`Started 2m ago`). |
+| Red band, `✕ Failed 25m ago` | The last run failed. |
+| `Disabled`, with a pause glyph | The task is paused in T3 Code. |
+| `Blocked`, with a slashed circle | T3 Code says a managed policy stops the task (today, webhook tasks). The reason text isn't shown. |
+| `Webhook`, `runs when called` | The task runs when its URL is called, so it has no next run. |
+| `Finished` / `No next run` | A one-time task that has run, or a task with no run time left. |
+| `No scheduled tasks`, `Add one in T3` | T3 Code has no scheduled tasks yet. |
+| `Task not found` | The task you chose was deleted in T3 Code. Pick another in the key's settings. |
+| `Open T3 Code`, `Sign-in failed`… | The same wording as the other keys when T3 Code can't be reached. `Tasks unavailable` means T3 Code is up but didn't send its task list; the key never shows a countdown from before the connection dropped. |
+
+- **Task:** which task (the picker lists titles and schedules). The default, *Whichever runs next*, follows the soonest next run among enabled tasks that aren't blocked. **Look:** Detailed or Glance.
+- **Tap:** opens the task's thread in T3 Code when it has one and the plugin knows it (a task that continues one thread has one; a task that starts a new thread on every run doesn't), otherwise brings T3 Code forward, which is also what a tap does with no tasks or while T3 Code is offline.
+- **Hold 0.8 s:** runs the task now, the same as **Run now** in T3 Code. A *Hold to run now* cue and a progress bar show while you hold; let go early to cancel. It changes T3 Code, so, like the Thread Actions keys, it works only while **Enable thread actions** is on and goes through the actions token. With it off, holding shows *Enable in settings* and runs nothing. T3 Code doesn't allow it for webhook tasks, and the key doesn't offer it while a run is in progress. A paused task can be run by hand, as in T3 Code.
+- The plugin reads each task's title, schedule, next and last run times, last result, enabled state, and the thread it posts into. It never reads the task's prompt, and it doesn't show T3 Code's error text.
+
 ## Settings
 
-Open any key's settings (Property Inspector). The status row at the top says whether the plugin is connected. Everything except the Overview key's tap, the Usage key's limit and style, the Machine key's stat, style and disk, and the Updates key's style is shared by all keys.
+Open any key's settings (Property Inspector). The status row at the top says whether the plugin is connected. Everything except the Overview key's tap, the Usage key's limit and style, the Machine key's stat, style and disk, the Updates key's style, and the Scheduled key's task and look is shared by all keys.
 
 - **Tap** (Overview key): *Open the T3 Threads page* (default) or *Open the most urgent thread*; see [Overview](#overview).
 
@@ -227,35 +284,38 @@ Open any key's settings (Property Inspector). The status row at the top says whe
 - **T3 home:** if T3 Code keeps its data somewhere other than `~/.t3`. Must be an absolute path (a leading `~/` is fine). The `T3CODE_HOME` environment variable is honoured too. With neither set and no `~/.t3/userdata`, the plugin uses a custom build's folder next to it (such as `~/.t3-custom`) if there is exactly one. Once its server has answered, the plugin keeps it until T3 home changes or the plugin restarts. With several, set T3 home.
 - **T3 app bundle id:** only for a T3 Code build the plugin doesn't find on its own. Set it to the app's bundle id (`osascript -e 'id of app "Your T3 App"'` prints it) and the plugin opens that app and skips detection.
 - **Sign out / revoke tokens:** click twice to confirm. Revokes every token the plugin minted and deletes them from your Mac. Nothing is minted again until you press **Sign in again** (the same button) or restart the plugin. The result line says `Signed out`, or `Signed out — N token(s) will be revoked later` when T3 Code was unreachable for some revokes (they are retried when T3 Code is back and each time the plugin starts).
-- **Usage key:** which limit (default: the weekly one) and Bar or Ring.
+- **Usage key:** which limit (default: Claude's weekly one, else another provider's weekly one) and Bar or Ring. Hub accounts are listed by hub, driver, email or name, and plan; ticket counts show next to the limits that have them.
 - **Machine key:** Summary, CPU, Memory pressure or Disk space; Detailed or Glance; and for Summary and Disk space, which disk (blank: the startup disk).
 - **Updates key:** Detailed or Glance.
+- **Scheduled key:** which task (default: whichever runs next) and Detailed or Glance; see [Scheduled](#scheduled).
 
 ## How it talks to T3 Code
 
 The plugin talks only to the T3 Code server on your Mac, found through T3 Code's own runtime file (`userdata/server-runtime.json` under your T3 home, `~/.t3` by default, or a custom build's folder next to it, see **T3 home:** above). It never contacts anything else.
 
-- **Live updates.** The plugin keeps a stream open to the T3 Code server over a local WebSocket, the same one T3 Code's own sidebar uses. It reports background work, running turns, open questions and approvals, when you last visited a thread, and usage-limit pauses.
+- **Live updates.** The plugin keeps a stream open to the T3 Code server over a local WebSocket, the same one T3 Code's own sidebar uses. It reports background work, running turns, open questions and approvals, when you last visited a thread, usage-limit pauses, and each thread's pull requests and goal.
 - **Thread list.** The titles, statuses and parent/child links come from T3 Code's local MCP endpoint. When the live stream reports a change, the plugin re-reads the list within a fraction of a second, but no more often than "Refresh every". Both lists are also reconciled every 30 seconds regardless. If the live stream drops, the plugin polls every "Refresh every" until it is back (2, 5 or 10 s in the settings; the plugin accepts 2 to 30 s). While T3 is unreachable it retries every 5 seconds when T3 isn't running, and backs off from 5 to 30 seconds on other errors.
 - **Context size.** Only for threads that are on a key (or are the one open on a Thread Actions page); a value is kept for 10 minutes after a thread leaves the keys, so flipping between pages does not refetch. The plugin asks T3 Code for a bounded snapshot of a thread (not its full timeline), keeps just the two context numbers, and asks once when a thread first appears on a key, again when its run ends, and at most every 2 minutes while it works. One request at a time; failures back off from 10 seconds to 5 minutes.
-- **Usage limits.** Only while a Usage key is on a deck. Every 5 minutes, backing off to at most 20 while T3 Code reports the same check time, with a retry after 30 seconds on failure. A tap on the key refreshes at once.
+- **Usage limits.** Only while a Usage key is on a deck. Every 5 minutes, backing off to at most 20 while T3 Code reports the same check time, with a retry after 30 seconds on failure. A tap on the key refreshes at once. Each refresh opens T3 Code's config stream (`subscribeServerConfig`, asking for usage-limit sources too), takes the first snapshot (providers, their limits and banked reset tickets) and the first hub-accounts event, then closes it: no connection stays open between refreshes. If that fails it asks `server.getConfig` instead, which has the providers but not hub accounts. It reads the hubs' labels, each account's driver, plan, email or file-style name, windows and ticket counts. Emails and account names are shown only in the key settings' picker and in `scripts/usage.ts`; they aren't logged or written to disk. The limit you pick is saved in the key's settings, and for a hub account that saved choice holds the hub's id and a hash of the account's id, never the email.
 - **Machine keys** don't involve T3 Code. Only while one is on a deck, every 5 seconds, the plugin reads per-core CPU times and load averages from Node's `os` module, memory with `/usr/sbin/sysctl -n kern.memorystatus_level kern.memorystatus_vm_pressure_level vm.swapusage`, and each disk those keys show with `statfs`. Once, when the first Machine key appears, it reads the core layout with `/usr/sbin/ioreg -rd1 -c IOPlatformDevice` and `/usr/sbin/sysctl hw.perflevel*`. See [How the Machine key measures](#how-the-machine-key-measures).
 - **Updates.** Only while an Updates key is on a deck, every 30 minutes (a minute after a failure, at once on a tap): `server.getConfig` for T3 Code's version and its provider update checks, and `server.getNpmRelease` for the newest T3 Code release on your channel, both over the read-only live-status token. T3 Code's server does the npm lookup.
-- **Thread Actions** send the same commands T3 Code's UI sends (interrupt a run, snooze, settle, send a message).
+- **Scheduled tasks.** Only while a Scheduled key is on a deck: one stream (`scheduledTasks.subscribe`) over the read-only live-status token. T3 Code sends the whole list when you connect and again whenever a task changes, so there is nothing to poll. If the stream drops, the plugin forgets the list and reconnects with backoff from 2 to 30 seconds.
+- **Thread Actions** send the same commands T3 Code's UI sends (interrupt a run, snooze, settle, send a message). A hold on a Scheduled key sends `scheduledTasks.runNow`, the same call as T3 Code's **Run now**.
 - **Opening a thread** uses macOS `open` with a `t3code://` link (or opens the T3 Code app).
-- **Linked machines.** If **Linked environments** is on in T3 Code (Settings → Labs), the plugin asks this Mac's T3 Code server for its links, and lists each reachable machine's threads and project names through that same local server, which forwards the request over its own link. The plugin never connects to another machine itself. Linked machines are polled: a machine with something running every 3 seconds, an idle one every 10, and its other threads every 30 or as soon as a run there finishes. When a thread there finishes a turn, the plugin also asks T3 once whether background work still holds it (subagents, or commands and monitors its agent said it waits for), and keeps asking while it does, so the key shows the white spinner and a `background` chip, not done. A command the agent just left running, such as a dev server, doesn't count there, and neither does a pull request watch. Linked machines have no live stream, so their keys don't say what the thread waits on and have no "Seen in T3", usage-limit pause or context bar. A machine that stops answering keeps its keys for 2 minutes, then they go. With the setting off, only this Mac's threads show.
+- **Opening a pull request** (holding Open on the Thread Actions page) uses macOS `open` with the link T3 Code has for it, after checking it (see [SECURITY.md](SECURITY.md)). Your default browser loads the page; the plugin itself never connects to it.
+- **Linked machines.** If **Linked environments** is on in T3 Code (Settings → Labs), the plugin asks this Mac's T3 Code server for its links, and lists each reachable machine's threads and project names through that same local server, which forwards the request over its own link. The plugin never connects to another machine itself. Linked machines are polled: a machine with something running every 3 seconds, an idle one every 10, and its other threads every 30 or as soon as a run there finishes. When a thread there finishes a turn, the plugin also asks T3 once whether background work still holds it (subagents, or commands and monitors its agent said it waits for), and keeps asking while it does, so the key shows the white spinner and a `background` chip, not done. A command the agent just left running, such as a dev server, doesn't count there, and neither does a pull request watch. Linked machines have no live stream, so their keys don't say what the thread waits on and have no "Seen in T3", usage-limit pause, context bar, or pull request or goal marks. A machine that stops answering keeps its keys for 2 minutes, then they go. With the setting off, only this Mac's threads show.
 
 ## Privacy & security
 
-The plugin sends nothing off your Mac. (If you turn on T3 Code's Linked environments, T3 Code itself fetches your linked machines' thread lists for the plugin over its own link.) There is no server, no account, no analytics, no telemetry and no crash reporting. Thread titles, project names and statuses are held in memory to draw the keys; the only things the plugin writes to disk are its tokens (plus a list of tokens still to revoke) and Stream Deck's own log files, and logs are scrubbed of anything that looks like a token.
+The plugin sends nothing off your Mac. (If you turn on T3 Code's Linked environments, T3 Code itself fetches your linked machines' thread lists for the plugin over its own link.) There is no server, no account, no analytics, no telemetry and no crash reporting. Thread titles, project names and statuses, and (with a Scheduled key) scheduled task titles, schedules, run times and results, are held in memory to draw the keys. Task prompts are never read. The only things the plugin writes to disk are its tokens (plus a list of tokens still to revoke) and Stream Deck's own log files, and logs are scrubbed of anything that looks like a token.
 
 The plugin uses **up to three tokens**, minted with your local `t3` CLI and stored in `~/Library/Application Support/io.github.hsalazr.deck-for-t3code/` (folder mode 0700, files mode 0600, outside the plugin folder so they survive updates):
 
 | Token | Label in `t3 auth session list` | Scope | Used for | Lifetime |
 |---|---|---|---|---|
 | Threads | `Stream Deck (Deck for T3 Code)` | `orchestration:read` (session subject `mcp-client`) | The thread list | 30 days; renewed once less than half is left |
-| Live and usage | `Stream Deck (Deck for T3 Code usage)` | `orchestration:read` | Live status, context size, usage limits | 30 days; renewed once less than half is left |
-| Actions | `Stream Deck (Deck for T3 Code actions)` | `orchestration:read`, `orchestration:operate` | Thread Actions keys only: send, snooze, settle, stop | 24 hours. **Opt-in:** minted only while "Enable thread actions" is on, the first time you use an action; revoked when you turn it off |
+| Live and usage | `Stream Deck (Deck for T3 Code usage)` | `orchestration:read` | Live status, context size, usage limits, reset-ticket counts, hub accounts, scheduled task list | 30 days; renewed once less than half is left |
+| Actions | `Stream Deck (Deck for T3 Code actions)` | `orchestration:read`, `orchestration:operate` | Thread Actions keys (send, snooze, settle, stop) and holding a Scheduled key (run that task now) | 24 hours. **Opt-in:** minted only while "Enable thread actions" is on, the first time you use an action; revoked when you turn it off |
 
 The first two are read-only. Without the actions token the plugin can't change anything in T3 Code.
 
@@ -294,7 +354,7 @@ npm run watch                   # rebuild and restart on change
 
 node --experimental-strip-types scripts/snapshot.ts          # print what the deck would show, without Stream Deck
 node --experimental-strip-types scripts/preview.ts out.html  # contact sheet of every key state
-node --experimental-strip-types scripts/usage.ts             # print the usage metrics T3 Code reports
+node --experimental-strip-types scripts/usage.ts             # print the usage metrics T3 Code reports: providers, reset tickets, hub accounts (shows emails; mints the read-only token if missing)
 npm run profile                                              # rebuild the bundled T3 Threads and Thread Actions profiles
 npm run notices                                              # refresh THIRD_PARTY_NOTICES.md (before a release)
 

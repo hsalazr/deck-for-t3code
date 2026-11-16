@@ -111,6 +111,7 @@
             <ul class="checks">
               <li><strong>Colour and motion:</strong> <span>needs you (waiting on an approval or answer) and failed (the latest run failed) blink; nothing else does. Done stays steady. A waiting subagent makes its thread's key flash, and the Back key's chevron turns amber when anything needs you. Working means the agent or a subagent is running.</span></li>
               <li><strong>Context bar:</strong> <span>the thin line along the bottom shows how full the context window is: grey, amber from 70%, red from 85%.</span></li>
+              <li><strong>Pull request and goal marks:</strong> <span>a small disc in the footer shows the thread's open pull request (failing checks, a conflict, checks running, approved…), and a rounded square shows its goal, with the share of its token budget used. Static: they never make a key flash. Hold <em>Open</em> on the Thread Actions page to open the pull request in your browser.</span></li>
               <li><strong>+N and +N more:</strong> <span>threads that don't fit on this deck's Thread keys.</span></li>
               <li><strong>Highlights:</strong> <span>done and failed clear when you open the thread, from the key or from T3 Code. Having it open while the run finishes doesn't count.</span></li>
               <li><strong>When T3 Code isn't reachable:</strong> <span>the first Thread key says why (<em>Install T3 Code</em>, <em>Open T3 Code</em>, <em>T3 CLI missing</em>, <em>Sign-in failed</em>, <em>Signed out</em> or <em>T3 error</em>) and the rest go blank rather than show stale state.</span></li>
@@ -248,7 +249,7 @@
               </table>
             </div>
             <ul class="checks">
-              <li><strong>Other models:</strong> <span>decks like the Stream Deck + have no bundled pages. Thread, Overview, Usage, Machine and Updates keys still work, Overview jumps to the most urgent thread, and a hold on a Thread key clears its highlight.</span></li>
+              <li><strong>Other models:</strong> <span>decks like the Stream Deck + have no bundled pages. Thread, Overview, Usage, Machine, Updates and Scheduled keys still work, Overview jumps to the most urgent thread, and a hold on a Thread key clears its highlight.</span></li>
               <li><strong>Holds:</strong> <span>opening the page takes half a second. Risky keys (Compact, Settle, Stop and quick messages) fire after 0.8 s; a tap only shows "Hold to confirm", so a stray tap does nothing.</span></li>
               <li><strong>Quick messages:</strong> <span>your own lines, sent as if you'd typed them. Write <code>Label | full text</code> for a short label on the key.</span></li>
               <li><strong>Compact:</strong> <span>sends <code>/compact</code>.</span></li>
@@ -267,7 +268,7 @@
         <div>
           <p class="eyebrow">Usage key</p>
           <h2 id="usage-h">Pace your limits.</h2>
-          <p>Pick any limit T3 Code reports. The white tick marks even pace.</p>
+          <p>Pick any limit T3 Code reports, from any provider or hub account. The white tick marks even pace; a ticket mark counts banked resets.</p>
         </div>
         <div class="usage-keys">
           <figure><img src="assets/keys/usage-bar.png" width="288" height="288" alt="Usage key, bar style: Weekly 64 percent, an amber bar with a white tick, 12 percent ahead, resets in 3d 8h" loading="lazy"><figcaption>Bar: 12% ahead</figcaption></figure>
@@ -283,6 +284,7 @@
               <li><strong>Bar:</strong> <span>percent used, how far ahead or under pace you are (within 3 points is on pace), and time to reset.</span></li>
               <li><strong>Ring:</strong> <span>one segment per day for weekly limits, per hour for the 5-hour one.</span></li>
               <li><strong>Colour:</strong> <span>green under pace, blue on pace, amber ahead, red when far ahead (15+ points on the ring) or at 90%.</span></li>
+              <li><strong>Tickets:</strong> <span>a ticket mark and a count when the provider or hub account has banked reset tickets; the bar adds when the next one lapses if that is within 3 days. The plugin only shows them, and T3 Code on a Mac doesn't report them for a Claude account signed in there.</span></li>
               <li><strong>Tap:</strong> <span>refreshes now. Otherwise see <a href="#how">Updates and load</a>.</span></li>
             </ul>
           </div>
@@ -447,6 +449,7 @@
             <ul class="checks">
               <li>A live stream from T3 Code pushes changes. The thread list is re-read when something changes (no more often than your "Refresh every" setting, 2 seconds by default) and every 30 seconds to be sure.</li>
               <li>Usage limits: every 5 minutes, and only while a Usage key is on your deck.</li>
+              <li>Scheduled tasks: one stream from T3 Code, open only while a Scheduled key is on your deck. Nothing is polled.</li>
               <li>Context size: only for threads on a key, when they first appear, when a run ends, and at most every 2 minutes while one works.</li>
             </ul>
           </div>

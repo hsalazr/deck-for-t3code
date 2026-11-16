@@ -9,23 +9,26 @@ import { execFile } from "node:child_process";
 
 import streamDeck, { DeviceType, type KeyAction } from "@elgato/streamdeck";
 
-import { byUrgency, deepLinkFor, layoutThreads, parseQuickMessages, type QuickMessage, type ThreadCard } from "./model.ts";
+import { byUrgency, deepLinkFor, layoutThreads, parseQuickMessages, safeWebUrl, type QuickMessage, type ThreadCard } from "./model.ts";
 import {
 	HOLD_ACTIONS,
 	isBackgroundOnly,
 	nextOverviewFrame,
+	nextScheduledFrame,
 	nextThreadFrame,
 	overviewState,
 	renderActionKey,
 	renderBackKey,
 	renderMachineKey,
 	renderOverview,
+	renderScheduledKey,
 	renderThreadKey,
 	renderUpdatesKey,
 	renderUsageKey,
 	toDataUrl,
 	type AnimationMode,
 	type KeyStyle,
+	type ScheduledCue,
 	type ThreadActionName,
 } from "./render.ts";
 import { tomorrowAt9, type ThreadCommands } from "./t3/commands.ts";
@@ -34,8 +37,10 @@ import type { T3Location } from "./t3/auth.ts";
 import type { Monitor, Snapshot } from "./t3/monitor.ts";
 import type { UsageMonitor } from "./t3/usage-monitor.ts";
 import type { UpdatesMonitor } from "./t3/updates-monitor.ts";
+import type { ScheduledMonitor } from "./t3/scheduled-monitor.ts";
+import { canRunNow, LOADING, pickTask, scheduleText, type ScheduledTask } from "./scheduled.ts";
 import { MachineMonitor, machineStatOf, normalizeDiskPath, type MachineStat } from "./machine.ts";
-import { metricsOf, pace, pickMetric } from "./usage.ts";
+import { defaultMetric, emptyState, hubDescription, metricsOf, pace, pickMetric } from "./usage.ts";
 import { pendingUpdates } from "./updates.ts";
 
 export { DEFAULT_MESSAGES } from "./model.ts";
@@ -58,9 +63,11 @@ export type KeySettings = {
 	action?: ThreadActionName;
 	index?: number;
 	tap?: OverviewTap;
+	/** Scheduled keys: the task id; unset = whichever runs next. */
+	task?: string;
 };
 
-export type KeyKind = "thread" | "overview" | "usage" | "machine" | "updates" | "back" | "action";
+export type KeyKind = "thread" | "overview" | "usage" | "machine" | "updates" | "scheduled" | "back" | "action";
 
 const machineStat = (s: KeySettings): MachineStat => machineStatOf(s.stat);
 /** Machine and Updates keys: the big, glanceable look, or the detailed one (default). */
@@ -122,6 +129,8 @@ interface KeyEntry {
 	downAt?: number;
 	/** Thread under the finger at key-down; tiles can slide while the key is held. */
 	downThreadId?: string;
+	/** Scheduled keys: the task shown at key-down. "Whichever runs next" can change task while the key is held. */
+	downTaskId?: string;
 	/** This press can fire a hold action (overview, or an enabled hold-to-confirm action). */
 	holdable?: boolean;
 	/** Fires the hold action while the key is still down. */
@@ -151,6 +160,7 @@ export class Deck {
 	readonly #commands: ThreadCommands;
 	readonly #machine: MachineMonitor;
 	readonly #updates: UpdatesMonitor | undefined;
+	readonly #scheduled: ScheduledMonitor | undefined;
 	readonly #host: DeckHost;
 	readonly #keys = new Map<string, KeyEntry>();
 	/** Display order of threads; survives across polls so tiles only slide to close gaps. */
@@ -175,17 +185,19 @@ export class Deck {
 	#ticker: NodeJS.Timeout | undefined;
 	#tickAt: number | undefined;
 
-	constructor(monitor: Monitor, usage: UsageMonitor, commands: ThreadCommands, host: DeckHost = defaultHost, machine: MachineMonitor = new MachineMonitor(), updates?: UpdatesMonitor) {
+	constructor(monitor: Monitor, usage: UsageMonitor, commands: ThreadCommands, host: DeckHost = defaultHost, machine: MachineMonitor = new MachineMonitor(), updates?: UpdatesMonitor, scheduled?: ScheduledMonitor) {
 		this.#monitor = monitor;
 		this.#usage = usage;
 		this.#commands = commands;
 		this.#machine = machine;
 		this.#updates = updates;
+		this.#scheduled = scheduled;
 		this.#host = host;
 		monitor.on("change", () => this.#relayout());
 		usage.on("change", () => this.#render());
 		machine.on("change", () => this.#render((e) => e.kind === "machine"));
 		updates?.on("change", () => this.#render((e) => e.kind === "updates"));
+		scheduled?.on("change", () => this.#render((e) => e.kind === "scheduled"));
 	}
 
 	set animation(mode: AnimationMode) {
@@ -238,14 +250,36 @@ export class Deck {
 		this.#render();
 	}
 
-	/** Limit windows T3 currently reports, for the Usage key picker. */
-	usageMetrics(): { key: string; label: string; provider: string; used: number }[] {
-		return metricsOf(this.#usage.snapshot.providers).map((m) => ({ key: m.key, label: m.label, provider: m.provider, used: Math.round(m.window.usedPercent) }));
+	/**
+	 * Limit windows T3 currently reports, for the Usage key picker. Hub accounts
+	 * carry `account` (hub label, email or account name, plan): the only place an
+	 * email is shown, never on a key. `defaultKey` is what a key with no pick shows.
+	 */
+	usageMetrics(): { key: string; label: string; provider: string; used: number; account?: string; tickets?: number }[] {
+		return metricsOf(this.#usage.snapshot.providers).map((m) => ({
+			key: m.key,
+			label: m.label,
+			provider: m.provider,
+			used: Math.round(m.window.usedPercent),
+			...(m.hub ? { account: hubDescription(m.hub) } : {}),
+			...(m.credits ? { tickets: m.credits.count } : {}),
+		}));
+	}
+
+	/** The key a Usage key with no pick shows, so the picker can name it. */
+	usageDefaultKey(): string | undefined {
+		return defaultMetric(metricsOf(this.#usage.snapshot.providers))?.key;
+	}
+
+	/** Tasks T3 reports, for the Scheduled key picker. Titles and schedules only: prompts are never read. */
+	scheduledTasks(): { id: string; title: string; schedule: string; enabled: boolean }[] {
+		return this.#scheduled?.snapshot.tasks.map((t) => ({ id: t.id, title: t.title, schedule: scheduleText(t.schedule), enabled: t.enabled })) ?? [];
 	}
 
 	#syncUsage(): void {
 		this.#usage.setWanted([...this.#keys.values()].some((k) => k.kind === "usage"));
 		this.#updates?.setWanted([...this.#keys.values()].some((k) => k.kind === "updates"));
+		this.#scheduled?.setWanted([...this.#keys.values()].some((k) => k.kind === "scheduled"));
 	}
 
 	/** Sample this Mac only while a Machine key is on a deck, and only the disks those keys show. */
@@ -277,6 +311,7 @@ export class Deck {
 		entry.holdTimer = undefined;
 		entry.downAt = Date.now();
 		entry.downThreadId = this.#shown.get(id);
+		entry.downTaskId = entry.kind === "scheduled" ? this.#scheduledTask(entry)?.id : undefined;
 		entry.held = false;
 		entry.holdable = this.#canHold(entry);
 		if (entry.holdable) {
@@ -304,6 +339,7 @@ export class Deck {
 		const { downThreadId, held, holdable } = entry;
 		entry.downAt = undefined;
 		entry.downThreadId = undefined;
+		entry.downTaskId = undefined;
 		entry.held = false;
 		entry.holdable = false;
 		this.#render((e) => e === entry);
@@ -313,6 +349,11 @@ export class Deck {
 			if (entry.kind === "thread" && heldMs >= LONG_PRESS_MS) await this.#onLongPress(entry, downThreadId);
 			else if (threadsPage) await this.#host.switchToProfile(entry.action.device.id, threadsPage, THREADS_PAGE);
 			else if (entry.kind === "overview" && holdable && heldMs >= HOLD_CUE_MS) return; // let go after "Hold to clear all" showed: cancelled
+			else if (entry.kind === "scheduled" && heldMs >= HOLD_CUE_MS && (holdable || this.#scheduledHold(entry) === "enable")) {
+				// Let go after "Hold to run now" showed: cancelled. With actions off the key said "Enable in settings".
+				if (!holdable) await entry.action.showAlert();
+				return;
+			}
 			else await this.#onTap(entry, downThreadId, holdable === true);
 		} catch (error) {
 			await this.#fail(entry, error);
@@ -331,8 +372,11 @@ export class Deck {
 	/** Whether holding this key (now) leads to a hold action. */
 	#canHold(entry: KeyEntry): boolean {
 		if (entry.kind === "overview") return this.#online && !this.#heldOverviewPage(entry);
+		if (entry.kind === "scheduled") return this.#scheduledHold(entry) === "run";
 		if (entry.kind !== "action") return false;
 		const action = entry.settings.action;
+		// Opening a pull request reads nothing and changes nothing in T3 Code, so it needs no actions token.
+		if (action === "open") return this.#pullRequestUrl(entry) !== undefined;
 		if (!action || !HOLD_ACTIONS.has(action) || !this.#actionsEnabled) return false;
 		const card = this.#focused(entry);
 		if (!card || !canOperate(card)) return false;
@@ -341,11 +385,59 @@ export class Deck {
 		return true;
 	}
 
+	/** The focused thread's pull request link, if it is one `open` may be given (`safeWebUrl`). */
+	#pullRequestUrl(entry: KeyEntry): string | undefined {
+		return safeWebUrl(this.#focused(entry)?.pullRequest?.url);
+	}
+
+	/** The task a Scheduled key shows right now; none while T3 is unreachable or the stream is down. */
+	#scheduledTask(entry: KeyEntry): ScheduledTask | undefined {
+		const stream = this.#scheduled?.snapshot;
+		if (!stream || stream.state !== "live" || !this.#online) return undefined;
+		return pickTask(stream.tasks, entry.settings.task).task;
+	}
+
+	/** What holding a Scheduled key does: run the task now, or (actions off) say where to turn that on. Undefined: nothing to hold for. */
+	#scheduledHold(entry: KeyEntry): "run" | "enable" | undefined {
+		const task = this.#scheduledTask(entry);
+		if (!task || !canRunNow(task)) return undefined;
+		return this.#actionsEnabled ? "run" : "enable";
+	}
+
+	/**
+	 * This press armed a run of the task the key still shows. A key on "Whichever runs next" moves to
+	 * another task when the first one starts or is rescheduled, and a hold must never run that other task.
+	 */
+	#scheduledArmed(entry: KeyEntry): boolean {
+		return entry.holdable === true && entry.downTaskId !== undefined && this.#scheduledTask(entry)?.id === entry.downTaskId;
+	}
+
+	/** Runs the task the press started on, if the key still shows it. A second hold on the same task while the first is in flight does nothing. */
+	async #runScheduled(entry: KeyEntry): Promise<void> {
+		const task = this.#scheduledTask(entry);
+		if (!task || !this.#scheduledArmed(entry) || !this.#actionsEnabled || !canRunNow(task)) return entry.action.showAlert();
+		const key = `scheduled|${task.id}`;
+		if (this.#busy.has(key)) return;
+		this.#busy.add(key);
+		try {
+			await this.#commands.runScheduledTask(task.id);
+			await entry.action.showOk();
+		} finally {
+			this.#busy.delete(key);
+		}
+	}
+
 	/** Fires at CONFIRM_HOLD_MS while the key is still down. */
 	async #onHold(entry: KeyEntry): Promise<void> {
 		if (entry.kind === "overview") {
 			this.#monitor.ackAll();
 			await entry.action.showOk();
+			return;
+		}
+		if (entry.kind === "scheduled") return this.#runScheduled(entry);
+		if (entry.settings.action === "open") {
+			const url = this.#pullRequestUrl(entry);
+			if (url) this.#launch(entry, Promise.resolve([url]));
 			return;
 		}
 		const card = this.#focused(entry);
@@ -402,6 +494,12 @@ export class Deck {
 				if (pending.length > 0) return this.#openT3(entry);
 				this.#updates?.refresh();
 				return entry.action.showOk();
+			}
+			case "scheduled": {
+				// The task's thread when the plugin knows it, else T3 Code itself (also with no tasks, or while T3 is offline).
+				const task = this.#online ? this.#scheduledTask(entry) : undefined;
+				const card = task?.threadId ? this.#monitor.snapshot.cards.get(task.threadId) : undefined;
+				return card ? this.#open(entry, card) : this.#openT3(entry);
 			}
 			case "machine":
 				// A disk key shows that folder in Finder; the others open Activity Monitor.
@@ -612,11 +710,31 @@ export class Deck {
 					markup: renderUsageKey({
 						metric,
 						pace: metric ? pace(metric.window, now) : undefined,
+						empty: metric ? undefined : emptyState(usage.providers, usage.hubs ?? [], entry.settings.metric),
+						now,
 						ok: usage.ok,
 						loading: usage.fetchedAt === 0 && usage.ok === false && usage.detail === "Loading…",
 						style: entry.settings.style === "ring" ? "ring" : "bar",
 					}),
 				};
+			}
+			case "scheduled": {
+				const stream = this.#scheduled?.snapshot ?? LOADING;
+				const pick = stream.state === "live" ? pickTask(stream.tasks, entry.settings.task) : ({ task: undefined, reason: "none" } as const);
+				// "Hold to run now" only for the press that armed the run, on the task it started on: a task that became
+				// runnable, or took the key over, mid-press has no timer behind it, so it gets no cue and no progress bar.
+				const state = this.#scheduledHold(entry);
+				const hold = state === "run" && !this.#scheduledArmed(entry) ? undefined : state;
+				const style = keyStyle(entry.settings);
+				const holding = hold !== undefined && !entry.held && pressedFor !== undefined;
+				const cued = holding && pressedFor >= HOLD_CUE_MS;
+				const cue: ScheduledCue | undefined = cued ? (hold === "run" ? { kind: "run", progress: pressedFor / CONFIRM_HOLD_MS } : { kind: "enable" }) : undefined;
+				const markup = renderScheduledKey({ connection: snapshot.connection, stream: stream.state, pick, now, animation, style, cue });
+				const next = earliest(
+					online && stream.state === "live" ? nextScheduledFrame(pick.task, animation, now, style) : undefined,
+					holding ? (cued ? (hold === "run" ? progressFrame(entry.downAt!, now) : undefined) : entry.downAt! + HOLD_CUE_MS) : undefined,
+				);
+				return { markup, next };
 			}
 			case "updates":
 				return { markup: renderUpdatesKey(this.#updates?.snapshot ?? { ok: false, detail: "Loading…", providers: [], fetchedAt: 0 }, keyStyle(entry.settings)) };

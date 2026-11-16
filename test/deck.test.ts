@@ -1074,3 +1074,56 @@ test("scheduled key: a second hold on the same task while the first is in flight
 		d.dispose();
 	}
 });
+
+test("scheduled key: a hold never runs a task other than the one the press started on", async () => {
+	const scheduled = new FakeScheduled();
+	const { d, key } = scheduledDeck(scheduled);
+	try {
+		d.actionsEnabled = true;
+		const sweep = sched({ id: "sweep", title: "Cache sweep", nextRunAt: 1_000_000 + 60_000 });
+		const report = sched({ id: "report", title: "Weekly report", nextRunAt: 1_000_000 + 3_600_000 });
+		scheduled.set({ state: "live", tasks: [sweep, report] });
+		await flush();
+		assert.match(key.last(), />Cache sweep</, "whichever runs next");
+		d.keyDown("s1");
+		await advance(400);
+		assert.match(key.last(), />Hold to run now</);
+		// T3 starts the sweep's own run mid-hold, so the key moves on to the report.
+		scheduled.set({ state: "live", tasks: [{ ...sweep, lastRunStatus: "running", nextRunAt: 1_000_000 + 2 * 3_600_000 }, report] });
+		await flush();
+		assert.match(key.last(), />Weekly report</);
+		assert.ok(!key.last().includes("Hold to run now"), "no cue for a task the press didn't start on");
+		assert.ok(!key.last().includes("hold-progress"));
+		await advance(500);
+		assert.deepEqual(commands.sent, [], "the report is not run");
+		assert.deepEqual(key.events, ["alert"]);
+		await d.keyUp("s1");
+		await flush();
+		assert.deepEqual(commands.sent, []);
+		assert.deepEqual(host.opened, [], "and letting go is not a tap");
+	} finally {
+		d.dispose();
+	}
+});
+
+test("scheduled key: a task that becomes runnable mid-press gets no cue and no run", async () => {
+	const scheduled = new FakeScheduled();
+	const { d, key } = scheduledDeck(scheduled);
+	try {
+		d.actionsEnabled = true;
+		scheduled.set({ state: "live", tasks: [sched({ lastRunStatus: "running" })] });
+		await flush();
+		d.keyDown("s1");
+		await advance(300);
+		// Its run ends while the key is down: nothing was armed at key-down, so nothing may fill or fire.
+		scheduled.set({ state: "live", tasks: [sched()] });
+		await flush();
+		assert.ok(!key.last().includes("Hold to run now"));
+		assert.ok(!key.last().includes("hold-progress"));
+		await advance(700);
+		assert.deepEqual(commands.sent, []);
+		assert.deepEqual(key.events, []);
+	} finally {
+		d.dispose();
+	}
+});

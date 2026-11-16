@@ -59,6 +59,8 @@ monitor.on("change", (snapshot) => {
 	if (summary === lastConnection) return;
 	lastConnection = summary;
 	log(`T3 connection ${summary}`);
+	// T3 Code is back: the scheduled-task stream retries now, not at the end of its backoff (up to 30 s).
+	if (c.kind === "ok") scheduled.kick();
 	// Keep an open property inspector's status row current.
 	sendStatus().catch((error: unknown) => log(`status update failed: ${describe(error)}`));
 });

@@ -129,6 +129,8 @@ interface KeyEntry {
 	downAt?: number;
 	/** Thread under the finger at key-down; tiles can slide while the key is held. */
 	downThreadId?: string;
+	/** Scheduled keys: the task shown at key-down. "Whichever runs next" can change task while the key is held. */
+	downTaskId?: string;
 	/** This press can fire a hold action (overview, or an enabled hold-to-confirm action). */
 	holdable?: boolean;
 	/** Fires the hold action while the key is still down. */
@@ -309,6 +311,7 @@ export class Deck {
 		entry.holdTimer = undefined;
 		entry.downAt = Date.now();
 		entry.downThreadId = this.#shown.get(id);
+		entry.downTaskId = entry.kind === "scheduled" ? this.#scheduledTask(entry)?.id : undefined;
 		entry.held = false;
 		entry.holdable = this.#canHold(entry);
 		if (entry.holdable) {
@@ -336,6 +339,7 @@ export class Deck {
 		const { downThreadId, held, holdable } = entry;
 		entry.downAt = undefined;
 		entry.downThreadId = undefined;
+		entry.downTaskId = undefined;
 		entry.held = false;
 		entry.holdable = false;
 		this.#render((e) => e === entry);
@@ -400,10 +404,18 @@ export class Deck {
 		return this.#actionsEnabled ? "run" : "enable";
 	}
 
-	/** Runs the shown task now. A second hold on the same task while the first is in flight does nothing. */
+	/**
+	 * This press armed a run of the task the key still shows. A key on "Whichever runs next" moves to
+	 * another task when the first one starts or is rescheduled, and a hold must never run that other task.
+	 */
+	#scheduledArmed(entry: KeyEntry): boolean {
+		return entry.holdable === true && entry.downTaskId !== undefined && this.#scheduledTask(entry)?.id === entry.downTaskId;
+	}
+
+	/** Runs the task the press started on, if the key still shows it. A second hold on the same task while the first is in flight does nothing. */
 	async #runScheduled(entry: KeyEntry): Promise<void> {
 		const task = this.#scheduledTask(entry);
-		if (!task || !this.#actionsEnabled || !canRunNow(task)) return entry.action.showAlert();
+		if (!task || !this.#scheduledArmed(entry) || !this.#actionsEnabled || !canRunNow(task)) return entry.action.showAlert();
 		const key = `scheduled|${task.id}`;
 		if (this.#busy.has(key)) return;
 		this.#busy.add(key);
@@ -709,7 +721,10 @@ export class Deck {
 			case "scheduled": {
 				const stream = this.#scheduled?.snapshot ?? LOADING;
 				const pick = stream.state === "live" ? pickTask(stream.tasks, entry.settings.task) : ({ task: undefined, reason: "none" } as const);
-				const hold = this.#scheduledHold(entry);
+				// "Hold to run now" only for the press that armed the run, on the task it started on: a task that became
+				// runnable, or took the key over, mid-press has no timer behind it, so it gets no cue and no progress bar.
+				const state = this.#scheduledHold(entry);
+				const hold = state === "run" && !this.#scheduledArmed(entry) ? undefined : state;
 				const style = keyStyle(entry.settings);
 				const holding = hold !== undefined && !entry.held && pressedFor !== undefined;
 				const cued = holding && pressedFor >= HOLD_CUE_MS;

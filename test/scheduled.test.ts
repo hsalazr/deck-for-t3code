@@ -554,6 +554,24 @@ test("monitor: restart() reconnects at once and drops the old socket's late fram
 	monitor.stop();
 });
 
+test("monitor: restart() forgets the old list at once, so nothing from the old connection shows while the new one answers", async () => {
+	const access = new FakeAccess();
+	const monitor = new ScheduledMonitor(access as unknown as RpcAccess);
+	const seen: string[] = [];
+	monitor.on("change", (s) => seen.push(`${s.state}:${s.tasks.length}`));
+	monitor.setWanted(true);
+	monitor.start();
+	await tick();
+	access.opened[0]!.deliver(chunk({ tasks: [raw()] }));
+	assert.equal(monitor.snapshot.state, "live");
+	monitor.restart();
+	assert.equal(monitor.snapshot.state, "loading");
+	assert.deepEqual(monitor.snapshot.tasks, []);
+	assert.equal(seen.at(-1), "loading:0");
+	monitor.stop();
+	await tick();
+});
+
 test("run now: one runNow request with just the id; a failure rejects", async () => {
 	const access = new FakeAccess();
 	access.reply = (msg) => (msg._tag === "Request" ? { _tag: "Exit", requestId: "1", exit: { _tag: "Success", value: { task: raw() } } } : undefined);

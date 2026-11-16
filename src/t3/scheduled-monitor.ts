@@ -65,6 +65,8 @@ export class ScheduledMonitor extends EventEmitter<{ change: [ScheduledSnapshot]
 	restart(): void {
 		if (!this.#running || !this.#wanted) return;
 		this.#teardown();
+		// The list belonged to the old connection (maybe another T3 home): nothing of it stays while the new one answers.
+		this.#set(LOADING);
 		this.#retryMs = RECONNECT_MIN_MS;
 		void this.#connect();
 	}

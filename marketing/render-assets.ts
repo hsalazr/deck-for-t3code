@@ -323,6 +323,10 @@ const GLYPHS: Record<string, { size: number; body: string }> = {
 		size: 20,
 		body: `<circle cx="10" cy="10" r="7.5" ${stroke()}/><path d="M10 5.8v7.4M6.8 10.2 10 13.4l3.2-3.2" ${stroke()}/>`,
 	},
+	scheduled: {
+		size: 20,
+		body: `<rect x="2.5" y="3.5" width="15" height="14" rx="3" ${stroke()}/><path d="M2.5 8h15M6.8 2v3M13.2 2v3" ${stroke()}/><path d="M10 10.6v2.6l1.8 1.1" ${stroke()}/>`,
+	},
 	back: {
 		size: 20,
 		body: `<path d="M12.5 4 6.5 10l6 6" ${stroke(2.2)}/>`,

@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **Scheduled key:** one of T3 Code's scheduled tasks, with when it runs next as a large countdown, how its last run went, and a hold to run it now. The *Detailed* look has the title, the countdown, the schedule in a few words (`every 2h`, `daily 09:00`, `once`, `webhook`) and the last result; a failed last run is a red band with a cross that stays until the next run succeeds. The *Glance* look is the countdown in large type with a glyph for the state. It draws counting down, running (the thread tiles' spinner), failed, never run, disabled, blocked by policy, webhook (no next run), no tasks at all, a deleted task, and T3 Code unreachable. The settings are **Task** (default: whichever runs next) and **Look**. A tap opens the task's thread in T3 Code when it has one and the plugin knows it, otherwise brings T3 Code forward; holding for 0.8 s runs the task now. Running changes T3 Code, so it works only while **Enable thread actions** is on and uses the actions token (`orchestration:operate`, `scheduledTasks.runNow`); with it off the key says *Enable in settings*. The plugin reads task titles, schedules, run times and results over the read-only live-status token (one `scheduledTasks.subscribe` stream, open only while a Scheduled key is on a deck, nothing polled), and never a task's prompt.
+
 ### Fixed
 
 - The nightly pre-release is published again. It had failed since 2026-11-11: releases in this repo are immutable now, and GitHub never lets a tag name be used again once a release has used it, so the rolling `nightly` tag stopped working. Each nightly now has its own tag (`nightly-1.2.2.N`) and replaces the one before it. Find it under [pre-releases](https://github.com/hsalazr/deck-for-t3code/releases?q=prerelease%3Atrue).

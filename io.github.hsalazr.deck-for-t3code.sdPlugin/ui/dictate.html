@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>T3 Dictate</title><link rel="stylesheet" href="style.css"></head>
+<body>
+  <h3>Dictate</h3>
+  <div class="row"><label>Dictate key</label><div class="check"><input type="checkbox" data-global="dictationEnabled" id="de"><label for="de">Enable the Dictate key</label></div></div>
+  <div class="hint wide">Lets this key press the chord bound to T3 Code's dictation shortcut (<code>composer.dictation</code>, ⇧⌘D by default), looked up in T3 Code on every press, and nothing else: no other keys, no text, no other app. It only presses it while T3 Code is the frontmost app, and sends it to T3 Code itself. Off: the key does nothing and runs nothing.</div>
+  <div class="hint wide">Needs two things on this Mac: voice input set up in T3 Code (Settings → Voice), and Stream Deck allowed under System Settings → Privacy &amp; Security → Accessibility (the key says so when it isn't). <a href="#" id="how">How this works</a></div>
+  <h3>This key</h3>
+  <div class="row"><label>Thread</label><select id="thread"><option value="open">The one open in T3 Code</option><option value="urgent">The most urgent thread</option></select></div>
+  <div class="hint wide" id="hint"></div>
+  <div class="hint wide">Tap or hold, like the shortcut on a keyboard: T3 Code's own <b>Dictation shortcut</b> setting decides what each does. As on a keyboard, what has focus in T3 Code matters: with its terminal focused, ⇧⌘D splits the terminal, so click into the composer first or give dictation its own chord (a function key) in T3 Code. Letter shortcuts work on any keyboard layout that has the letter.</div>
+  <div id="globals"></div>
+  <script src="common.js"></script>
+  <script>
+    document.getElementById("how").addEventListener("click", (e) => { e.preventDefault(); PI.send("openUrl", { url: "https://github.com/hsalazr/deck-for-t3code#dictate" }); });
+    const thread = document.getElementById("thread");
+    const hint = document.getElementById("hint");
+    const HINTS = {
+      open: "Brings T3 Code forward and dictates into the thread that is open there.",
+      urgent: "Opens the thread that needs you first (then failed, done, working), like the Overview key's \"Open the most urgent thread\", then dictates there. With every thread idle, the one open in T3 Code.",
+    };
+    const show = () => { hint.textContent = HINTS[thread.value]; };
+    PI.onSettings = () => { thread.value = PI.settings.dictateThread === "urgent" ? "urgent" : "open"; show(); };
+    thread.addEventListener("change", () => { PI.setSettings({ dictateThread: thread.value }); show(); });
+    show();
+    mountStatus();
+    mountGlobals();
+  </script>
+</body>
+</html>

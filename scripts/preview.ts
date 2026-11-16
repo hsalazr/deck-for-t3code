@@ -5,6 +5,7 @@
 import { writeFileSync } from "node:fs";
 import type { GoalSummary, PullRequestStatus, ThreadCard } from "../src/model.ts";
 import { renderActionKey, renderBackKey, renderOverview, renderScheduledKey, renderThreadKey, renderUsageKey, type ActionKeyInput, type ScheduledKeyInput } from "../src/render.ts";
+import { renderDictateKey } from "../src/render.ts";
 import type { ScheduledTask } from "../src/scheduled.ts";
 import { pace, type UsageWindow } from "../src/usage.ts";
 import type { Connection } from "../src/t3/monitor.ts";
@@ -164,6 +165,12 @@ const sections: [string, [string, string][]][] = [
 		["open · holding", act("open", { card: card("working", "Add retry", { pullRequest: pr("failing") }), progress: 0.55 })],
 		["open · bad link", act("open", { card: card("working", "Add retry", { pullRequest: { number: 42, url: "javascript:alert(1)", status: "failing" } }) })],
 		["open · actions off", act("open", { enabled: false, card: card("working", "Add retry", { pullRequest: pr("failing") }) })],
+	]],
+	["Dictate", [
+		["ready", renderDictateKey({ enabled: true })],
+		["holding (push-to-talk)", renderDictateKey({ enabled: true, holding: true })],
+		["needs Accessibility", renderDictateKey({ enabled: true, allow: true })],
+		["off in settings", renderDictateKey({ enabled: false })],
 	]],
 	["Usage", [
 		["bar · ahead", usage(week(70, 3.5, { label: "Weekly · Fable" }))],

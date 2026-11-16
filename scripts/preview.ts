@@ -3,7 +3,7 @@
 //   --labels   status label on thread tiles
 //   --size N   draw keys at N px (a Stream Deck key is about 72–96 px on screen)
 import { writeFileSync } from "node:fs";
-import type { ThreadCard } from "../src/model.ts";
+import type { GoalSummary, PullRequestStatus, ThreadCard } from "../src/model.ts";
 import { renderActionKey, renderBackKey, renderOverview, renderThreadKey, renderUsageKey, type ActionKeyInput } from "../src/render.ts";
 import { pace, type UsageWindow } from "../src/usage.ts";
 import type { Connection } from "../src/t3/monitor.ts";
@@ -30,6 +30,7 @@ const week = (usedPercent: number, daysLeft: number, extra: Partial<UsageWindow>
 	id: "seven_day", label: "Weekly", usedPercent, windowDurationMins: 10080, resetsAt: new Date(now + daysLeft * 86_400_000).toISOString(), ...extra });
 const usage = (w: UsageWindow, okFlag = true, style: "bar" | "ring" = "bar", provider = "Claude") =>
 	renderUsageKey({ metric: { key: "k", provider, label: w.label, window: w }, pace: pace(w, now), ok: okFlag, loading: false, style });
+const pr = (status: PullRequestStatus, number = 42) => ({ number, url: `https://git.example.com/acme/api/pulls/${number}`, status });
 const running = card("working", "Add retry to checkout flow", { activeRunId: "run-1" });
 const act = (action: ActionKeyInput["action"], extra: Partial<ActionKeyInput> = {}) =>
 	renderActionKey({ action, card: running, connection: ok, animation: "smooth", now: 0, projectName: "acme-api", ...extra });
@@ -113,6 +114,40 @@ const sections: [string, [string, string][]][] = [
 		["compact", act("compact", { enabled: false })],
 		["message", act("message", { message: "continue", enabled: false })],
 		["open (still works)", act("open", { enabled: false })],
+	]],
+	["Pull request and goal marks", [
+		...(["failing", "conflict", "changes", "approval", "running", "review", "approved", "passing", "open", "draft"] as PullRequestStatus[]).map((status): [string, string] => [`PR ${status}`, thread(card("idle", "Add retry to checkout flow", { pullRequest: pr(status) }), "acme-api")]),
+		["PR merged: no mark", thread(card("idle", "Add retry to checkout flow", { pullRequest: pr("merged") }), "acme-api")],
+		["PR failing · lit (done)", thread(card("done", "Migrate docs to new wiki", { pullRequest: pr("failing") }), "acme-web")],
+		["PR running · dark blink", thread(card("input", "Upgrade to Node 24", { pullRequest: pr("running") }), "acme-docs", 600)],
+		["PR + 2-digit agents", thread(card("working", "Cache build artifacts in CI", { subagentsWorking: 12, pullRequest: pr("failing", 1234) }), "acme-api", 300)],
+		...(["active", "paused", "blocked", "usage_limited", "budget_limited", "complete"] as GoalSummary["status"][]).map((status): [string, string] => [`goal ${status}`, thread(card("idle", "Add retry to checkout flow", { goal: { status } }), "acme-api")]),
+		["goal 62% budget", thread(card("working", "Add retry to checkout flow", { goal: { status: "active", budgetPercent: 62 } }), "acme-api", 300)],
+		["goal 91% budget", thread(card("working", "Add retry to checkout flow", { goal: { status: "active", budgetPercent: 91 } }), "acme-api", 300)],
+		["PR + goal 62%", thread(card("idle", "Add retry to checkout flow", { pullRequest: pr("running"), goal: { status: "active", budgetPercent: 62 } }), "acme-api")],
+		["PR + goal blocked", thread(card("idle", "Add retry to checkout flow", { pullRequest: pr("failing"), goal: { status: "blocked" } }), "acme-api")],
+		["PR + goal + context %", thread(card("idle", "Add retry to checkout flow", { pullRequest: pr("approved"), goal: { status: "active", budgetPercent: 62 }, context: { used: 41, max: 100 } }), "acme-api")],
+		["PR + goal + 1 agent", thread(card("working", "Add retry to checkout flow", { subagentsWorking: 1, pullRequest: pr("review"), goal: { status: "paused" } }), "acme-api", 300)],
+		["PR + goal + 12 agents", thread(card("working", "Add retry to checkout flow", { subagentsWorking: 12, pullRequest: pr("review"), goal: { status: "paused" } }), "acme-api", 300)],
+		["PR + goal + long project", thread(card("idle", "Add retry to checkout flow", { pullRequest: pr("conflict", 128), goal: { status: "budget_limited" } }), "acme-payments-service")],
+		["PR + goal + no project", thread(card("idle", "Add retry to checkout flow", { pullRequest: pr("conflict", 128), goal: { status: "budget_limited" } }), "")],
+		["waiting on this PR's CI", thread(card("working", "Release hardening", { ownStatus: "completed", background: 1, waitingOn: "PR #42 CI", pullRequest: pr("running") }), "acme-docs")],
+		["waiting on CI + goal", thread(card("working", "Release hardening", { ownStatus: "completed", background: 1, waitingOn: "PR #42 CI", pullRequest: pr("running"), goal: { status: "active", budgetPercent: 30 } }), "acme-docs")],
+		["waiting on a command + PR", thread(card("working", "Release hardening", { ownStatus: "completed", background: 1, waitingOn: "Web UI tests", pullRequest: pr("failing", 57), goal: { status: "complete" } }), "acme-docs")],
+		["waiting, long label + both", thread(card("working", "Release hardening", { ownStatus: "completed", background: 1, waitingOn: "npm run test:integration", pullRequest: pr("failing", 57), goal: { status: "complete" } }), "acme-docs")],
+		["glance · PR + goal: unchanged", thread(card("idle", "Add retry to checkout flow", { pullRequest: pr("failing"), goal: { status: "blocked" } }), "acme-api", 0, { style: "glance" })],
+	]],
+	["Thread Actions · pull request", [
+		["open · PR failing", act("open", { card: card("working", "Add retry", { pullRequest: pr("failing") }) })],
+		["open · PR running", act("open", { card: card("working", "Add retry", { pullRequest: pr("running") }) })],
+		["open · PR approved", act("open", { card: card("working", "Add retry", { pullRequest: pr("approved") }) })],
+		["open · PR plain", act("open", { card: card("working", "Add retry", { pullRequest: pr("open", 4821) }) })],
+		["open · PR draft", act("open", { card: card("working", "Add retry", { pullRequest: pr("draft") }) })],
+		["open · last PR merged", act("open", { card: card("idle", "Add retry", { pullRequest: pr("merged") }) })],
+		["open · last PR closed", act("open", { card: card("idle", "Add retry", { pullRequest: pr("closed", 130) }) })],
+		["open · holding", act("open", { card: card("working", "Add retry", { pullRequest: pr("failing") }), progress: 0.55 })],
+		["open · bad link", act("open", { card: card("working", "Add retry", { pullRequest: { number: 42, url: "javascript:alert(1)", status: "failing" } }) })],
+		["open · actions off", act("open", { enabled: false, card: card("working", "Add retry", { pullRequest: pr("failing") }) })],
 	]],
 	["Usage", [
 		["bar · ahead", usage(week(70, 3.5, { label: "Weekly · Fable" }))],

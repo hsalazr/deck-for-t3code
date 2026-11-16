@@ -48,6 +48,39 @@ export interface ThreadSummary {
  */
 export type CardState = "input" | "failed" | "done" | "working" | "paused" | "idle";
 
+/**
+ * What a thread's pull request is, from T3's own snapshot of it. A fact is
+ * used only when T3 sent it; nothing is guessed. The open ones, most pressing
+ * first (`PR_RANK` in shell-stream.ts): failing checks, a conflict or changes
+ * requested; checks awaiting approval; checks running; review required;
+ * approved or passing; plain open (nothing else known); draft. `merged` and
+ * `closed` only ever come from the fallback when nothing is open.
+ */
+export type PullRequestStatus = "failing" | "conflict" | "changes" | "approval" | "running" | "review" | "approved" | "passing" | "open" | "draft" | "merged" | "closed";
+
+/** Statuses of a pull request that is still open: the only ones a thread tile marks. */
+export const isOpenPullRequest = (status: PullRequestStatus): boolean => status !== "merged" && status !== "closed";
+
+/**
+ * The thread's pull request: the open one that most needs attention, else
+ * (for the Thread Actions page only) the most recently updated, even merged.
+ * `url` is untrusted: `safeWebUrl` before opening it.
+ */
+export interface PullRequestSummary {
+	number: number;
+	url: string;
+	status: PullRequestStatus;
+}
+
+export type GoalStatus = "active" | "paused" | "blocked" | "usage_limited" | "budget_limited" | "complete";
+
+/** A thread's goal, reduced to what a key shows. */
+export interface GoalSummary {
+	status: GoalStatus;
+	/** Share of the token budget used, 0–100; only when the goal has a budget. */
+	budgetPercent?: number;
+}
+
 export const STATE_RANK: Record<CardState, number> = { input: 0, failed: 1, done: 2, working: 3, paused: 4, idle: 5 };
 
 export interface ThreadCard {
@@ -79,6 +112,10 @@ export interface ThreadCard {
 	createdAt: number;
 	/** The linked environment (another machine) the thread lives in; absent for this machine's threads. */
 	environmentId?: string;
+	/** The thread's pull request, from the shell stream; absent without one or on a linked machine. */
+	pullRequest?: PullRequestSummary;
+	/** The thread's `/goal`, from the shell stream; absent without one or on a linked machine. */
+	goal?: GoalSummary;
 }
 
 const WORKING = new Set(["preparing", "queued", "starting", "running"]);
@@ -334,4 +371,26 @@ export function parseQuickMessages(value: string | undefined): QuickMessage[] {
 		messages.push({ label: label || text, text: text || label });
 	}
 	return messages;
+}
+
+
+const MAX_URL_LENGTH = 2048;
+
+/**
+ * A web link that is safe to hand to `open`: `https:` or `http:`, no username
+ * or password, at most 2,048 characters. Returns the parsed, normalised form
+ * (it starts with the scheme, so `open` can never read it as an option), or
+ * undefined. T3 and the pull request host control this text, not the user.
+ */
+export function safeWebUrl(url: unknown): string | undefined {
+	if (typeof url !== "string" || url.length > MAX_URL_LENGTH) return undefined;
+	let parsed: URL;
+	try {
+		parsed = new URL(url);
+	} catch {
+		return undefined;
+	}
+	if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return undefined;
+	if (parsed.username !== "" || parsed.password !== "") return undefined;
+	return parsed.href.length <= MAX_URL_LENGTH ? parsed.href : undefined;
 }

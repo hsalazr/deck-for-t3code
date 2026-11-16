@@ -812,6 +812,10 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 				card.pausedUntil = resetAt;
 			}
 			if (extras?.activeRunId) card.activeRunId = extras.activeRunId;
+			// Static facts for the key: the root thread's own (a subagent's pull request or goal stays on the subagent,
+			// which the stream omits while idle). A linked machine's threads have no shell data.
+			if (extras?.pullRequest && !card.environmentId) card.pullRequest = extras.pullRequest;
+			if (extras?.goal && !card.environmentId) card.goal = extras.goal;
 			const context = this.#context?.get(card.threadId);
 			if (context) card.context = context;
 		}

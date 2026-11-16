@@ -4,6 +4,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **Pull request and goal marks** on Thread keys (Detailed look), read from the live stream the plugin already holds, with no new token or scope. A small disc shows the thread's open pull request, with `#42` when there is room: a red cross for failing checks, an amber `!` for a conflict, requested changes or checks awaiting approval, blue dots while checks run, a ring with a dot when review is required, a green tick when approved or passing, a plain ring when open and nothing else is known, a dashed ring for a draft. Merged and closed pull requests get no mark. Forges that send no check or review state get the plain ring; the plugin never guesses a check result. With several open ones, the one that most needs you shows. A rounded square shows the thread's `/goal`: a target, with the share of its token budget used when T3 Code reports one, or `paused`, `blocked`, `limit`, `budget` or `done`. Both are static: they never make a key flash or change its state, the Overview's counts or any animation. A thread waiting only on a pull request's CI isn't marked twice, and the Glance look, a key paused by a usage limit and linked machines' threads show no marks.
+- **Hold Open to open the thread's pull request.** On the Thread Actions page the Open key shows `PR #42` and its status when the thread has a pull request, and holding it for 0.8 s opens the pull request in your default browser (with none open, the most recently updated one, labelled `Last: merged`). It works with "Enable thread actions" off. Only `https` or `http` links with no user name or password and at most 2,048 characters are opened.
+
 ### Fixed
 
 - The nightly pre-release is published again. It had failed since 2026-11-11: releases in this repo are immutable now, and GitHub never lets a tag name be used again once a release has used it, so the rolling `nightly` tag stopped working. Each nightly now has its own tag (`nightly-1.2.2.N`) and replaces the one before it. Find it under [pre-releases](https://github.com/hsalazr/deck-for-t3code/releases?q=prerelease%3Atrue).

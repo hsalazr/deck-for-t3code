@@ -14,7 +14,7 @@ Only the latest release gets security fixes.
 
 ## How the plugin handles access to T3 Code
 
-Deck for T3 Code is a local plugin (macOS only). It talks only to the T3 Code server on the same Mac, has no server of its own, and sends no analytics, crash reports or telemetry.
+Deck for T3 Code is a local plugin (macOS only). It talks only to the T3 Code server on the same Mac, has no server of its own, and sends no analytics, crash reports or telemetry. (The one exception to "only the same Mac" isn't a connection of the plugin's: holding Open on a thread that has a pull request asks macOS to open that link in your browser, after the checks under [What the plugin checks](#what-the-plugin-checks).)
 
 To do that it uses **up to three tokens**, minted with your local `t3` CLI and stored on your Mac in `~/Library/Application Support/io.github.hsalazr.deck-for-t3code/` (folder mode 0700, files mode 0600: `credential.json`, `credential-rpc.json`, `credential-operate.json`, and `pending-revoke.json` for sessions still to revoke):
 
@@ -40,6 +40,7 @@ To do that it uses **up to three tokens**, minted with your local `t3` CLI and s
 - **No redirects.** Every request that carries a token is sent with redirects refused, so a loopback server can't bounce a token elsewhere.
 - **Log redaction.** Every log line passes through a filter that replaces any run of 32 or more token-like characters with `[redacted]`.
 - **Hold to confirm.** Compact, Settle, Stop and quick messages only fire after a 0.8 s hold, never on a tap.
+- **Pull request links.** Holding Open on the Thread Actions page for 0.8 s hands the thread's pull request link to macOS `open` (as a single argument, through `execFile`, never a shell), so your default browser loads it. It reads and changes nothing in T3 Code and needs no token. The link comes from T3 Code's live stream, which got it from the pull request host, so it is checked first: it must parse as a URL, use `https:` or `http:`, have no user name or password, and be at most 2,048 characters. The normalised form is what gets opened, so it always starts with the scheme and can never be read as an option. Anything else is dropped: the key doesn't offer it and a hold does nothing. The plugin never connects to that host itself.
 
 ## In scope
 

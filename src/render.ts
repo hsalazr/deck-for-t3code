@@ -1406,3 +1406,43 @@ export function renderActionKey(input: ActionKeyInput): string {
 	// settle
 	return svg(bg + lucide(ICON.check, iconSize, 72, 54, WHITE) + caption("Settle", input.hint ? "hold to confirm" : "hold") + holdFill(input.progress));
 }
+
+// ---------- Dictate key ----------
+
+/** Lucide's "mic". */
+const MIC = `<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/>`;
+
+export interface DictateKeyInput {
+	/** "Enable the Dictate key" is on in settings. */
+	enabled: boolean;
+	/** The deck key is held past the tap window: the shortcut is being held down in T3 Code. */
+	holding?: boolean;
+	/** Posting was refused for lack of permission: say where to grant it. */
+	allow?: boolean;
+}
+
+/**
+ * A microphone. The key never claims T3 Code is recording (it can't know);
+ * while held it says the shortcut is held, and that's all.
+ */
+export function renderDictateKey(input: DictateKeyInput): string {
+	const bg = `<rect width="${SIZE}" height="${SIZE}" fill="${BG}"/>`;
+	if (!input.enabled) return svg(bg + lucide(MIC, 40, 72, 50, OFF_ICON) + disabledNoteFor(false));
+	if (input.allow) {
+		const amber = PALETTE.input.accent;
+		return svg(
+			bg +
+				lucide(MIC, 30, 72, 28, amber) +
+				["Allow Stream", "Deck in", "Accessibility"].map((line, i) => text(72, 74 + i * 22, line, { size: 17, weight: 750, fill: i === 2 ? amber : WHITE, anchor: "middle" })).join(""),
+		);
+	}
+	if (input.holding) {
+		return svg(
+			`<rect width="${SIZE}" height="${SIZE}" fill="${WHITE}"/>` +
+				lucide(MIC, 52, 72, 54, INK) +
+				text(72, 110, "Holding", { size: 16, weight: 800, fill: INK, anchor: "middle" }) +
+				text(72, 130, "shortcut down", { size: 14, weight: 650, fill: INK, anchor: "middle" }),
+		);
+	}
+	return svg(bg + lucide(MIC, 52, 72, 54, WHITE) + caption("Dictate", "tap or hold"));
+}

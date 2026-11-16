@@ -97,3 +97,13 @@ export class UsageKey extends T3KeyAction {
 		await streamDeck.ui.sendToPropertyInspector({ type: "metrics", metrics: runtime.deck.usageMetrics() });
 	}
 }
+
+/** Presses T3 Code's dictation shortcut in T3 Code. Opt-in: "Enable the Dictate key". */
+@action({ UUID: "io.github.hsalazr.deck-for-t3code.dictate" })
+export class DictateKey extends T3KeyAction {
+	protected readonly kind = "dictate";
+
+	override onDidReceiveSettings(ev: DidReceiveSettingsEvent<KeySettings>): void {
+		runtime.deck?.updateSettings(ev.action.id, ev.payload.settings);
+	}
+}

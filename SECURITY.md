@@ -14,7 +14,7 @@ Only the latest release gets security fixes.
 
 ## How the plugin handles access to T3 Code
 
-Deck for T3 Code is a local plugin (macOS only). It talks only to the T3 Code server on the same Mac, has no server of its own, and sends no analytics, crash reports or telemetry.
+Deck for T3 Code is a local plugin (macOS only). It talks only to the T3 Code server on the same Mac, has no server of its own, and sends no analytics, crash reports or telemetry. The one thing it can do on your Mac beyond that, pressing T3 Code's dictation shortcut, is off unless you turn it on (see [The Dictate key](#the-dictate-key)).
 
 To do that it uses **up to three tokens**, minted with your local `t3` CLI and stored on your Mac in `~/Library/Application Support/io.github.hsalazr.deck-for-t3code/` (folder mode 0700, files mode 0600: `credential.json`, `credential-rpc.json`, `credential-operate.json`, and `pending-revoke.json` for sessions still to revoke):
 
@@ -41,9 +41,31 @@ To do that it uses **up to three tokens**, minted with your local `t3` CLI and s
 - **Log redaction.** Every log line passes through a filter that replaces any run of 32 or more token-like characters with `[redacted]`.
 - **Hold to confirm.** Compact, Settle, Stop and quick messages only fire after a 0.8 s hold, never on a tap.
 
+## The Dictate key
+
+The Dictate key starts T3 Code's voice input by pressing T3 Code's own dictation shortcut, because T3 Code offers no other way to start it. Sending keystrokes is a different kind of access from talking to the T3 Code server, so it is narrow and opt-in.
+
+**Off by default.** It works only while **Enable the Dictate key** (global setting `dictationEnabled`) is on. Off, a Dictate key says "Enable in settings" and a press runs nothing. Turning it off mid-press lets go of a shortcut that is held down at that moment and sends nothing new.
+
+**What it does when enabled, and only on a Dictate key press:**
+
+1. Brings T3 Code forward with `open -b <bundle id>` (with a `t3code://` thread link when the key is set to the most urgent thread), as other keys already do.
+2. Runs `/usr/bin/osascript -l JavaScript -e <script> -- <tap|down|up> --bundle-id <id> --key-code <n> --flags <n> --wait-ms 1500` with a 5-second timeout. A tap is one run (key-down, 40 ms, key-up); a held key is one run on the way down and one on the way up.
+3. The script posts one or two keyboard events (CoreGraphics `CGEventCreateKeyboardEvent`, `CGEventSetFlags`, `CGEventPost` to the HID event tap): the dictation key with its modifier flags on the way down, the same key with no flags on the way up. It posts no modifier key events, so no modifier can be left held down, and it never types text.
+
+**What it checks:**
+
+- **One shortcut.** Only the shortcut T3 Code has bound to `composer.dictation`, read from `server.getConfig` with the read-only token and picked the way T3 Code itself picks the one it shows. Its key must be in a fixed table of US-layout key codes (letters, digits, F1–F20, Space, punctuation) and its modifiers are limited to Command, Shift, Control and Option; anything else is refused and logged, never guessed.
+- **One app.** The script posts only while the frontmost app's bundle id (`NSWorkspace.frontmostApplication`) equals T3 Code's, waiting up to 1.5 s for it to come forward, and checks again before the key-up of a tap. The bundle id is the **T3 app bundle id** setting or the one of the app running the T3 server; it must pass the same bundle-id check as `open -b`. With only the `t3code://` fallback there is no bundle id to check against, so the key refuses.
+- **A fixed script.** The script is a constant in the plugin. Every value (mode, bundle id, key code, flags, wait) is passed as a separate argument through `execFile`, never put into the script text or a shell, and the script checks each again (whole numbers in range, a reverse-DNS bundle id, known flag bits only) before it builds anything.
+- **Permission.** macOS requires the Accessibility permission to post events, granted to the Stream Deck app (the plugin runs inside it). Without it the script posts nothing, asks macOS once to show the request, and the key says "Allow Stream Deck in Accessibility". The plugin never changes privacy settings itself.
+- **Logs.** Failures are logged through the same redacting logger as everything else.
+
+**What it means for you.** With Accessibility granted, macOS lets the Stream Deck app, and so every plugin you run in it, post keyboard events. That permission belongs to Stream Deck, not to this plugin; this plugin uses it only as above. To stop the Dictate key, turn **Enable the Dictate key** off. To withdraw the permission from Stream Deck as a whole, turn it off in System Settings → Privacy & Security → Accessibility.
+
 ## In scope
 
-Anything that could let another person or process read or use these tokens, send commands to T3 Code without the user's action, make the plugin contact a host other than the local T3 Code server, or run code through crafted thread titles, messages or settings.
+Anything that could let another person or process read or use these tokens, send commands to T3 Code without the user's action, make the plugin contact a host other than the local T3 Code server, or run code through crafted thread titles, messages or settings. Also anything that makes the Dictate key post a key other than T3 Code's dictation shortcut, post to an app other than T3 Code, post while it is turned off, or post without a key press.
 
 ## Out of scope
 

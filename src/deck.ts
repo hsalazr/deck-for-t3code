@@ -18,6 +18,7 @@ import {
 	overviewState,
 	renderActionKey,
 	renderBackKey,
+	renderDictateKey,
 	renderMachineKey,
 	renderOverview,
 	renderThreadKey,
@@ -29,7 +30,8 @@ import {
 	type ThreadActionName,
 } from "./render.ts";
 import { tomorrowAt9, type ThreadCommands } from "./t3/commands.ts";
-import { AppLocator } from "./t3/app.ts";
+import { AppLocator, validBundleId } from "./t3/app.ts";
+import { DictatePresses, DictateRefusal, type DictatePhase, type DictateTarget, type DictateThread, type DictationPort } from "./dictate.ts";
 import type { T3Location } from "./t3/auth.ts";
 import type { Monitor, Snapshot } from "./t3/monitor.ts";
 import type { UsageMonitor } from "./t3/usage-monitor.ts";
@@ -58,9 +60,11 @@ export type KeySettings = {
 	action?: ThreadActionName;
 	index?: number;
 	tap?: OverviewTap;
+	/** Dictate keys: the thread open in T3 Code (default), or the most urgent one first. */
+	dictateThread?: DictateThread;
 };
 
-export type KeyKind = "thread" | "overview" | "usage" | "machine" | "updates" | "back" | "action";
+export type KeyKind = "thread" | "overview" | "usage" | "machine" | "updates" | "back" | "action" | "dictate";
 
 const machineStat = (s: KeySettings): MachineStat => machineStatOf(s.stat);
 /** Machine and Updates keys: the big, glanceable look, or the detailed one (default). */
@@ -130,6 +134,10 @@ interface KeyEntry {
 	held?: boolean;
 	/** Show "Hold to confirm / send" until then. */
 	hintUntil?: number;
+	/** Dictate keys: their presses, in order. */
+	presses?: DictatePresses;
+	/** Dictate keys: say "Allow Stream Deck in Accessibility" until then. */
+	allowUntil?: number;
 }
 
 /**
@@ -142,6 +150,8 @@ export const CONFIRM_HOLD_MS = 800;
 /** The Overview shows "Hold to clear all" once held this long; letting go after that cancels. */
 export const HOLD_CUE_MS = 250;
 const HINT_MS = 3000;
+/** How long a Dictate key asks for the Accessibility permission after posting was refused. */
+export const ALLOW_HINT_MS = 5000;
 /** Hold progress redraws this often. */
 const PROGRESS_STEP_MS = 100;
 
@@ -174,6 +184,9 @@ export class Deck {
 	#actionsEnabled = false;
 	#ticker: NodeJS.Timeout | undefined;
 	#tickAt: number | undefined;
+	/** Dictate keys press T3 Code's dictation shortcut; off by default, like thread actions. */
+	#dictation: DictationPort | undefined;
+	#dictationEnabled = false;
 
 	constructor(monitor: Monitor, usage: UsageMonitor, commands: ThreadCommands, host: DeckHost = defaultHost, machine: MachineMonitor = new MachineMonitor(), updates?: UpdatesMonitor) {
 		this.#monitor = monitor;
@@ -198,6 +211,19 @@ export class Deck {
 		this.#render();
 	}
 
+	/** "Enable the Dictate key": off, Dictate keys send nothing and run nothing. */
+	set dictationEnabled(on: boolean) {
+		this.#dictationEnabled = on;
+		if (!on) for (const e of this.#keys.values()) e.presses?.up();
+		this.#syncDictation();
+		this.#render((e) => e.kind === "dictate");
+	}
+
+	attachDictation(port: DictationPort): void {
+		this.#dictation = port;
+		this.#syncDictation();
+	}
+
 	set showLabels(on: boolean) {
 		this.#showLabels = on;
 		this.#render();
@@ -218,12 +244,15 @@ export class Deck {
 		this.#keys.set(action.id, { id: action.id, kind, action, settings, imageSeq: 0 });
 		this.#syncUsage();
 		this.#syncMachine();
+		this.#syncDictation();
 		this.#relayout();
 	}
 
 	remove(id: string): void {
 		const entry = this.#keys.get(id);
 		clearTimeout(entry?.holdTimer);
+		// A Dictate key that goes away mid-press still lets go of the shortcut.
+		entry?.presses?.up();
 		this.#keys.delete(id);
 		this.#syncUsage();
 		this.#syncMachine();
@@ -241,6 +270,11 @@ export class Deck {
 	/** Limit windows T3 currently reports, for the Usage key picker. */
 	usageMetrics(): { key: string; label: string; provider: string; used: number }[] {
 		return metricsOf(this.#usage.snapshot.providers).map((m) => ({ key: m.key, label: m.label, provider: m.provider, used: Math.round(m.window.usedPercent) }));
+	}
+
+	/** Look up the dictation shortcut ahead of the first press, while a Dictate key can use it. */
+	#syncDictation(): void {
+		if (this.#dictationEnabled && [...this.#keys.values()].some((k) => k.kind === "dictate")) this.#dictation?.prefetch();
 	}
 
 	#syncUsage(): void {
@@ -289,6 +323,7 @@ export class Deck {
 				void this.#onHold(entry).catch((error: unknown) => this.#fail(entry, error));
 			}, CONFIRM_HOLD_MS);
 		}
+		if (entry.kind === "dictate") this.#dictateDown(entry);
 		// Thread tiles need no timer: their "release" cue is just a frame due at LONG_PRESS_MS.
 		this.#render((e) => e === entry);
 	}
@@ -423,7 +458,61 @@ export class Deck {
 			}
 			case "action":
 				return this.#onActionTap(entry, holdable);
+			case "dictate":
+				// Off: the key already says "Enable in settings", and nothing runs.
+				if (!this.#dictationEnabled || !this.#dictation) return entry.action.showAlert();
+				entry.presses?.up();
+				this.#render((e) => e === entry);
+				return;
 		}
+	}
+
+	/**
+	 * Dictate key down: bring T3 Code forward (and open the most urgent thread,
+	 * if set) now; the presses queue then sends a tap, or key-down and key-up
+	 * around the hold, once T3 Code is ready.
+	 */
+	#dictateDown(entry: KeyEntry): void {
+		const port = this.#dictation;
+		if (!this.#dictationEnabled || !port) return;
+		entry.allowUntil = undefined;
+		entry.presses ??= new DictatePresses();
+		entry.presses.down({
+			prepare: () => this.#dictatePrepare(entry, port),
+			send: (phase: DictatePhase, target: DictateTarget) => {
+				// Turned off mid-press: a key-up still goes out, so nothing stays held; nothing new starts.
+				if (!this.#dictationEnabled && phase !== "up") throw new DictateRefusal("disabled", "the Dictate key was turned off");
+				return port.send(phase, target);
+			},
+			changed: () => this.#render((e) => e === entry),
+			sent: () => void entry.action.showOk().catch(() => {}),
+			failed: (error: unknown) => {
+				if (error instanceof DictateRefusal && error.reason === "not-permitted") {
+					this.#host.warn(`dictate failed: ${error.message}`);
+					entry.allowUntil = Date.now() + ALLOW_HINT_MS;
+					this.#render((e) => e === entry);
+					return;
+				}
+				if (error instanceof DictateRefusal && error.reason === "disabled") return;
+				this.#fail(entry, error).catch(() => {}); // the key may have gone meanwhile
+			},
+		});
+	}
+
+	/** Where the shortcut goes: T3 Code's bundle id is required, since the script checks the front app against it. */
+	async #dictatePrepare(entry: KeyEntry, port: DictationPort): Promise<DictateTarget> {
+		const args = await this.#host.appArgs(this.#monitor.location).catch((): string[] => []);
+		const bundleId = args[0] === "-b" && typeof args[1] === "string" && validBundleId(args[1]) ? args[1] : undefined;
+		if (!bundleId) throw new DictateRefusal("no-app", "no T3 Code app to send the dictation shortcut to: open T3 Code from its app, or set T3 app bundle id");
+		const chord = port.chord();
+		chord.catch(() => {}); // awaited below; the app comes forward either way
+		const target = entry.settings.dictateThread === "urgent" && this.#online ? this.#mostUrgent() : undefined;
+		const url = target ? deepLinkFor(target.link, target.threadId) : null;
+		if (target) this.#monitor.ack(target.threadId);
+		const open = ["-b", bundleId, ...(url ? [url] : [])];
+		this.#host.info?.(`open ${open.join(" ")}`);
+		await this.#host.open(open);
+		return { bundleId, chord: await chord };
 	}
 
 	async #onActionTap(entry: KeyEntry, holdable: boolean): Promise<void> {
@@ -673,6 +762,13 @@ export class Deck {
 				);
 				return { markup, next };
 			}
+			case "dictate": {
+				const allow = (entry.allowUntil ?? 0) > now;
+				return {
+					markup: renderDictateKey({ enabled: this.#dictationEnabled && this.#dictation !== undefined, holding: entry.presses?.holding, allow }),
+					next: allow ? entry.allowUntil : undefined,
+				};
+			}
 			case "thread": {
 				const card = this.cardFor(entry.id);
 				const armed = pressedFor !== undefined && pressedFor >= LONG_PRESS_MS;
@@ -742,7 +838,10 @@ export class Deck {
 		clearTimeout(this.#ticker);
 		this.#ticker = undefined;
 		this.#tickAt = undefined;
-		for (const e of this.#keys.values()) clearTimeout(e.holdTimer);
+		for (const e of this.#keys.values()) {
+			clearTimeout(e.holdTimer);
+			e.presses?.up();
+		}
 	}
 }
 

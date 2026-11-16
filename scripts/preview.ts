@@ -5,6 +5,7 @@
 import { writeFileSync } from "node:fs";
 import type { ThreadCard } from "../src/model.ts";
 import { renderActionKey, renderBackKey, renderOverview, renderThreadKey, renderUsageKey, type ActionKeyInput } from "../src/render.ts";
+import { renderDictateKey } from "../src/render.ts";
 import { pace, type UsageWindow } from "../src/usage.ts";
 import type { Connection } from "../src/t3/monitor.ts";
 
@@ -113,6 +114,12 @@ const sections: [string, [string, string][]][] = [
 		["compact", act("compact", { enabled: false })],
 		["message", act("message", { message: "continue", enabled: false })],
 		["open (still works)", act("open", { enabled: false })],
+	]],
+	["Dictate", [
+		["ready", renderDictateKey({ enabled: true })],
+		["holding (push-to-talk)", renderDictateKey({ enabled: true, holding: true })],
+		["needs Accessibility", renderDictateKey({ enabled: true, allow: true })],
+		["off in settings", renderDictateKey({ enabled: false })],
 	]],
 	["Usage", [
 		["bar · ahead", usage(week(70, 3.5, { label: "Weekly · Fable" }))],

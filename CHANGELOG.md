@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **Dictate** key (opt-in, off by default): starts T3 Code's voice input from the deck. T3 Code can only start dictation from its microphone button or its keyboard shortcut, so the key brings T3 Code forward and presses that shortcut (`composer.dictation`, read from T3 Code, ⇧⌘D by default) there, through a fixed `osascript` script that only posts while T3 Code is the frontmost app. Tap for a quick press; hold for longer than 0.2 s and the shortcut stays down until you let go, so T3 Code's own *Dictation shortcut* setting (Auto, Hold to talk, Toggle) decides what happens, as with a keyboard. A **Thread** setting can open the most urgent thread first. Needs voice input set up in T3 Code and Stream Deck allowed under System Settings → Privacy & Security → Accessibility; the key says so when that permission is missing. Turn it on with **Enable the Dictate key** in the key's settings. SECURITY.md says exactly what it does and checks.
+
 ### Fixed
 
 - The nightly pre-release is published again. It had failed since 2026-11-11: releases in this repo are immutable now, and GitHub never lets a tag name be used again once a release has used it, so the rolling `nightly` tag stopped working. Each nightly now has its own tag (`nightly-1.2.2.N`) and replaces the one before it. Find it under [pre-releases](https://github.com/hsalazr/deck-for-t3code/releases?q=prerelease%3Atrue).

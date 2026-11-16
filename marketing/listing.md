@@ -25,6 +25,7 @@ macOS only. T3 Code must be installed and running on the same Mac.
 • Usage keys: any usage limit T3 Code reports, as a bar or a ring with an even-pace tick.
 • Machine keys: this Mac's CPU (performance and efficiency cores apart), memory pressure and free disk space, detailed or as one big glanceable number.
 • Updates key: see when T3 Code or a provider CLI has an update waiting.
+• Dictate key (opt-in): start T3 Code's voice input from the deck, tap or hold.
 • Context bar on every thread key.
 
 Private by design: the plugin talks only to the T3 Code app on your Mac. No account, no cloud, no telemetry. Two read-only tokens come from your local T3 CLI. An optional 24-hour actions token exists only while you enable thread actions. Sign out any time.

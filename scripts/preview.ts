@@ -31,6 +31,11 @@ const week = (usedPercent: number, daysLeft: number, extra: Partial<UsageWindow>
 const usage = (w: UsageWindow, okFlag = true, style: "bar" | "ring" = "bar", provider = "Claude") =>
 	renderUsageKey({ metric: { key: "k", provider, label: w.label, window: w }, pace: pace(w, now), ok: okFlag, loading: false, style });
 const pr = (status: PullRequestStatus, number = 42) => ({ number, url: `https://git.example.com/acme/api/pulls/${number}`, status });
+const tickets = (w: UsageWindow, count: number, expiresInDays?: number, style: "bar" | "ring" = "bar", provider = "Claude", okFlag = true) =>
+	renderUsageKey({
+		metric: { key: "k", provider, label: w.label, window: w, credits: { count, ...(expiresInDays === undefined ? {} : { nextExpiresAt: new Date(now + expiresInDays * 86_400_000).toISOString() }) } },
+		pace: pace(w, now), ok: okFlag, loading: false, style, now,
+	});
 const running = card("working", "Add retry to checkout flow", { activeRunId: "run-1" });
 const act = (action: ActionKeyInput["action"], extra: Partial<ActionKeyInput> = {}) =>
 	renderActionKey({ action, card: running, connection: ok, animation: "smooth", now: 0, projectName: "acme-api", ...extra });
@@ -159,6 +164,16 @@ const sections: [string, [string, string][]][] = [
 		["ring · 5-hour", usage(week(30, 0.1, { label: "5-hour", windowDurationMins: 300 }), true, "ring")],
 		["ring · stale", usage(week(100, 1), false, "ring")],
 		["loading", renderUsageKey({ metric: undefined, pace: undefined, ok: false, loading: true })],
+		["bar · 2 tickets, expire in 2d", tickets(week(70, 3.5, { label: "Weekly · Fable" }), 2, 2)],
+		["bar · 1 ticket, no expiry", tickets(week(12, 3.5), 1)],
+		["bar · 12 tickets, 100% (no room)", tickets(week(100, 0.4, { label: "5-hour", windowDurationMins: 300 }), 12, 1)],
+		["bar · hub plan title", tickets(week(33, 5, { label: "Weekly" }), 3, 9, "bar", "Codex Plus")],
+		["bar · tickets, stale", tickets(week(55, 2), 2, 2, "bar", "Claude", false)],
+		["ring · 2 tickets", tickets(week(62, 3.5), 2, 2, "ring")],
+		["ring · 100%, 3-digit count", tickets(week(100, 1), 120, undefined, "ring")],
+		["ring · 5-hour, tickets, stale", tickets(week(30, 0.1, { label: "5-hour", windowDurationMins: 300 }), 1, undefined, "ring", "Claude", false)],
+		["no limits (unsupported)", renderUsageKey({ metric: undefined, pace: undefined, ok: true, loading: false, empty: { name: "OpenCode", text: "No plan limits" } })],
+		["hub unavailable", renderUsageKey({ metric: undefined, pace: undefined, ok: true, loading: false, empty: { name: "Acme Hub", text: "Hub unavailable" } })],
 	]],
 ];
 

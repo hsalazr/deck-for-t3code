@@ -22,7 +22,7 @@ macOS only. T3 Code must be installed and running on the same Mac.
 • Subagents fold into their main thread, with a badge and a flash if one is waiting.
 • Overview key: counts of threads that need you, are working, or are done. Tap for a full page of threads.
 • Hold a thread key, then let go, for quick messages, Compact, Snooze, Settle and Stop. Compact, Settle, Stop and messages need a hold. Pages for Stream Deck XL, Stream Deck, Neo and Mini.
-• Usage keys: any usage limit T3 Code reports, as a bar or a ring with an even-pace tick.
+• Usage keys: any usage limit T3 Code reports, for every provider and hub account, as a bar or a ring with an even-pace tick and a count of banked reset tickets.
 • Machine keys: this Mac's CPU (performance and efficiency cores apart), memory pressure and free disk space, detailed or as one big glanceable number.
 • Updates key: see when T3 Code or a provider CLI has an update waiting.
 • Context bar on every thread key.

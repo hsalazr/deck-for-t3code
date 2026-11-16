@@ -21,7 +21,7 @@ To do that it uses **up to three tokens**, minted with your local `t3` CLI and s
 | Token | Label in `t3 auth session list` | Scope | Used for | Lifetime |
 |---|---|---|---|---|
 | Threads | `Stream Deck (Deck for T3 Code)` | `orchestration:read` (session subject `mcp-client`) | Thread list | 30 days; renewed once less than half is left |
-| Live and usage | `Stream Deck (Deck for T3 Code usage)` | `orchestration:read` | Live status stream, context size, usage limits | 30 days; renewed once less than half is left |
+| Live and usage | `Stream Deck (Deck for T3 Code usage)` | `orchestration:read` | Live status stream, context size, usage limits, reset-ticket counts, hub accounts | 30 days; renewed once less than half is left |
 | Actions | `Stream Deck (Deck for T3 Code actions)` | `orchestration:read`, `orchestration:operate` | Thread Actions keys: send, snooze, settle, stop | 24 hours; minted only while "Enable thread actions" is on (the first time an action runs); revoked when it is turned off |
 
 - The first two are read-only. The actions token is opt-in (off by default) and short-lived.
@@ -39,6 +39,7 @@ To do that it uses **up to three tokens**, minted with your local `t3` CLI and s
 - **The T3 CLI is vetted before it runs.** `<T3 home>/bin/t3` must be a regular, executable file owned by you or root that no other user can write to. Session ids are also checked before they are passed to the CLI as an argument.
 - **No redirects.** Every request that carries a token is sent with redirects refused, so a loopback server can't bounce a token elsewhere.
 - **Log redaction.** Every log line passes through a filter that replaces any run of 32 or more token-like characters with `[redacted]`.
+- **Usage reads only.** The Usage key reads limits, reset-ticket counts and hub accounts (CLIProxyAPI hub labels, each account's driver, plan, email and name) from T3 Code with the same read-only `orchestration:read` token as before: a short-lived `subscribeServerConfig` stream per refresh, which closes once it has the snapshot and the first hub event. It can't redeem a ticket or change anything. Emails are shown only in the key settings' picker, never on a key, in a log line or on disk; the saved choice for a hub account holds the hub's id and a hash of the account id.
 - **Hold to confirm.** Compact, Settle, Stop and quick messages only fire after a 0.8 s hold, never on a tap.
 - **Pull request links.** Holding Open on the Thread Actions page for 0.8 s hands the thread's pull request link to macOS `open` (as a single argument, through `execFile`, never a shell), so your default browser loads it. It reads and changes nothing in T3 Code and needs no token. The link comes from T3 Code's live stream, which got it from the pull request host, so it is checked first: it must parse as a URL, use `https:` or `http:`, have no user name or password, and be at most 2,048 characters. The normalised form is what gets opened, so it always starts with the scheme and can never be read as an option. Anything else is dropped: the key doesn't offer it and a hold does nothing. The plugin never connects to that host itself.
 

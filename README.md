@@ -44,7 +44,7 @@ See who's working, who needs you, who's done. Glance, tap, move on.
 - **Overview key.** Counts of threads that need you, are working, or are done. One tile, one state.
 - **T3 Threads page.** Press Overview to fill the whole deck with Thread keys. A Back key returns you to your previous profile.
 - **Thread Actions page.** Hold a thread key, then let go, to send a quick message, compact the context, snooze, settle or stop the thread.
-- **Usage keys.** Any usage limit T3 Code reports (every provider, and accounts served through a CLIProxyAPI hub), as a bar or a ring, with a tick at even pace and a ticket mark when you have banked reset tickets.
+- **Usage keys.** Any usage limit T3 Code reports (every provider, and accounts served through a CLIProxyAPI hub), as a bar or a ring, with a tick at even pace and a ticket mark when T3 Code reports banked reset tickets.
 - **Machine keys.** This Mac's CPU (performance and efficiency cores apart), memory pressure and free disk space, together on one key or one per key.
 - **Updates key.** Whether T3 Code or a provider CLI (Claude, Codex…) has an update waiting.
 - **Scheduled key.** One of T3 Code's scheduled tasks: when it runs next, how its last run went, and a hold to run it now.
@@ -197,6 +197,8 @@ One usage limit (weekly, per model, 5-hour: whatever T3 Code reports for your pr
 **Which limits.** Every provider T3 Code reports shows up in the picker under the name T3 gives it (for a driver without one, the plugin tidies the driver's id). With no pick, the key shows Claude's weekly window as before; without Claude, the first provider's weekly limit that covers all models; otherwise the first limit. **Hub accounts:** if T3 Code has a CLIProxyAPI hub set up as a usage-limit source, each account it reports is listed in the picker under a heading with the hub's name, the driver, the account's email (or its name when it has none) and plan. On the key itself there is no email: it reads the driver and plan (`CODEX PLUS WEEKLY`), or the hub's name when the account has no plan. A limit you saved keeps working across refreshes.
 
 **Reset tickets.** When a provider or hub account has banked reset tickets, its keys show a small ticket mark and the count at the top right (`99+` beyond 99); the Bar style adds `exp 2d` under it when the next ticket lapses within 3 days and there is room. The plugin only shows them: redeeming one needs a permission it doesn't ask for, so do that in T3 Code. A count of zero draws nothing.
+
+**A Claude account signed in on this Mac shows no tickets.** The plugin shows what this Mac's T3 Code server reports, and on macOS T3 Code doesn't read Claude's reset tickets at all (as of 0.1.9). T3 Code's own usage view can still list your Claude resets, because the app also asks the other machines you linked, and a machine that isn't a Mac can report them; the plugin can't ask those machines for usage. Codex accounts and accounts served through a hub aren't affected.
 
 **When there is nothing to show.** A key set to a limit of a provider that reports none says why in a few words instead: `No plan limits` (T3 says the account has none), `Couldn't read limits` (T3's last probe failed), `No limits reported`, `Limit not reported` (the provider is there but that window isn't) or, for a hub account, `Hub unavailable` while T3 can't read the hub.
 

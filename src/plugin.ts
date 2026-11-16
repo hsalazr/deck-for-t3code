@@ -1,6 +1,6 @@
 import streamDeck from "@elgato/streamdeck";
 
-import { BackKey, MachineKey, OverviewKey, runtime, ThreadActionKey, ThreadKey, UpdatesKey, UsageKey } from "./actions.ts";
+import { BackKey, MachineKey, OverviewKey, runtime, ScheduledKey, ThreadActionKey, ThreadKey, UpdatesKey, UsageKey } from "./actions.ts";
 import { Deck } from "./deck.ts";
 import { MachineMonitor } from "./machine.ts";
 import type { AnimationMode } from "./render.ts";
@@ -10,6 +10,7 @@ import { ContextWatcher } from "./t3/context-watcher.ts";
 import { collapseRepeats, describe, redact, redactLogger } from "./t3/log.ts";
 import { Monitor, signOutReply, type MonitorSettings } from "./t3/monitor.ts";
 import { RpcAccess } from "./t3/rpc.ts";
+import { ScheduledMonitor } from "./t3/scheduled-monitor.ts";
 import { ShellStream } from "./t3/shell-stream.ts";
 import { UpdatesMonitor, rpcUpdatesSource } from "./t3/updates-monitor.ts";
 import { UsageMonitor } from "./t3/usage-monitor.ts";
@@ -41,13 +42,15 @@ const commands = new ThreadCommands(new RpcAccess(() => monitor.location, "opera
 const machine = new MachineMonitor();
 // T3 Code and provider CLI updates, over the same read-only socket as usage limits.
 const updates = new UpdatesMonitor(rpcUpdatesSource(rpc));
-const deck = new Deck(monitor, usage, commands, undefined, machine, updates);
+// Scheduled tasks: a stream on the same read-only socket, open only while a Scheduled key is on a deck.
+const scheduled = new ScheduledMonitor(rpc);
+const deck = new Deck(monitor, usage, commands, undefined, machine, updates, scheduled);
 runtime.deck = deck;
 
 // A closed T3 makes the shell stream and the usage monitor report the same failure every ~30 s;
 // log it once, then once more with a count after 10 minutes.
 const logOnce = collapseRepeats(log);
-for (const [name, source] of Object.entries({ monitor, usage, shell, context, tokens, machine, updates })) source.on("log", (line: string) => logOnce(name, line));
+for (const [name, source] of Object.entries({ monitor, usage, shell, context, tokens, machine, updates, scheduled })) source.on("log", (line: string) => logOnce(name, line));
 
 let lastConnection = "";
 monitor.on("change", (snapshot) => {
@@ -90,6 +93,7 @@ streamDeck.ui.onSendToPlugin((ev) => {
 			await monitor.signIn();
 			usage.refresh();
 			updates.refresh();
+			scheduled.restart();
 			await reply({ type: "signedIn", ok: monitor.snapshot.connection.kind === "ok" });
 			return sendStatus();
 		}
@@ -103,7 +107,10 @@ let lastActions: boolean | undefined;
 function applyGlobal(settings: GlobalSettings): void {
 	const home = settings.t3Home?.trim() ?? "";
 	monitor.configure(settings);
-	if (home !== lastHome && lastHome !== undefined) shell.restart();
+	if (home !== lastHome && lastHome !== undefined) {
+		shell.restart();
+		scheduled.restart();
+	}
 	lastHome = home;
 	const actions = settings.actionsEnabled === true;
 	tokens.actionsEnabled = actions;
@@ -131,6 +138,7 @@ streamDeck.actions.registerAction(new OverviewKey());
 streamDeck.actions.registerAction(new UsageKey());
 streamDeck.actions.registerAction(new MachineKey());
 streamDeck.actions.registerAction(new UpdatesKey());
+streamDeck.actions.registerAction(new ScheduledKey());
 streamDeck.actions.registerAction(new BackKey());
 streamDeck.actions.registerAction(new ThreadActionKey());
 
@@ -144,3 +152,4 @@ shell.start();
 context.start();
 usage.start();
 updates.start();
+scheduled.start();

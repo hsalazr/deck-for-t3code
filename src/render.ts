@@ -10,6 +10,7 @@ import { isOpenPullRequest, safeWebUrl, type CardState, type GoalSummary, type P
 import { coreLayout, cpuLevel, diskLevel, diskTitle, formatBytes, formatLoadShort, mainCluster, memoryLevel, usedPercent, type CpuStats, type DiskStats, type Level, type MachineSnapshot, type MachineStat, type MemoryStats } from "./machine.ts";
 import { formatDuration, type EmptyState, type Pace, type UsageMetric } from "./usage.ts";
 import { displayVersion, pendingUpdates, type UpdatesSnapshot } from "./updates.ts";
+import { agoText, countdownText, nextAgoChange, nextCountdownChange, scheduleText, type ScheduledTask, type TaskPick } from "./scheduled.ts";
 import type { Connection } from "./t3/monitor.ts";
 
 const SIZE = 144;
@@ -1710,4 +1711,216 @@ export function renderActionKey(input: ActionKeyInput): string {
 	if (action === "compact") return svg(bg + lucide(ICON.compact, iconSize, 72, 54, WHITE) + caption("Compact", input.hint ? "hold to send" : "hold") + holdFill(input.progress));
 	// settle
 	return svg(bg + lucide(ICON.check, iconSize, 72, 54, WHITE) + caption("Settle", input.hint ? "hold to confirm" : "hold") + holdFill(input.progress));
+}
+
+// ---------- Scheduled ----------
+
+/** What the Scheduled key is leading with, most pressing first. */
+export type TaskFace = "running" | "blocked" | "disabled" | "webhook" | "counting" | "finished";
+
+export function faceOf(task: ScheduledTask): TaskFace {
+	if (task.lastRunStatus === "running") return "running";
+	if (task.blocked) return "blocked";
+	if (!task.enabled) return "disabled";
+	if (task.schedule.kind === "webhook") return "webhook";
+	return task.nextRunAt !== null ? "counting" : "finished";
+}
+
+/** Held on a Scheduled key: towards "run now" (0–1), or the actions are off so holding can't run anything. */
+export type ScheduledCue = { kind: "run"; progress: number } | { kind: "enable" };
+
+export interface ScheduledKeyInput {
+	connection: Connection;
+	/** The monitor's stream: only "live" has tasks. */
+	stream: "loading" | "live" | "down";
+	pick: TaskPick;
+	now: number;
+	animation: AnimationMode;
+	style?: KeyStyle;
+	cue?: ScheduledCue;
+}
+
+/** Big text for each face; the countdown re-renders on the minute (see `nextScheduledFrame`). */
+function faceText(task: ScheduledTask, face: TaskFace, now: number): string {
+	switch (face) {
+		case "running":
+			return "Running";
+		case "blocked":
+			return "Blocked";
+		case "disabled":
+			return "Disabled";
+		case "webhook":
+			return "Webhook";
+		case "counting":
+			return countdownText(task.nextRunAt! - now, formatDuration);
+		case "finished":
+			return task.schedule.kind === "once" ? "Finished" : "No next run";
+	}
+}
+
+/** The line under the big text in the detailed look: the schedule, or why there is no countdown. */
+function faceCaption(task: ScheduledTask, face: TaskFace): string {
+	if (face === "webhook") return "runs when called";
+	if (face === "blocked") return "stopped by policy";
+	return scheduleText(task.schedule);
+}
+
+/** The next frame the key needs on its own (the countdown's minute, the "ago" text, the spinner); undefined when static. */
+export function nextScheduledFrame(task: ScheduledTask | undefined, animation: AnimationMode, now: number, style: KeyStyle = "detailed"): number | undefined {
+	if (!task) return undefined;
+	const face = faceOf(task);
+	const times: (number | undefined)[] = [];
+	if (face === "running" && animation === "smooth") times.push(nextBoundary(now, SPIN_STEP_MS));
+	if (face === "counting") times.push(nextCountdownChange(task.nextRunAt!, now));
+	if (style === "detailed" && task.lastRunAt !== null && task.lastRunStatus !== "never") times.push(nextAgoChange(task.lastRunAt, now));
+	let best: number | undefined;
+	for (const t of times) if (t !== undefined && (best === undefined || t < best)) best = t;
+	return best;
+}
+
+/** A spinner of any size and place: the same arc as the thread tiles'. */
+function spinnerAt(cx: number, cy: number, r: number, color: string, now: number): string {
+	const step = Math.floor(((now % SPIN_PERIOD_MS) / SPIN_PERIOD_MS) * SPIN_FRAMES);
+	const angle = (step * 360) / SPIN_FRAMES;
+	const w = Math.max(3, r / 3);
+	return (
+		`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="${w.toFixed(1)}" opacity="0.22"/>` +
+		`<path d="M${cx} ${cy - r} A${r} ${r} 0 0 1 ${cx + r} ${cy}" fill="none" stroke="${color}" stroke-width="${w.toFixed(1)}" stroke-linecap="round" transform="rotate(${angle} ${cx} ${cy})"/>`
+	);
+}
+
+/** A grey disc with a mark cut out: two bars (paused) or a ring with a slash (blocked). */
+function greyGlyph(kind: "paused" | "blocked", cx: number, cy: number, r: number): string {
+	let mark: string;
+	if (kind === "paused") {
+		const w = r * 0.28;
+		const h = r * 0.95;
+		mark = `<rect x="${(cx - r * 0.42).toFixed(1)}" y="${(cy - h / 2).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${(w / 3).toFixed(1)}" fill="${INK}"/><rect x="${(cx + r * 0.14).toFixed(1)}" y="${(cy - h / 2).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${(w / 3).toFixed(1)}" fill="${INK}"/>`;
+	} else {
+		const q = r * 0.5;
+		mark = `<circle cx="${cx}" cy="${cy}" r="${(r * 0.55).toFixed(1)}" fill="none" stroke="${INK}" stroke-width="${(r * 0.22).toFixed(1)}"/><path d="M${(cx - q * 0.7).toFixed(1)} ${(cy + q * 0.7).toFixed(1)}L${(cx + q * 0.7).toFixed(1)} ${(cy - q * 0.7).toFixed(1)}" stroke="${INK}" stroke-width="${(r * 0.22).toFixed(1)}" stroke-linecap="round"/>`;
+	}
+	return `<g id="glyph-${kind}"><circle cx="${cx}" cy="${cy}" r="${r}" fill="${DIM}"/>${mark}</g>`;
+}
+
+const TASK_ICON = {
+	calendar: `<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>`,
+	zap: `<path d="M13 2 3 14h9l-1 8 10-12h-9z"/>`,
+};
+
+/** The hold cue over a finished key: a chip saying what holding does, and the progress when it can run. */
+function scheduledCue(cue: ScheduledCue | undefined): string {
+	if (!cue) return "";
+	const label = cue.kind === "run" ? "Hold to run now" : "Enable in settings";
+	return (
+		`<g id="hold-cue"><rect x="5" y="106" width="134" height="30" rx="15" fill="${WHITE}"/>` +
+		text(72, 126, label, { size: 14, weight: 750, fill: INK, anchor: "middle" }) +
+		`</g>` +
+		(cue.kind === "run" ? holdFill(cue.progress) : "")
+	);
+}
+
+/** Title in two lines at most; the first stops short of a glyph in the corner. */
+function taskTitle(title: string, withGlyph: boolean): string {
+	const unit = 15 * EM;
+	const first = withGlyph ? (SPINNER_LEFT - SPINNER_GAP - 12) / unit : 120 / unit;
+	return wrapWidths(title, [first, 120 / unit])
+		.map((line, i) => text(12, 24 + i * 18, line, { size: 15, weight: 700, fill: WHITE }))
+		.join("");
+}
+
+/** The last result: a red band with a cross while the last run failed, otherwise a quiet line. */
+function lastResult(task: ScheduledTask, now: number): string {
+	const since = task.lastRunAt === null ? undefined : agoText(now - task.lastRunAt);
+	if (task.lastRunStatus === "failed") {
+		return (
+			`<g id="last-failed"><rect x="0" y="112" width="144" height="32" fill="${RED}"/>` +
+			stateGlyph("failed", 19, 128, 8.5, true, RED) +
+			text(32, 133, fit(since ? `Failed ${since}` : "Failed", 106, 14), { size: 14, weight: 800, fill: INK }) +
+			`</g>`
+		);
+	}
+	if (task.lastRunStatus === "running") return text(12, 133, fit(since ? `Started ${since}` : "Running", 120, 14), { size: 14, weight: 650, fill: SOFT });
+	if (task.lastRunStatus === "succeeded") return text(12, 133, fit(since ? `✓ Ran ${since}` : "✓ Ran", 120, 14), { size: 14, weight: 700, fill: GREEN });
+	if (task.lastRunStatus === "never" || !since) return text(12, 133, "Never run", { size: 14, weight: 650, fill: SOFT });
+	return text(12, 133, fit(`Last ran ${since}`, 120, 14), { size: 14, weight: 650, fill: SOFT });
+}
+
+function renderTaskDetailed(task: ScheduledTask, face: TaskFace, animation: AnimationMode, now: number): string {
+	const cornerGlyph = face === "running" || face === "blocked" || face === "disabled";
+	const parts = [`<rect width="${SIZE}" height="${SIZE}" fill="${BG}"/>`, taskTitle(task.title, cornerGlyph)];
+	if (face === "running") parts.push(spinner(PALETTE.working.accent, animation === "off" ? 0 : now));
+	else if (face === "blocked") parts.push(greyGlyph("blocked", SPIN.cx, SPIN.cy, 10));
+	else if (face === "disabled") parts.push(greyGlyph("paused", SPIN.cx, SPIN.cy, 10));
+	const big = faceText(task, face, now);
+	const size = Math.max(20, Math.min(36, Math.floor(120 / (textWidth(big) * EM))));
+	const quiet = face === "disabled" || face === "blocked" || face === "finished";
+	parts.push(text(12, 86, big, { size, weight: 800, fill: quiet ? DIM : WHITE }));
+	parts.push(text(12, 106, fit(faceCaption(task, face), 120, 14), { size: 14, weight: 650, fill: SOFT }));
+	parts.push(lastResult(task, now));
+	return svg(parts.join(""));
+}
+
+/** Short heading over the glance countdown. */
+function glanceCaption(task: ScheduledTask, face: TaskFace): string {
+	const base = { running: "RUNNING NOW", blocked: "BLOCKED", disabled: "PAUSED", webhook: "WEBHOOK", counting: "NEXT RUN", finished: "DONE" }[face];
+	if (task.lastRunStatus !== "failed" || face === "running") return base;
+	return face === "counting" ? "FAILED · NEXT" : `FAILED · ${base}`;
+}
+
+/** The glance glyph: what state the task is in, in one picture. */
+function glanceGlyph(task: ScheduledTask, face: TaskFace, animation: AnimationMode, now: number): string {
+	const cx = 72;
+	const cy = 118;
+	if (face === "running") return spinnerAt(cx, cy, 12, PALETTE.working.accent, animation === "off" ? 0 : now);
+	if (task.lastRunStatus === "failed") return stateGlyph("failed", cx, cy, 14, false, RED);
+	if (face === "blocked") return greyGlyph("blocked", cx, cy, 14);
+	if (face === "disabled") return greyGlyph("paused", cx, cy, 14);
+	if (face === "webhook") return lucide(TASK_ICON.zap, 28, cx, cy, WHITE);
+	if (face === "finished") return stateGlyph("done", cx, cy, 14, false, GREEN);
+	return lucide(ICON.clock, 28, cx, cy, WHITE);
+}
+
+function renderTaskGlance(task: ScheduledTask, face: TaskFace, animation: AnimationMode, now: number): string {
+	const failed = task.lastRunStatus === "failed" && face !== "running";
+	const big = faceText(task, face, now);
+	const size = Math.max(20, Math.min(46, Math.floor(124 / (textWidth(big) * EM))));
+	const quiet = face === "disabled" || face === "blocked" || face === "finished";
+	return svg(
+		`<rect width="${SIZE}" height="${SIZE}" fill="${BG}"/>` +
+			(failed ? blinkRing(RED) : "") +
+			text(72, 25, fit(glanceCaption(task, face), 128, 14, 0.3), { size: 14, weight: 800, fill: failed ? RED : SOFT, anchor: "middle", spacing: 0.3 }) +
+			text(72, 82 + size * 0.2, big, { size, weight: 800, fill: quiet ? DIM : WHITE, anchor: "middle" }) +
+			glanceGlyph(task, face, animation, now),
+	);
+}
+
+/** A message with a calendar over it: no tasks, or the chosen one is gone. */
+function renderTaskNote(lines: string[], sub: string[]): string {
+	return svg(
+		`<rect width="${SIZE}" height="${SIZE}" fill="${BG}"/>` +
+			text(12, 28, "SCHEDULED", { size: 14, weight: 800, fill: DIM, spacing: 1.2 }) +
+			lucide(TASK_ICON.calendar, 28, 72, 52, TRACK) +
+			lines.map((line, i) => text(72, 90 + i * 20, line, { size: 17, weight: 700, fill: WHITE, anchor: "middle" })).join("") +
+			sub.map((line, i) => text(72, 90 + lines.length * 20 + 2 + i * 17, line, { size: 14, weight: 600, fill: SOFT, anchor: "middle" })).join(""),
+	);
+}
+
+/**
+ * Scheduled key: one task's next run as a countdown, how its last run went,
+ * and what it is doing now. Never draws task state while T3 is unreachable or
+ * the stream is down (the monitor drops what it knew).
+ */
+export function renderScheduledKey(input: ScheduledKeyInput): string {
+	const { connection, stream, pick, now, animation } = input;
+	if (connection.kind !== "ok") return renderMessage(connectionText(connection), SOFT, "SCHEDULED");
+	if (stream === "loading") return renderMessage("Loading…", SOFT, "SCHEDULED");
+	if (stream === "down") return renderMessage("Tasks unavailable", SOFT, "SCHEDULED");
+	if (!pick.task) {
+		return pick.reason === "none" ? renderTaskNote(["No scheduled", "tasks"], ["Add one in T3"]) : renderTaskNote(["Task not found"], ["Pick another in", "settings"]);
+	}
+	const task = pick.task;
+	const face = faceOf(task);
+	const markup = input.style === "glance" ? renderTaskGlance(task, face, animation, now) : renderTaskDetailed(task, face, animation, now);
+	return overlay(markup, scheduledCue(input.cue));
 }

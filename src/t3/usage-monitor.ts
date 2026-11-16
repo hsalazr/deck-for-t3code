@@ -196,9 +196,9 @@ export function readConfigStream(ws: WebSocket, graceMs = HUB_GRACE_MS): Promise
 }
 
 /** One RPC request on a fresh socket; resolves with the Exit value. */
-export function rpcOnce(ws: WebSocket, tag: string, payload: unknown): Promise<unknown> {
+export function rpcOnce(ws: WebSocket, tag: string, payload: unknown, timeoutMs = RPC_TIMEOUT_MS): Promise<unknown> {
 	return new Promise((resolve, reject) => {
-		const timer = setTimeout(() => finish(new Error(`${tag} timed out`)), RPC_TIMEOUT_MS);
+		const timer = setTimeout(() => finish(new Error(`${tag} timed out`)), timeoutMs);
 		let done = false;
 		function finish(error: Error | null, value?: unknown): void {
 			if (done) return;

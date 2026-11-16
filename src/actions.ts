@@ -97,3 +97,19 @@ export class UsageKey extends T3KeyAction {
 		await streamDeck.ui.sendToPropertyInspector({ type: "metrics", metrics: runtime.deck.usageMetrics(), defaultKey: runtime.deck.usageDefaultKey() ?? null });
 	}
 }
+
+/** One scheduled task: next run, last result, hold to run it now. */
+@action({ UUID: "io.github.hsalazr.deck-for-t3code.scheduled" })
+export class ScheduledKey extends T3KeyAction {
+	protected readonly kind = "scheduled";
+
+	override onDidReceiveSettings(ev: DidReceiveSettingsEvent<KeySettings>): void {
+		runtime.deck?.updateSettings(ev.action.id, ev.payload.settings);
+	}
+
+	/** The property inspector asks which tasks exist, to fill its picker. */
+	override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, KeySettings>): Promise<void> {
+		if ((ev.payload as { type?: string } | null)?.type !== "listScheduled" || !runtime.deck) return;
+		await streamDeck.ui.sendToPropertyInspector({ type: "scheduled", tasks: runtime.deck.scheduledTasks() });
+	}
+}

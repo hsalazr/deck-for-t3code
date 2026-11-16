@@ -11,6 +11,8 @@ import type { Connection, Monitor, Snapshot } from "../src/t3/monitor.ts";
 import type { UsageMonitor } from "../src/t3/usage-monitor.ts";
 import type { MachineMonitor, MachineSnapshot } from "../src/machine.ts";
 import type { UpdatesMonitor } from "../src/t3/updates-monitor.ts";
+import type { ScheduledMonitor } from "../src/t3/scheduled-monitor.ts";
+import type { ScheduledSnapshot, ScheduledTask } from "../src/scheduled.ts";
 import type { UpdatesSnapshot } from "../src/updates.ts";
 
 const card = (id: string, extra: Partial<ThreadCard> = {}): ThreadCard => ({
@@ -57,6 +59,7 @@ class FakeCommands {
 	snooze(threadId: string) { return this.#record(`snooze:${threadId}`); }
 	settle(threadId: string) { return this.#record(`settle:${threadId}`); }
 	send(threadId: string, text: string) { return this.#record(`send:${threadId}:${text}`); }
+	runScheduledTask(id: string) { return this.#record(`run:${id}`); }
 }
 
 class FakeHost implements DeckHost {
@@ -786,4 +789,288 @@ test("Open key: a pull request that fails to open raises the alert", async () =>
 	await press(open, CONFIRM_HOLD_MS + 50);
 	await flush();
 	assert.deepEqual(open.events, ["alert"]);
+});
+
+class FakeScheduled extends EventEmitter {
+	snapshot: ScheduledSnapshot = { state: "loading", tasks: [] };
+	wanted: boolean[] = [];
+	setWanted(on: boolean): void {
+		this.wanted.push(on);
+	}
+	set(snapshot: ScheduledSnapshot): void {
+		this.snapshot = snapshot;
+		this.emit("change", snapshot);
+	}
+}
+
+/** Mock time starts at 1 000 000 ms. */
+const sched = (extra: Partial<ScheduledTask> = {}): ScheduledTask => ({
+	id: "task-1", title: "Nightly dependency check", enabled: true, schedule: { kind: "interval", everyMs: 7_200_000 }, threadId: null,
+	nextRunAt: 1_000_000 + 135 * 60_000 + 30_000, lastRunAt: 1_000_000 - 3_600_000, lastRunStatus: "succeeded", blocked: false, ...extra,
+});
+
+function scheduledDeck(scheduled: FakeScheduled, settings: KeySettings = {}) {
+	const d = new Deck(monitor as unknown as Monitor, new FakeUsage() as unknown as UsageMonitor, commands as unknown as ThreadCommands, host, undefined, undefined, scheduled as unknown as ScheduledMonitor);
+	const key = fakeAction("s1", 1);
+	d.add("scheduled", key as never, settings);
+	return { d, key };
+}
+
+test("scheduled key: the stream is open only while one is on a deck", async () => {
+	const scheduled = new FakeScheduled();
+	const { d } = scheduledDeck(scheduled);
+	try {
+		assert.equal(scheduled.wanted.at(-1), true);
+		d.add("scheduled", fakeAction("s2", 2) as never, {});
+		d.remove("s1");
+		assert.equal(scheduled.wanted.at(-1), true, "another is still shown");
+		d.remove("s2");
+		assert.equal(scheduled.wanted.at(-1), false);
+		d.add("usage", fakeAction("u", 3) as never, {});
+		assert.equal(scheduled.wanted.at(-1), false, "other keys don't open it");
+	} finally {
+		d.dispose();
+	}
+});
+
+test("scheduled key: loading, no tasks, a task, the task going away, T3 unreachable, the stream dropping", async () => {
+	const scheduled = new FakeScheduled();
+	const { d, key } = scheduledDeck(scheduled, { task: "task-1" });
+	try {
+		await flush();
+		assert.match(key.last(), />Loading…</);
+		scheduled.set({ state: "live", tasks: [] });
+		await flush();
+		assert.match(key.last(), />No scheduled</);
+		scheduled.set({ state: "live", tasks: [sched()] });
+		await flush();
+		assert.match(key.last(), />2h 15m</);
+		assert.match(key.last(), />Nightly</);
+		scheduled.set({ state: "live", tasks: [sched({ id: "other" })] });
+		await flush();
+		assert.match(key.last(), />Task not found</);
+		scheduled.set({ state: "live", tasks: [sched()] });
+		monitor.setCards([], { kind: "offline", detail: "", reason: "not-running" });
+		await flush();
+		assert.match(key.last(), />Open T3 Code</);
+		assert.ok(!key.last().includes("Nightly"), "no task state while T3 is unreachable");
+		monitor.setCards([], { kind: "ok" });
+		scheduled.set({ state: "down", tasks: [] });
+		await flush();
+		assert.match(key.last(), />unavailable</);
+		assert.ok(!key.last().includes("Nightly"));
+	} finally {
+		d.dispose();
+	}
+});
+
+test("scheduled key: with no task chosen it follows whichever runs next", async () => {
+	const scheduled = new FakeScheduled();
+	const { d, key } = scheduledDeck(scheduled);
+	try {
+		scheduled.set({ state: "live", tasks: [sched({ id: "later", title: "Weekly report", nextRunAt: 1_000_000 + 5 * 3_600_000 }), sched({ id: "sooner", title: "Cache sweep", nextRunAt: 1_000_000 + 20 * 60_000 })] });
+		await flush();
+		assert.match(key.last(), />Cache sweep</);
+		assert.match(key.last(), />20m</);
+		d.updateSettings("s1", { task: "later" });
+		await flush();
+		assert.match(key.last(), />Weekly report</);
+		assert.deepEqual(d.scheduledTasks().map((t) => [t.id, t.title, t.schedule]), [["later", "Weekly report", "every 2h"], ["sooner", "Cache sweep", "every 2h"]]);
+		assert.ok(!JSON.stringify(d.scheduledTasks()).includes("prompt"));
+	} finally {
+		d.dispose();
+	}
+});
+
+test("scheduled key: the countdown redraws on the minute from the deck's own frame clock, with no timer per key", async () => {
+	const scheduled = new FakeScheduled();
+	const { d, key } = scheduledDeck(scheduled);
+	try {
+		scheduled.set({ state: "live", tasks: [sched()] });
+		await flush();
+		assert.match(key.last(), />2h 15m</);
+		const drawn = key.images.length;
+		await advance(29_000);
+		assert.equal(key.images.length, drawn, "nothing redrawn mid-minute");
+		await advance(2_000);
+		assert.match(key.last(), />2h 14m</);
+		assert.equal(key.images.length, drawn + 1);
+		await advance(60_000);
+		assert.match(key.last(), />2h 13m</);
+		scheduled.set({ state: "live", tasks: [sched({ nextRunAt: null, enabled: false })] });
+		await flush();
+		const idle = key.images.length;
+		await advance(10 * 60_000);
+		assert.equal(key.images.length, idle, "a static key stops the clock");
+	} finally {
+		d.dispose();
+	}
+});
+
+test("scheduled key: a tap opens the task's thread when the plugin knows it, else brings T3 Code forward", async () => {
+	const scheduled = new FakeScheduled();
+	const { d, key } = scheduledDeck(scheduled);
+	try {
+		// No tasks at all: T3 Code.
+		scheduled.set({ state: "live", tasks: [] });
+		d.keyDown("s1");
+		await d.keyUp("s1");
+		await flush();
+		assert.deepEqual(host.opened.splice(0), [["-b", "com.t3tools.t3code"]]);
+
+		// A task with a thread the monitor knows: that thread.
+		monitor.setCards([card("t1", { state: "done" })]);
+		scheduled.set({ state: "live", tasks: [sched({ threadId: "t1" })] });
+		d.keyDown("s1");
+		mock.timers.tick(100);
+		await d.keyUp("s1");
+		await flush();
+		assert.deepEqual(host.opened.splice(0), [["-b", "com.t3tools.t3code", "t3code://threads/env/t1"]]);
+		assert.deepEqual(monitor.calls, ["ack:t1"]);
+
+		// A thread the plugin doesn't know, or none yet (new thread each run): T3 Code.
+		scheduled.set({ state: "live", tasks: [sched({ threadId: "unknown-thread" })] });
+		d.keyDown("s1");
+		await d.keyUp("s1");
+		await flush();
+		scheduled.set({ state: "live", tasks: [sched({ threadId: null })] });
+		d.keyDown("s1");
+		await d.keyUp("s1");
+		await flush();
+		assert.deepEqual(host.opened.splice(0), [["-b", "com.t3tools.t3code"], ["-b", "com.t3tools.t3code"]]);
+
+		// T3 offline: T3 Code, never a stale thread.
+		scheduled.set({ state: "live", tasks: [sched({ threadId: "t1" })] });
+		monitor.setCards([card("t1")], { kind: "offline", detail: "", reason: "not-running" });
+		d.keyDown("s1");
+		await d.keyUp("s1");
+		await flush();
+		assert.deepEqual(host.opened.splice(0), [["-b", "com.t3tools.t3code"]]);
+		assert.deepEqual(commands.sent, []);
+		assert.deepEqual(key.events, []);
+	} finally {
+		d.dispose();
+	}
+});
+
+test("scheduled key: holding 0.8 s runs the task now, only with thread actions on", async () => {
+	const scheduled = new FakeScheduled();
+	const { d, key } = scheduledDeck(scheduled);
+	try {
+		scheduled.set({ state: "live", tasks: [sched({ threadId: "t1" })] });
+		monitor.setCards([card("t1")]);
+
+		// Actions off (the default): holding shows where to turn them on, runs nothing, opens nothing.
+		d.keyDown("s1");
+		mock.timers.tick(300);
+		await flush();
+		assert.match(key.last(), />Enable in settings</);
+		mock.timers.tick(CONFIRM_HOLD_MS);
+		await d.keyUp("s1");
+		await flush();
+		assert.deepEqual(commands.sent, []);
+		assert.deepEqual(host.opened, []);
+		assert.deepEqual(key.events, ["alert"]);
+
+		// Actions on: the hold shows its progress, then fires once.
+		d.actionsEnabled = true;
+		key.events.length = 0;
+		d.keyDown("s1");
+		mock.timers.tick(100);
+		await flush();
+		assert.ok(!key.last().includes("Hold to run now"), "a quick tap shows no cue yet");
+		await advance(400);
+		assert.match(key.last(), />Hold to run now</);
+		assert.match(key.last(), /hold-progress/);
+		assert.deepEqual(commands.sent, [], "not yet");
+		await advance(400);
+		assert.deepEqual(commands.sent, ["run:task-1"]);
+		await d.keyUp("s1");
+		await flush();
+		assert.deepEqual(commands.sent, ["run:task-1"], "the key-up after a hold does nothing more");
+		assert.deepEqual(host.opened, [], "and doesn't open the thread");
+		assert.deepEqual(key.events, ["ok"]);
+	} finally {
+		d.dispose();
+	}
+});
+
+test("scheduled key: letting go before 0.8 s after the cue cancels; a short tap still opens", async () => {
+	const scheduled = new FakeScheduled();
+	const { d, key } = scheduledDeck(scheduled);
+	try {
+		d.actionsEnabled = true;
+		scheduled.set({ state: "live", tasks: [sched()] });
+		d.keyDown("s1");
+		mock.timers.tick(500);
+		await d.keyUp("s1");
+		await flush();
+		assert.deepEqual(commands.sent, []);
+		assert.deepEqual(host.opened, []);
+		assert.deepEqual(key.events, []);
+		assert.ok(!key.last().includes("Hold to run now"), "the cue goes away");
+		d.keyDown("s1");
+		mock.timers.tick(100);
+		await d.keyUp("s1");
+		await flush();
+		assert.deepEqual(host.opened, [["-b", "com.t3tools.t3code"]]);
+	} finally {
+		d.dispose();
+	}
+});
+
+test("scheduled key: nothing to run for a webhook task, one already running, or while T3 or the stream is down", async () => {
+	const scheduled = new FakeScheduled();
+	const { d, key } = scheduledDeck(scheduled);
+	try {
+		d.actionsEnabled = true;
+		const holdIt = async () => {
+			d.keyDown("s1");
+			await advance(CONFIRM_HOLD_MS + 100);
+			await d.keyUp("s1");
+			await flush();
+		};
+		scheduled.set({ state: "live", tasks: [sched({ schedule: { kind: "webhook" }, nextRunAt: null })] });
+		await holdIt();
+		scheduled.set({ state: "live", tasks: [sched({ lastRunStatus: "running" })] });
+		await holdIt();
+		scheduled.set({ state: "down", tasks: [] });
+		await holdIt();
+		scheduled.set({ state: "live", tasks: [sched()] });
+		monitor.setCards([], { kind: "offline", detail: "", reason: "not-running" });
+		await holdIt();
+		assert.deepEqual(commands.sent, []);
+		assert.deepEqual(key.events, []);
+	} finally {
+		d.dispose();
+	}
+});
+
+test("scheduled key: a second hold on the same task while the first is in flight sends once; a failure alerts", async () => {
+	const scheduled = new FakeScheduled();
+	const { d, key } = scheduledDeck(scheduled);
+	try {
+		d.actionsEnabled = true;
+		scheduled.set({ state: "live", tasks: [sched()] });
+		let release!: () => void;
+		commands.gate = new Promise<void>((resolve) => (release = resolve));
+		for (let i = 0; i < 2; i++) {
+			d.keyDown("s1");
+			await advance(CONFIRM_HOLD_MS + 50);
+			await d.keyUp("s1");
+		}
+		assert.deepEqual(commands.sent, ["run:task-1"]);
+		release();
+		await flush();
+		commands.gate = undefined;
+		commands.runScheduledTask = () => Promise.reject(new Error("Could not run schedule task."));
+		d.keyDown("s1");
+		await advance(CONFIRM_HOLD_MS + 50);
+		await d.keyUp("s1");
+		await flush();
+		assert.ok(key.events.includes("alert"));
+		assert.match(host.warnings.at(-1) ?? "", /scheduled failed: Could not run schedule task/);
+	} finally {
+		d.dispose();
+	}
 });

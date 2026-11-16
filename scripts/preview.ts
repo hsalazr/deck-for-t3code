@@ -4,7 +4,8 @@
 //   --size N   draw keys at N px (a Stream Deck key is about 72–96 px on screen)
 import { writeFileSync } from "node:fs";
 import type { GoalSummary, PullRequestStatus, ThreadCard } from "../src/model.ts";
-import { renderActionKey, renderBackKey, renderOverview, renderThreadKey, renderUsageKey, type ActionKeyInput } from "../src/render.ts";
+import { renderActionKey, renderBackKey, renderOverview, renderScheduledKey, renderThreadKey, renderUsageKey, type ActionKeyInput, type ScheduledKeyInput } from "../src/render.ts";
+import type { ScheduledTask } from "../src/scheduled.ts";
 import { pace, type UsageWindow } from "../src/usage.ts";
 import type { Connection } from "../src/t3/monitor.ts";
 
@@ -39,6 +40,16 @@ const tickets = (w: UsageWindow, count: number, expiresInDays?: number, style: "
 const running = card("working", "Add retry to checkout flow", { activeRunId: "run-1" });
 const act = (action: ActionKeyInput["action"], extra: Partial<ActionKeyInput> = {}) =>
 	renderActionKey({ action, card: running, connection: ok, animation: "smooth", now: 0, projectName: "acme-api", ...extra });
+
+const mins = (n: number): number => now + n * 60_000;
+const task = (extra: Partial<ScheduledTask> = {}): ScheduledTask => ({
+	id: "t1", title: "Nightly dependency check", enabled: true, schedule: { kind: "interval", everyMs: 7_200_000 }, threadId: null, nextRunAt: mins(135), lastRunAt: now - 3 * 3_600_000,
+	lastRunStatus: "succeeded", blocked: false, ...extra });
+const sched = (t: ScheduledTask | undefined, extra: Partial<ScheduledKeyInput> = {}, reason: "none" | "missing" = "none") =>
+	renderScheduledKey({ connection: ok, stream: "live", pick: t ? { task: t } : { task: undefined, reason }, now, animation: "smooth", ...extra });
+const glance = { style: "glance" } as const;
+const daily: ScheduledTask["schedule"] = { kind: "fixed_time", timeOfDay: "09:00", weekdays: [] };
+const failedTask = task({ lastRunStatus: "failed", lastRunAt: now - 25 * 60_000, nextRunAt: mins(95) });
 
 const sections: [string, [string, string][]][] = [
 	["Thread tiles", [
@@ -176,6 +187,47 @@ const sections: [string, [string, string][]][] = [
 		["hub unavailable", renderUsageKey({ metric: undefined, pace: undefined, ok: true, loading: false, empty: { name: "Acme Hub", text: "Hub unavailable" } })],
 	]],
 ];
+
+sections.push(
+	["Scheduled · detailed", [
+		["counting down", sched(task())],
+		["daily · long title", sched(task({ title: "Weekly dependency audit for every package in the monorepo", schedule: daily, nextRunAt: mins(60 * 26 + 5) }))],
+		["under a minute", sched(task({ nextRunAt: now + 40_000 }))],
+		["due now", sched(task({ nextRunAt: now - 5_000 }))],
+		["running (spinner)", sched(task({ lastRunStatus: "running", lastRunAt: now - 90_000 }), { now: now + 300 })],
+		["running · animation off", sched(task({ lastRunStatus: "running", lastRunAt: now - 90_000 }), { animation: "off" })],
+		["last run failed", sched(failedTask)],
+		["failed · long title", sched({ ...failedTask, title: "Rebuild the search index for acme-web" })],
+		["never run", sched(task({ lastRunStatus: "never", lastRunAt: null }))],
+		["paused (disabled)", sched(task({ enabled: false, nextRunAt: null }))],
+		["blocked by policy", sched(task({ schedule: { kind: "webhook" }, nextRunAt: null, blocked: true, lastRunAt: null, lastRunStatus: "never" }))],
+		["webhook", sched(task({ title: "Triage new acme-api issues", schedule: { kind: "webhook" }, nextRunAt: null, lastRunAt: now - 2 * 86_400_000 }))],
+		["once, finished", sched(task({ schedule: { kind: "once" }, nextRunAt: null, lastRunAt: now - 20 * 60_000 }))],
+		["weekdays", sched(task({ schedule: { kind: "fixed_time", timeOfDay: "08:30", weekdays: [1, 2, 3, 4, 5] }, nextRunAt: mins(15 * 60) }))],
+		["hold to run now", sched(task(), { cue: { kind: "run", progress: 0.55 } })],
+		["actions off · hold", sched(task(), { cue: { kind: "enable" } })],
+	]],
+	["Scheduled · glance", [
+		["counting down", sched(task(), glance)],
+		["running", sched(task({ lastRunStatus: "running" }), { ...glance, now: now + 600 })],
+		["last run failed", sched(failedTask, glance)],
+		["paused", sched(task({ enabled: false, nextRunAt: null }), glance)],
+		["blocked", sched(task({ schedule: { kind: "webhook" }, nextRunAt: null, blocked: true }), glance)],
+		["webhook", sched(task({ schedule: { kind: "webhook" }, nextRunAt: null }), glance)],
+		["once, finished", sched(task({ schedule: { kind: "once" }, nextRunAt: null }), glance)],
+		["days away", sched(task({ nextRunAt: mins(60 * 24 * 6 + 18 * 60) }), glance)],
+		["due now", sched(task({ nextRunAt: now - 1000 }), glance)],
+		["hold to run now", sched(task(), { ...glance, cue: { kind: "run", progress: 0.4 } })],
+	]],
+	["Scheduled · no task", [
+		["no tasks at all", sched(undefined)],
+		["chosen task gone", sched(undefined, {}, "missing")],
+		["loading", renderScheduledKey({ connection: ok, stream: "loading", pick: { task: undefined, reason: "none" }, now, animation: "off" })],
+		["stream down", renderScheduledKey({ connection: ok, stream: "down", pick: { task: undefined, reason: "none" }, now, animation: "off" })],
+		["T3 not running", renderScheduledKey({ connection: offline("not-running"), stream: "down", pick: { task: undefined, reason: "none" }, now, animation: "off" })],
+		["sign-in failed", renderScheduledKey({ connection: { kind: "error", detail: "", reason: "sign-in-failed" }, stream: "down", pick: { task: undefined, reason: "none" }, now, animation: "off" })],
+	]],
+);
 
 const radius = Math.round(px * 0.1);
 const body = sections

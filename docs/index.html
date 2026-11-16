@@ -249,7 +249,7 @@
               </table>
             </div>
             <ul class="checks">
-              <li><strong>Other models:</strong> <span>decks like the Stream Deck + have no bundled pages. Thread, Overview, Usage, Machine and Updates keys still work, Overview jumps to the most urgent thread, and a hold on a Thread key clears its highlight.</span></li>
+              <li><strong>Other models:</strong> <span>decks like the Stream Deck + have no bundled pages. Thread, Overview, Usage, Machine, Updates and Scheduled keys still work, Overview jumps to the most urgent thread, and a hold on a Thread key clears its highlight.</span></li>
               <li><strong>Holds:</strong> <span>opening the page takes half a second. Risky keys (Compact, Settle, Stop and quick messages) fire after 0.8 s; a tap only shows "Hold to confirm", so a stray tap does nothing.</span></li>
               <li><strong>Quick messages:</strong> <span>your own lines, sent as if you'd typed them. Write <code>Label | full text</code> for a short label on the key.</span></li>
               <li><strong>Compact:</strong> <span>sends <code>/compact</code>.</span></li>
@@ -449,6 +449,7 @@
             <ul class="checks">
               <li>A live stream from T3 Code pushes changes. The thread list is re-read when something changes (no more often than your "Refresh every" setting, 2 seconds by default) and every 30 seconds to be sure.</li>
               <li>Usage limits: every 5 minutes, and only while a Usage key is on your deck.</li>
+              <li>Scheduled tasks: one stream from T3 Code, open only while a Scheduled key is on your deck. Nothing is polled.</li>
               <li>Context size: only for threads on a key, when they first appear, when a run ends, and at most every 2 minutes while one works.</li>
             </ul>
           </div>

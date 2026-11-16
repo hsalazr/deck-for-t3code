@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 
 import { ActionsDisabledError } from "./auth.ts";
 import { dispatch, type RpcAccess } from "./rpc.ts";
+import { runScheduledTaskNow } from "./scheduled-monitor.ts";
 
 export { ActionsDisabledError };
 
@@ -57,6 +58,12 @@ export class ThreadCommands {
 			deliveryIntent: "auto",
 			dispatchMode: { type: "start_immediately" },
 		});
+	}
+
+	/** A Scheduled key's hold: runs that task now (T3's `scheduledTasks.runNow`, which needs the same operate scope). */
+	async runScheduledTask(id: string): Promise<void> {
+		if (!this.#enabled()) throw new ActionsDisabledError();
+		await runScheduledTaskNow(this.#access, id);
 	}
 
 	async #dispatch(command: Record<string, unknown>): Promise<void> {

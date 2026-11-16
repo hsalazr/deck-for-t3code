@@ -14,15 +14,15 @@ Only the latest release gets security fixes.
 
 ## How the plugin handles access to T3 Code
 
-Deck for T3 Code is a local plugin (macOS only). It talks only to the T3 Code server on the same Mac, has no server of its own, and sends no analytics, crash reports or telemetry. (The one exception to "only the same Mac" isn't a connection of the plugin's: holding Open on a thread that has a pull request asks macOS to open that link in your browser, after the checks under [What the plugin checks](#what-the-plugin-checks).)
+Deck for T3 Code is a local plugin (macOS only). It talks only to the T3 Code server on the same Mac, has no server of its own, and sends no analytics, crash reports or telemetry. The plugin never connects anywhere else itself. The one thing it hands to another program is a thread's pull request link: holding Open on the Thread Actions page asks macOS to open that link in your browser, after the checks under [What the plugin checks](#what-the-plugin-checks).
 
 To do that it uses **up to three tokens**, minted with your local `t3` CLI and stored on your Mac in `~/Library/Application Support/io.github.hsalazr.deck-for-t3code/` (folder mode 0700, files mode 0600: `credential.json`, `credential-rpc.json`, `credential-operate.json`, and `pending-revoke.json` for sessions still to revoke):
 
 | Token | Label in `t3 auth session list` | Scope | Used for | Lifetime |
 |---|---|---|---|---|
 | Threads | `Stream Deck (Deck for T3 Code)` | `orchestration:read` (session subject `mcp-client`) | Thread list | 30 days; renewed once less than half is left |
-| Live and usage | `Stream Deck (Deck for T3 Code usage)` | `orchestration:read` | Live status stream, context size, usage limits, reset-ticket counts, hub accounts | 30 days; renewed once less than half is left |
-| Actions | `Stream Deck (Deck for T3 Code actions)` | `orchestration:read`, `orchestration:operate` | Thread Actions keys: send, snooze, settle, stop | 24 hours; minted only while "Enable thread actions" is on (the first time an action runs); revoked when it is turned off |
+| Live and usage | `Stream Deck (Deck for T3 Code usage)` | `orchestration:read` | Live status stream, context size, usage limits, reset-ticket counts, hub accounts, the scheduled task list (titles, schedules, run times and results; never prompts) | 30 days; renewed once less than half is left |
+| Actions | `Stream Deck (Deck for T3 Code actions)` | `orchestration:read`, `orchestration:operate` | Thread Actions keys: send, snooze, settle, stop; holding a Scheduled key: run that scheduled task now (`scheduledTasks.runNow`) | 24 hours; minted only while "Enable thread actions" is on (the first time an action runs); revoked when it is turned off |
 
 - The first two are read-only. The actions token is opt-in (off by default) and short-lived.
 - Replaced tokens are revoked. A revoke that fails (for example, T3 Code is closed) is recorded in `pending-revoke.json` and retried each time the plugin starts and whenever T3 Code comes back after being unreachable. Revokes always go through the current T3 home's CLI. If T3 home changes (you edit it; at a later start the plugin finds `~/.t3` in use instead of a custom build's folder; or `~/.t3` comes into use before the found folder's server has answered), tokens minted for the old home can't be revoked there; they stop working when they expire (24 hours for the actions token, 30 days for the others). Use `t3 auth session revoke` in the old home to end them sooner.

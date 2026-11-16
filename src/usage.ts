@@ -3,6 +3,7 @@
  * "on pace" when the share used matches the share of the window that has
  * elapsed. Ahead of pace = spending faster than time passes.
  */
+import { createHash } from "node:crypto";
 
 /** One window from a T3 provider's `usageLimits.windows`. */
 export interface UsageWindow {
@@ -96,8 +97,6 @@ export function pace(window: UsageWindow, now: number): Pace {
 	const state: PaceState = delta > ON_PACE_TOLERANCE ? "ahead" : delta < -ON_PACE_TOLERANCE ? "under" : "on";
 	return { used, elapsed, delta, state, resetsInMs };
 }
-
-import { createHash } from "node:crypto";
 
 /**
  * Metric-key prefix of a hub account. Provider instance ids are slugs that

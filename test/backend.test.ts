@@ -1366,6 +1366,38 @@ test("usage: 5 min refresh, backing off while T3's checkedAt doesn't move", () =
 	);
 });
 
+test("monitor: background waits only need attention while a user request is open", async () => {
+	const shell = new FakeShell();
+	const { m, server } = await monitor({ shell });
+	server.active = [summary("root", { status: "waiting" })];
+	const waiting = { id: "root", pendingBackgroundTasks: [{ taskId: "watch-build", kind: "monitor", description: "Wait for build" }] };
+	shell.put(waiting);
+	await m.refresh();
+	assert.equal(stateOf(m, "root"), "working");
+	assert.equal(m.snapshot.cards.get("root")?.waitingOn, "Wait for build");
+	shell.put({ ...waiting, pendingRuntimeRequest: { kind: "user_input", blocking: true } });
+	await m.refresh();
+	assert.equal(stateOf(m, "root"), "input");
+	shell.put({ ...waiting, pendingRuntimeRequest: null });
+	await m.refresh();
+	assert.equal(stateOf(m, "root"), "working");
+
+	server.active = [summary("root", { status: "completed" }), summary("kid", { status: "waiting", parentThreadId: "root", relationshipToParent: "subagent" })];
+	shell.put({ id: "root" });
+	const kid = { id: "kid", lineage: { parentThreadId: "root", rootThreadId: "root" } };
+	shell.put(kid);
+	await m.refresh();
+	assert.equal(stateOf(m, "root"), "working");
+	shell.put({ ...kid, pendingRuntimeRequest: { kind: "approval", blocking: true } });
+	await m.refresh();
+	assert.equal(stateOf(m, "root"), "input");
+	assert.equal(m.snapshot.cards.get("root")?.inputFromSubagent, true);
+	shell.put({ ...kid, pendingRuntimeRequest: null });
+	await m.refresh();
+	assert.equal(stateOf(m, "root"), "working");
+	m.stop();
+});
+
 test("monitor: an open question or approval blinks amber even though T3 keeps the run 'running'", async () => {
 	const shell = new FakeShell();
 	const { m, server } = await monitor({ shell });

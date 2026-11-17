@@ -122,7 +122,6 @@ const WORKING = new Set(["preparing", "queued", "starting", "running"]);
 export const ACTIVE_STATUSES: T3Status[] = ["preparing", "queued", "starting", "running", "waiting"];
 
 export const isWorking = (status: string): boolean => WORKING.has(status);
-export const isWaiting = (status: string): boolean => status === "waiting";
 export const isActive = (status: string): boolean => WORKING.has(status) || status === "waiting";
 
 export const ackKeyOf = (t: ThreadSummary): string => `${t.latestRunId ?? "none"}|${t.status}`;
@@ -142,6 +141,8 @@ export function rootOf(id: string, byId: ReadonlyMap<string, ThreadSummary>): st
 }
 
 export interface BuildOptions {
+	/** Threads with an explicit pending question, approval, secret or link request. */
+	pendingInput?: ReadonlySet<string>;
 	/**
 	 * done/failed only light up for runs whose ack key differs from the one
 	 * recorded here. The monitor seeds this on first sight of a thread, so
@@ -215,13 +216,13 @@ export function buildCards(threads: readonly ThreadSummary[], opts: BuildOptions
 		if (!card) continue;
 		const updated = Date.parse(t.updatedAt) || 0;
 		if (updated > card.updatedAt) card.updatedAt = updated;
-		if (isWaiting(t.status)) {
+		if (opts.pendingInput?.has(t.threadId)) {
 			card.subagentsWaiting++;
 			if (STATE_RANK.input < STATE_RANK[card.state]) {
 				card.state = "input";
 				card.inputFromSubagent = true;
 			}
-		} else if (isWorking(t.status)) {
+		} else if (isActive(t.status)) {
 			card.subagentsWorking++;
 			if (STATE_RANK.working < STATE_RANK[card.state]) card.state = "working";
 		}
@@ -235,8 +236,8 @@ export function buildCards(threads: readonly ThreadSummary[], opts: BuildOptions
 }
 
 function ownState(t: ThreadSummary, opts: BuildOptions): CardState {
-	if (isWaiting(t.status)) return "input";
-	if (isWorking(t.status)) return "working";
+	if (opts.pendingInput?.has(t.threadId)) return "input";
+	if (isActive(t.status)) return "working";
 	const unseen = opts.acked.get(t.threadId) !== ackKeyOf(t);
 	if (t.status === "failed" && opts.flashOnFailed && unseen) return "failed";
 	if (t.status === "completed" && opts.flashOnDone && unseen) return "done";

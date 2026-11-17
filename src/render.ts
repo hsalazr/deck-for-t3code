@@ -61,7 +61,7 @@ export const SPINNER_LEFT = SPIN.cx - SPIN.r - 1.5;
 /** Text on the spinner's rows stops this far short of it, because real glyphs run wider than the estimate. */
 const SPINNER_GAP = 9;
 const BACKGROUND_ORBIT = "#F4F5F7";
-const ACTIVE_OWN = new Set(["preparing", "queued", "starting", "running", "waiting"]);
+const ACTIVE_OWN = new Set(["preparing", "queued", "starting", "running"]);
 
 export type AnimationMode = "smooth" | "off";
 
@@ -758,7 +758,7 @@ function renderOverviewGlance(state: OverviewState, counts: OverviewInput["count
 
 /** Working only because of background work (subagents, commands, monitors, PR CI). */
 export function isBackgroundOnly(card: ThreadCard): boolean {
-	return card.state === "working" && !ACTIVE_OWN.has(card.ownStatus) && card.subagentsWorking === 0 && card.background > 0;
+	return card.state === "working" && !ACTIVE_OWN.has(card.ownStatus) && card.subagentsWorking === 0 && (card.background > 0 || card.ownStatus === "waiting");
 }
 
 function renderEmpty(): string {

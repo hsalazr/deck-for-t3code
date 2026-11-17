@@ -40,10 +40,10 @@ test("subagents fold into their root thread, recursively", () => {
 	assert.equal(cards.get("root")!.state, "working");
 });
 
-test("a waiting subagent makes its idle root need attention", () => {
+test("a subagent with a pending user request makes its idle root need attention", () => {
 	const cards = buildCards(
 		[thread("root", "completed"), thread("a", "waiting", { parentThreadId: "root" })],
-		{ ...opts, acked: new Map([["root", "run:root:1|completed"]]) },
+		{ ...opts, acked: new Map([["root", "run:root:1|completed"]]), pendingInput: new Set(["a"]) },
 	);
 	const root = cards.get("root")!;
 	assert.equal(root.state, "input");
@@ -159,7 +159,7 @@ test("thread key escapes titles and flashes between frames", () => {
 });
 
 test("a subagent whose parent isn't loaded becomes its own card", () => {
-	const cards = buildCards([thread("orphan", "running", { parentThreadId: "gone" }), thread("kid", "waiting", { parentThreadId: "orphan" })], opts);
+	const cards = buildCards([thread("orphan", "running", { parentThreadId: "gone" }), thread("kid", "waiting", { parentThreadId: "orphan" })], { ...opts, pendingInput: new Set(["kid"]) });
 	assert.deepEqual([...cards.keys()], ["orphan"]);
 	assert.equal(cards.get("orphan")!.state, "input");
 });
@@ -191,7 +191,7 @@ test("background work (subagents, monitors, PR watches) keeps a finished root wo
 	// Once they finish, the unseen completed run shows as done again.
 	assert.equal(buildCards([root, kid], opts).get("root")!.state, "done");
 	// Needing input still wins.
-	const waiting = buildCards([thread("w", "waiting")], { ...opts, background: new Map([["w", 1]]) });
+	const waiting = buildCards([thread("w", "waiting")], { ...opts, background: new Map([["w", 1]]), pendingInput: new Set(["w"]) });
 	assert.equal(waiting.get("w")!.state, "input");
 });
 
@@ -199,7 +199,7 @@ test("grace period keeps a root working right after its subagents finish", () =>
 	const root = thread("g", "completed");
 	assert.equal(buildCards([root], { ...opts, subagentGrace: new Set(["g"]) }).get("g")!.state, "working");
 	assert.equal(buildCards([root], opts).get("g")!.state, "done");
-	assert.equal(buildCards([thread("gw", "waiting")], { ...opts, subagentGrace: new Set(["gw"]) }).get("gw")!.state, "input");
+	assert.equal(buildCards([thread("gw", "waiting")], { ...opts, subagentGrace: new Set(["gw"]), pendingInput: new Set(["gw"]) }).get("gw")!.state, "input");
 });
 
 test("status label is optional and off by default", () => {

@@ -39,6 +39,15 @@ test("spinner: blue while the agent works, white while only background work runs
 	assert.ok(!render(card({ state: "idle", ownStatus: "completed" })).includes("rotate("), "idle doesn't spin");
 });
 
+test("waiting on background work uses the white activity indicator", () => {
+	const waiting = card({ ownStatus: "waiting", background: 1, waitingOn: "Wait for build" });
+	for (const now of [0, 300, 600, 900, 1200]) {
+		const svg = render(waiting, now);
+		assert.ok(svg.includes('stroke="#F4F5F7" stroke-width="3" stroke-linecap="round" transform="rotate('));
+		assert.ok(svg.includes("Wait for build"));
+	}
+});
+
 test("done is a steady solid tile; only needs-you and failed blink", () => {
 	const frames = (state: ThreadCard["state"]) => new Set([0, 300, 600, 900, 1200, 1500].map((now) => render(card({ state, ownStatus: "completed" }), now)));
 	assert.equal(frames("done").size, 1);

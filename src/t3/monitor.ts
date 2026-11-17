@@ -787,20 +787,10 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 			flashOnDone: this.#settings.flashOnDone,
 			flashOnFailed: this.#settings.flashOnFailed,
 			background,
+			pendingInput: new Set(threads.filter((t) => !t.environmentId && shell?.extras(t.threadId)?.pendingInput).map((t) => t.threadId)),
 			subagentGrace: this.#graceRoots(background),
 		});
 		const now = this.#now();
-		// Questions and approvals: on the thread itself or on one of its subagents.
-		if (shell) {
-			const known = new Map(threads.map((t) => [t.threadId, t] as const));
-			for (const t of threads) {
-				if (!shell.extras(t.threadId)?.pendingInput) continue;
-				const card = cards.get(rootOf(t.threadId, known));
-				if (!card || card.state === "input") continue;
-				card.state = "input";
-				card.inputFromSubagent = card.threadId !== t.threadId;
-			}
-		}
 		for (const card of cards.values()) {
 			const extras = shell?.extras(card.threadId);
 			// What a background-only thread is waiting on.

@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.2.3] - 2026-11-17
+
 ### Added
 
 - **Pull request and goal marks** on Thread keys (Detailed look), read from the live stream the plugin already holds, with no new token or scope. A small disc shows the thread's open pull request, with `#42` when there is room: a red cross for failing checks, an amber `!` for a conflict, requested changes or checks awaiting approval, blue dots while checks run, a ring with a dot when review is required, a green tick when approved or passing, a plain ring when open and nothing else is known, a dashed ring for a draft. Merged and closed pull requests get no mark. Forges that send no check or review state get the plain ring; the plugin never guesses a check result. With several open ones, the one that most needs you shows. A rounded square shows the thread's `/goal`: a target, with the share of its token budget used when T3 Code reports one, or `paused`, `blocked`, `limit`, `budget` or `done`. Both are static: they never make a key flash or change its state, the Overview's counts or any animation. A thread waiting only on a pull request's CI isn't marked twice, and the Glance look, a key paused by a usage limit and linked machines' threads show no marks.
@@ -108,7 +110,8 @@ First public release (manifest version 1.0.0.0). Repeated identical log lines fr
 - Credentials only go to a loopback origin; the T3 home must be an absolute path; the T3 CLI must be a regular file owned by you (or root) and not writable by others before it runs.
 - Log lines are redacted of anything that looks like a token. No telemetry.
 
-[Unreleased]: https://github.com/hsalazr/deck-for-t3code/compare/v1.2.2...HEAD
+[Unreleased]: https://github.com/hsalazr/deck-for-t3code/compare/v1.2.3...HEAD
+[1.2.3]: https://github.com/hsalazr/deck-for-t3code/compare/v1.2.2...v1.2.3
 [1.2.2]: https://github.com/hsalazr/deck-for-t3code/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/hsalazr/deck-for-t3code/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/hsalazr/deck-for-t3code/compare/v1.1.0...v1.2.0

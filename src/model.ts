@@ -32,6 +32,8 @@ export interface ThreadSummary {
 	model?: string;
 	providerInstanceId?: string;
 	itemCount?: number;
+	/** What the thread waits on after its turn ended, as T3 lists it (T3 Code 0.1.10 and later). Unchecked: see `holdingTasks`. */
+	pendingBackgroundTasks?: unknown;
 	createdAt: string;
 	updatedAt: string;
 	/** Set by the plugin for threads in a linked environment (another machine); absent for this machine's. */
@@ -40,10 +42,13 @@ export interface ThreadSummary {
 
 /**
  * What a key shows, most urgent first.
- * - `input`: the thread (or one of its subagents) is blocked on the user.
+ * - `input`: the thread (or one of its subagents) has a question, approval,
+ *   secret or link request open for the user. Never read from the status: T3
+ *   keeps the run "running" while it asks, and the monitor sets this state.
  * - `failed`: the latest run failed and nobody has looked yet.
  * - `done`: a run finished while we were watching and nobody has looked yet.
- * - `working`: the thread or any subagent is running.
+ * - `working`: the thread or any subagent is running, or its turn ended and
+ *   background work still holds it (T3's status `waiting`).
  * - `idle`: nothing to do.
  */
 export type CardState = "input" | "failed" | "done" | "working" | "paused" | "idle";
@@ -91,9 +96,8 @@ export interface ThreadCard {
 	state: CardState;
 	/** The root thread's own T3 status. */
 	ownStatus: string;
-	/** Active subagents folded into this card. */
+	/** Subagents folded into this card that are running, or held by their own background work. */
 	subagentsWorking: number;
-	subagentsWaiting: number;
 	/** Background tasks the thread waits on (subagents, commands, monitors, PR watches). */
 	background: number;
 	/** True when the `input` state comes from a subagent rather than the root. */
@@ -121,9 +125,17 @@ export interface ThreadCard {
 const WORKING = new Set(["preparing", "queued", "starting", "running"]);
 export const ACTIVE_STATUSES: T3Status[] = ["preparing", "queued", "starting", "running", "waiting"];
 
+/** A turn is running (or about to). */
 export const isWorking = (status: string): boolean => WORKING.has(status);
-export const isWaiting = (status: string): boolean => status === "waiting";
-export const isActive = (status: string): boolean => WORKING.has(status) || status === "waiting";
+/**
+ * T3's status `waiting`: the turn ended, and background work still holds the
+ * thread (subagents, delegated tasks, or commands, monitors and pull request
+ * watches its agent said it waits for). It does not mean the thread waits on
+ * the user: an open question or approval leaves the run "running".
+ */
+export const isHeld = (status: string): boolean => status === "waiting";
+/** Working or held: what T3 lists as active. */
+export const isActive = (status: string): boolean => isWorking(status) || isHeld(status);
 
 export const ackKeyOf = (t: ThreadSummary): string => `${t.latestRunId ?? "none"}|${t.status}`;
 
@@ -187,7 +199,6 @@ export function buildCards(threads: readonly ThreadSummary[], opts: BuildOptions
 			state: ownState(t, opts),
 			ownStatus: t.status,
 			subagentsWorking: 0,
-			subagentsWaiting: 0,
 			background: 0,
 			inputFromSubagent: false,
 			ackKey: ackKeyOf(t),
@@ -215,13 +226,8 @@ export function buildCards(threads: readonly ThreadSummary[], opts: BuildOptions
 		if (!card) continue;
 		const updated = Date.parse(t.updatedAt) || 0;
 		if (updated > card.updatedAt) card.updatedAt = updated;
-		if (isWaiting(t.status)) {
-			card.subagentsWaiting++;
-			if (STATE_RANK.input < STATE_RANK[card.state]) {
-				card.state = "input";
-				card.inputFromSubagent = true;
-			}
-		} else if (isWorking(t.status)) {
+		// A subagent held by its own background work is as busy as a running one.
+		if (isActive(t.status)) {
 			card.subagentsWorking++;
 			if (STATE_RANK.working < STATE_RANK[card.state]) card.state = "working";
 		}
@@ -235,8 +241,7 @@ export function buildCards(threads: readonly ThreadSummary[], opts: BuildOptions
 }
 
 function ownState(t: ThreadSummary, opts: BuildOptions): CardState {
-	if (isWaiting(t.status)) return "input";
-	if (isWorking(t.status)) return "working";
+	if (isActive(t.status)) return "working";
 	const unseen = opts.acked.get(t.threadId) !== ackKeyOf(t);
 	if (t.status === "failed" && opts.flashOnFailed && unseen) return "failed";
 	if (t.status === "completed" && opts.flashOnDone && unseen) return "done";

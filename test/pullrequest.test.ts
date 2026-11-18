@@ -161,7 +161,7 @@ test("safeWebUrl: http(s) only, no credentials, at most 2,048 characters", () =>
 const ok = { kind: "ok" } as const;
 const card = (extra: Partial<ThreadCard>): ThreadCard => ({
 	threadId: "x", projectId: "p", title: "Add retry to checkout flow", link: "", state: "idle", ownStatus: "completed",
-	subagentsWorking: 0, subagentsWaiting: 0, background: 0, inputFromSubagent: false, ackKey: "", updatedAt: 0, createdAt: 0, ...extra,
+	subagentsWorking: 0, background: 0, inputFromSubagent: false, ackKey: "", updatedAt: 0, createdAt: 0, ...extra,
 });
 const render = (c: ThreadCard, project = "acme-api", now = 0, style?: "glance") => renderThreadKey({ card: c, projectName: project, connection: ok, animation: "smooth", now, ...(style ? { style } : {}) });
 const pr = (s: PullRequestStatus, number = 42) => ({ number, url: `https://git.example.com/acme/api/pulls/${number}`, status: s });

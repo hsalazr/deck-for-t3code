@@ -40,15 +40,19 @@ test("subagents fold into their root thread, recursively", () => {
 	assert.equal(cards.get("root")!.state, "working");
 });
 
-test("a waiting subagent makes its idle root need attention", () => {
+test("T3's status 'waiting' (held by background work) is working, never 'needs you'", () => {
+	// A subagent held by its own background command keeps its finished root working.
 	const cards = buildCards(
 		[thread("root", "completed"), thread("a", "waiting", { parentThreadId: "root" })],
 		{ ...opts, acked: new Map([["root", "run:root:1|completed"]]) },
 	);
 	const root = cards.get("root")!;
-	assert.equal(root.state, "input");
-	assert.equal(root.inputFromSubagent, true);
-	assert.equal(root.subagentsWaiting, 1);
+	assert.equal(root.state, "working");
+	assert.equal(root.inputFromSubagent, false);
+	assert.equal(root.subagentsWorking, 1);
+	// A held root is working too, and turns done once T3 lists it as completed.
+	assert.equal(buildCards([thread("w", "waiting")], { ...opts, background: new Map([["w", 1]]) }).get("w")!.state, "working");
+	assert.equal(buildCards([thread("w", "completed")], opts).get("w")!.state, "done");
 });
 
 test("an idle root with a working subagent shows working", () => {
@@ -75,7 +79,6 @@ const card = (id: string, state: ThreadCard["state"], updatedAt: number): Thread
 	state,
 	ownStatus: state,
 	subagentsWorking: 0,
-	subagentsWaiting: 0,
 	background: 0,
 	inputFromSubagent: false,
 	ackKey: "",
@@ -161,7 +164,7 @@ test("thread key escapes titles and flashes between frames", () => {
 test("a subagent whose parent isn't loaded becomes its own card", () => {
 	const cards = buildCards([thread("orphan", "running", { parentThreadId: "gone" }), thread("kid", "waiting", { parentThreadId: "orphan" })], opts);
 	assert.deepEqual([...cards.keys()], ["orphan"]);
-	assert.equal(cards.get("orphan")!.state, "input");
+	assert.equal(cards.get("orphan")!.subagentsWorking, 1);
 });
 
 test("deep links accept the agent-facing t3-thread form", () => {
@@ -190,16 +193,12 @@ test("background work (subagents, monitors, PR watches) keeps a finished root wo
 	assert.equal(cards.get("root")!.background, 2);
 	// Once they finish, the unseen completed run shows as done again.
 	assert.equal(buildCards([root, kid], opts).get("root")!.state, "done");
-	// Needing input still wins.
-	const waiting = buildCards([thread("w", "waiting")], { ...opts, background: new Map([["w", 1]]) });
-	assert.equal(waiting.get("w")!.state, "input");
 });
 
 test("grace period keeps a root working right after its subagents finish", () => {
 	const root = thread("g", "completed");
 	assert.equal(buildCards([root], { ...opts, subagentGrace: new Set(["g"]) }).get("g")!.state, "working");
 	assert.equal(buildCards([root], opts).get("g")!.state, "done");
-	assert.equal(buildCards([thread("gw", "waiting")], { ...opts, subagentGrace: new Set(["gw"]) }).get("gw")!.state, "input");
 });
 
 test("status label is optional and off by default", () => {

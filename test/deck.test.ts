@@ -19,7 +19,7 @@ import { DICTATE_TAP_MS, DictateRefusal, MIN_HOLD_MS, type Chord, type DictatePh
 
 const card = (id: string, extra: Partial<ThreadCard> = {}): ThreadCard => ({
 	threadId: id, projectId: "p", title: `Thread ${id}`, link: `http://127.0.0.1:3773/env/${id}`, state: "idle", ownStatus: "completed",
-	subagentsWorking: 0, subagentsWaiting: 0, background: 0, inputFromSubagent: false, ackKey: "", updatedAt: 0, createdAt: 0, ...extra,
+	subagentsWorking: 0, background: 0, inputFromSubagent: false, ackKey: "", updatedAt: 0, createdAt: 0, ...extra,
 });
 
 class FakeMonitor extends EventEmitter {

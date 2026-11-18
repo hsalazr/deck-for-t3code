@@ -20,7 +20,7 @@ To do that it uses **up to three tokens**, minted with your local `t3` CLI and s
 
 | Token | Label in `t3 auth session list` | Scope | Used for | Lifetime |
 |---|---|---|---|---|
-| Threads | `Stream Deck (Deck for T3 Code)` | `orchestration:read` (session subject `mcp-client`) | Thread list | 30 days; renewed once less than half is left |
+| Threads | `Stream Deck (Deck for T3 Code)` | `orchestration:read` (session subject `mcp-client`) | Thread list; for a linked machine's running threads, whether a question is open (the questions' ids, never their text) | 30 days; renewed once less than half is left |
 | Live and usage | `Stream Deck (Deck for T3 Code usage)` | `orchestration:read` | Live status stream, context size, usage limits, reset-ticket counts, hub accounts, the scheduled task list (titles, schedules, run times and results; never prompts) | 30 days; renewed once less than half is left |
 | Actions | `Stream Deck (Deck for T3 Code actions)` | `orchestration:read`, `orchestration:operate` | Thread Actions keys: send, snooze, settle, stop; holding a Scheduled key: run that scheduled task now (`scheduledTasks.runNow`) | 24 hours; minted only while "Enable thread actions" is on (the first time an action runs); revoked when it is turned off |
 

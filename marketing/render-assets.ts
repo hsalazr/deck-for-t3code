@@ -92,7 +92,7 @@ function threadKey(s: Spec, i = 0, showLabel = false, style: "detailed" | "glanc
 	const own = s.state === "input" ? "waiting" : s.state === "working" ? (s.background && !s.subagents ? "completed" : "running") : s.state === "done" ? "completed" : s.state === "failed" ? "failed" : "idle";
 	const card: ThreadCard = {
 		threadId: s.title, projectId: s.project, title: s.title, link: "", state: s.state, ownStatus: own,
-		subagentsWorking: s.subagents ?? 0, subagentsWaiting: s.subagentAsks ? 1 : 0, background: s.background ?? 0,
+		subagentsWorking: (s.subagents ?? 0) + (s.subagentAsks ? 1 : 0), background: s.background ?? 0,
 		inputFromSubagent: Boolean(s.subagentAsks), waitingOn: s.waitingOn,
 		pausedUntil: s.pausedIn ? now + s.pausedIn : undefined,
 		context: s.ctx === undefined ? undefined : { used: s.ctx * 2000, max: 200_000 },
@@ -197,7 +197,7 @@ const QUICK_MESSAGES = EXAMPLE_MESSAGES;
 function actionKeys(profile: (typeof PROFILES)[number]): string[] {
 	const thread: ThreadCard = {
 		threadId: "t", projectId: "acme-web", title: "Add retry to checkout flow", link: "", state: "working", ownStatus: "running",
-		subagentsWorking: 0, subagentsWaiting: 0, background: 0, inputFromSubagent: false, activeRunId: "run-1", context: { used: 74_000, max: 200_000 },
+		subagentsWorking: 0, background: 0, inputFromSubagent: false, activeRunId: "run-1", context: { used: 74_000, max: 200_000 },
 		ackKey: "", updatedAt: 0, createdAt: 0,
 	};
 	const base = { card: thread, projectName: "acme-web", connection: ok, animation: "smooth", now: BASE + 1000 } as const;

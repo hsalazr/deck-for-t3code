@@ -6,7 +6,7 @@
  * every state that needs you carries a glyph as well as a colour, and bar
  * tracks keep 3:1 against the background.
  */
-import { isOpenPullRequest, safeWebUrl, type CardState, type GoalSummary, type PullRequestStatus, type PullRequestSummary, type ThreadCard } from "./model.ts";
+import { isOpenPullRequest, isWorking, safeWebUrl, type CardState, type GoalSummary, type PullRequestStatus, type PullRequestSummary, type ThreadCard } from "./model.ts";
 import { coreLayout, cpuLevel, diskLevel, diskTitle, formatBytes, formatLoadShort, mainCluster, memoryLevel, usedPercent, type CpuStats, type DiskStats, type Level, type MachineSnapshot, type MachineStat, type MemoryStats } from "./machine.ts";
 import { formatDuration, type EmptyState, type Pace, type UsageMetric } from "./usage.ts";
 import { displayVersion, pendingUpdates, type UpdatesSnapshot } from "./updates.ts";
@@ -61,7 +61,6 @@ export const SPINNER_LEFT = SPIN.cx - SPIN.r - 1.5;
 /** Text on the spinner's rows stops this far short of it, because real glyphs run wider than the estimate. */
 const SPINNER_GAP = 9;
 const BACKGROUND_ORBIT = "#F4F5F7";
-const ACTIVE_OWN = new Set(["preparing", "queued", "starting", "running", "waiting"]);
 
 export type AnimationMode = "smooth" | "off";
 
@@ -222,7 +221,7 @@ export function renderThreadKey(input: ThreadKeyInput): string {
 
 	// Footer: what it waits on, or project name + badge or context %. The pull request and goal marks
 	// sit between the two, and give way (see `placeMarks`) before the project name does.
-	const agents = card.subagentsWorking + card.subagentsWaiting + card.background;
+	const agents = card.subagentsWorking + card.background;
 	const marks = footerMarks(card, lit, accent);
 	if (backgroundOnly && card.waitingOn) {
 		// A watch on a pull request already says so in the chip: no second mark for the same one.
@@ -756,9 +755,9 @@ function renderOverviewGlance(state: OverviewState, counts: OverviewInput["count
 	return svg(parts.join(""));
 }
 
-/** Working only because of background work (subagents, commands, monitors, PR CI). */
+/** Working only because of background work (subagents, commands, monitors, PR CI): its own turn has ended. */
 export function isBackgroundOnly(card: ThreadCard): boolean {
-	return card.state === "working" && !ACTIVE_OWN.has(card.ownStatus) && card.subagentsWorking === 0 && card.background > 0;
+	return card.state === "working" && !isWorking(card.ownStatus) && card.subagentsWorking === 0 && card.background > 0;
 }
 
 function renderEmpty(): string {

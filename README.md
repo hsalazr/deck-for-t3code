@@ -40,7 +40,7 @@ See who's working, who needs you, who's done. Glance, tap, move on.
 ## Features
 
 - **Live thread keys.** Colour, a glyph (`!` `✕` `✓`) and motion tell you the state before you read the title.
-- **Subagents folded in.** They never take a key of their own. A badge counts them, and a waiting subagent makes the main key flash.
+- **Subagents folded in.** They never take a key of their own. A badge counts them, and a subagent waiting on you makes the main key flash.
 - **Overview key.** Counts of threads that need you, are working, or are done. One tile, one state.
 - **T3 Threads page.** Press Overview to fill the whole deck with Thread keys. A Back key returns you to your previous profile.
 - **Thread Actions page.** Hold a thread key, then let go, to send a quick message, compact the context, snooze, settle or stop the thread.
@@ -87,11 +87,11 @@ Then drag **Overview**, **Thread** and **Usage** keys from the *Deck for T3 Code
 
 | Key | Means |
 |---|---|
-| Amber, blinking, `!` | The thread is waiting on you: an approval, a question, a secret or a link request. A subagent waiting on you counts too. |
+| Amber, blinking, `!` | The thread is waiting on you: an approval, a question, a secret or a link request. A subagent waiting on you counts too: its approval, or a secret or link request. A subagent's ordinary question goes to the agent that started it, so it doesn't blink. On a linked machine only an open question is seen. |
 | Red, blinking, `✕` | The latest run failed and you haven't looked at it yet. |
 | Solid green, `✓` | A run finished while the plugin was watching and you haven't opened the thread yet. It doesn't blink. |
 | Blue spinner (top-right corner) | The agent, or one of its subagents, is running. A badge counts subagents and background tasks. |
-| White spinner and a chip | The turn ended, but background work is still running: subagents, commands, monitors, or a pull request's CI while it runs. The chip says what: `PR #42 CI`, `2 agents`, a command's name, `3 tasks`. On a linked machine it just says `background`. |
+| White spinner and a chip | The turn ended, but background work is still running: subagents, commands, monitors, or a pull request's CI while it runs. The chip says what: `PR #42 CI`, `2 agents`, a command's name, `3 tasks`. On a linked machine it says the same when both machines run T3 Code 0.1.10 or later, and just `background` otherwise. |
 | Dashed border, dimmed, `USAGE LIMIT` / `back in 2h 10m` | A usage limit paused the thread. The countdown updates every minute. |
 | Plain dark key | Nothing happening. Shown for the "Show idle for" time after the last update. |
 
@@ -337,7 +337,7 @@ The plugin talks only to the T3 Code server on your Mac, found through T3 Code's
 - **Opening a thread** uses macOS `open` with a `t3code://` link (or opens the T3 Code app).
 - **Opening a pull request** (holding Open on the Thread Actions page) uses macOS `open` with the link T3 Code has for it, after checking it (see [SECURITY.md](SECURITY.md)). Your default browser loads the page; the plugin itself never connects to it.
 - **Dictate keys**, when enabled, run `/usr/bin/osascript` with a fixed script that presses T3 Code's dictation shortcut in T3 Code; the shortcut comes from `server.getConfig` over the read-only token. See [Dictate](#dictate) and [SECURITY.md](SECURITY.md).
-- **Linked machines.** If **Linked environments** is on in T3 Code (Settings → Labs), the plugin asks this Mac's T3 Code server for its links, and lists each reachable machine's threads and project names through that same local server, which forwards the request over its own link. The plugin never connects to another machine itself. Linked machines are polled: a machine with something running every 3 seconds, an idle one every 10, and its other threads every 30 or as soon as a run there finishes. When a thread there finishes a turn, the plugin also asks T3 once whether background work still holds it (subagents, or commands and monitors its agent said it waits for), and keeps asking while it does, so the key shows the white spinner and a `background` chip, not done. A command the agent just left running, such as a dev server, doesn't count there, and neither does a pull request watch. Linked machines have no live stream, so their keys don't say what the thread waits on and have no "Seen in T3", usage-limit pause, context bar, or pull request or goal marks. A machine that stops answering keeps its keys for 2 minutes, then they go. With the setting off, only this Mac's threads show.
+- **Linked machines.** If **Linked environments** is on in T3 Code (Settings → Labs), the plugin asks this Mac's T3 Code server for its links, and lists each reachable machine's threads and project names through that same local server, which forwards the request over its own link. The plugin never connects to another machine itself. Linked machines are polled: a machine with something running every 3 seconds, an idle one every 10, and its other threads every 30 or as soon as a run there finishes. A thread there whose turn ended while background work still holds it (subagents, or commands, monitors and a pull request's running checks that its agent said it waits for) shows the white spinner and a chip, not done. T3 Code 0.1.10 and later lists such a thread as waiting, with what it waits on. For an older machine the plugin asks T3 once when the thread finishes a turn, and keeps asking while it is held; that chip just says `background`, and a pull request watch doesn't count. A command the agent just left running, such as a dev server, never counts there. The plugin also asks, every round, whether each running top-level thread there has a question open (`t3_pending_request`, which answers with the questions' ids and nothing of their text), and blinks amber while one is. T3 Code doesn't list approvals, secrets or link requests that way, so a linked machine's thread waiting on one of those keeps showing as working. Linked machines have no live stream, so their keys have no "Seen in T3", usage-limit pause, context bar, or pull request or goal marks. A machine that stops answering keeps its keys for 2 minutes, then they go. With the setting off, only this Mac's threads show.
 
 ## Privacy & security
 

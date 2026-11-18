@@ -10,7 +10,7 @@ import { waitingLabel } from "../src/t3/shell-stream.ts";
 
 const card = (extra: Partial<ThreadCard>): ThreadCard => ({
 	threadId: "x", projectId: "p", title: "Add retry to checkout flow", link: "", state: "working", ownStatus: "running",
-	subagentsWorking: 0, subagentsWaiting: 0, background: 0, inputFromSubagent: false, ackKey: "", updatedAt: 0, createdAt: 0, ...extra,
+	subagentsWorking: 0, background: 0, inputFromSubagent: false, ackKey: "", updatedAt: 0, createdAt: 0, ...extra,
 });
 const ok = { kind: "ok" } as const;
 const render = (c: ThreadCard, now = 0) => renderThreadKey({ card: c, projectName: "acme-api", connection: ok, animation: "smooth", now });

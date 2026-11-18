@@ -19,7 +19,7 @@
  */
 import { EventEmitter } from "node:events";
 
-import { ACTIVE_STATUSES, ackKeyOf, buildCards, isActive, isWorking, rootOf, seenAfterRun, type ThreadCard, type ThreadSummary } from "../model.ts";
+import { ACTIVE_STATUSES, ackKeyOf, buildCards, isActive, isHeld, isWorking, rootOf, seenAfterRun, type ThreadCard, type ThreadSummary } from "../model.ts";
 import {
 	defaultTokens,
 	locate,
@@ -35,7 +35,7 @@ import type { ContextUsage, WatchTarget } from "./context-watcher.ts";
 import { discoverHome } from "./app.ts";
 import { AuthRejectedError, McpClient, ToolError, UnreachableError } from "./mcp.ts";
 import { RemoteEnvironments } from "./remotes.ts";
-import { waitingLabel, type PendingTask, type ShellView } from "./shell-stream.ts";
+import { holdingTasks, waitingLabel, waitsOnUser, type PendingTask, type ShellView } from "./shell-stream.ts";
 
 export type { ConnectionReason };
 
@@ -780,7 +780,8 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 		}
 		const threads = shell ? reparent(this.#threads, (id) => shell.rootOf(id)) : this.#threads;
 		const pending = shell?.pendingByRoot() ?? new Map<string, PendingTask[]>();
-		for (const id of linkedBackground(threads, this.#remotes.held())) pending.set(id, [LINKED_BACKGROUND]);
+		for (const id of linkedBackground(threads, this.#remotes.held())) pending.set(id, [UNNAMED_BACKGROUND]);
+		for (const [id, tasks] of heldBackground(threads, pending)) pending.set(id, tasks);
 		const background = backgroundByRoot(threads, pending);
 		const cards = buildCards(threads, {
 			acked: this.#acked,
@@ -790,16 +791,18 @@ export class Monitor extends EventEmitter<{ change: [Snapshot]; log: [string] }>
 			subagentGrace: this.#graceRoots(background),
 		});
 		const now = this.#now();
-		// Questions and approvals: on the thread itself or on one of its subagents.
-		if (shell) {
-			const known = new Map(threads.map((t) => [t.threadId, t] as const));
-			for (const t of threads) {
-				if (!shell.extras(t.threadId)?.pendingInput) continue;
-				const card = cards.get(rootOf(t.threadId, known));
-				if (!card || card.state === "input") continue;
-				card.state = "input";
-				card.inputFromSubagent = card.threadId !== t.threadId;
-			}
+		// Needs you: a question, approval, secret or link request open on the thread itself or on one of its
+		// subagents. The status never says so. This machine's come from the shell stream; a linked machine's
+		// open questions are asked for (see `remotes.ts`).
+		const asking = this.#remotes.asking();
+		const known = new Map(threads.map((t) => [t.threadId, t] as const));
+		for (const t of threads) {
+			const waits = t.environmentId ? asking.has(t.threadId) : waitsOnUser(shell?.extras(t.threadId)?.pendingRequest, t.relationshipToParent === "subagent");
+			if (!waits) continue;
+			const card = cards.get(rootOf(t.threadId, known));
+			if (!card || card.state === "input") continue;
+			card.state = "input";
+			card.inputFromSubagent = card.threadId !== t.threadId;
 		}
 		for (const card of cards.values()) {
 			const extras = shell?.extras(card.threadId);
@@ -937,16 +940,32 @@ export function reparent(threads: readonly ThreadSummary[], rootOf: (threadId: s
 	});
 }
 
-/**
- * A linked machine has no task list to show: all the plugin learns is that a
- * finished thread there still waits on background work.
- */
-export const LINKED_BACKGROUND: PendingTask = { taskId: "linked-machine-background", kind: "background_task", description: "background" };
+/** Stands in for background work the plugin knows about but can't name: a thread is held, and nothing says by what. */
+export const UNNAMED_BACKGROUND: PendingTask = { taskId: "unnamed-background", kind: "background_task", description: "background" };
 
 /**
- * Which of the `held` threads get that stand-in task: only a linked machine's
- * own threads, and not one with a subagent that is listed as running, which
- * the key already counts.
+ * Roots T3 lists as held (status `waiting`) that `pending` has nothing for,
+ * each with what holds it: T3's own list from the thread entry, else the
+ * stand-in. So a held thread always counts as waiting on background work,
+ * on a linked machine or while the shell stream is down.
+ */
+export function heldBackground(threads: readonly ThreadSummary[], pending: ReadonlyMap<string, readonly PendingTask[]>): Map<string, PendingTask[]> {
+	const byId = new Map(threads.map((t) => [t.threadId, t] as const));
+	const out = new Map<string, PendingTask[]>();
+	for (const t of threads) {
+		if (!isHeld(t.status) || rootOf(t.threadId, byId) !== t.threadId || (pending.get(t.threadId)?.length ?? 0) > 0) continue;
+		const tasks = holdingTasks(t.pendingBackgroundTasks);
+		out.set(t.threadId, tasks.length > 0 ? tasks : [UNNAMED_BACKGROUND]);
+	}
+	return out;
+}
+
+/**
+ * A linked machine running T3 Code before 0.1.10 lists a held thread as
+ * completed, and the plugin asks about each one (`held`, see `remotes.ts`).
+ * Which of those get the stand-in task: only a linked machine's own threads,
+ * and not one with a subagent that is listed as active, which the key
+ * already counts.
  */
 export function linkedBackground(threads: readonly ThreadSummary[], held: ReadonlySet<string>): string[] {
 	if (held.size === 0) return [];

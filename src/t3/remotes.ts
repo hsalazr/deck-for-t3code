@@ -15,13 +15,21 @@
  * while it is idle or failing, counted from when its last answer came back so
  * a slow link is never asked faster than it answers.
  *
- * The thread list says "completed" as soon as a turn ends, also when the thread
- * still waits on background work. `t3_thread_wait` with `untilDelegatedWorkSettled`
- * and a 1 ms timeout answers that without waiting: it times out while subagents,
- * delegated tasks, or commands and monitors the agent said it waits for are
- * still open (T3's own "Waiting" rule; a command left running, such as a dev
- * server, doesn't count). Each finished root is asked once per run, and again
- * every round while it is held.
+ * A thread whose turn ended while background work still holds it is listed as
+ * `waiting`, with what it waits on, by T3 Code 0.1.10 and later (see `isHeld`).
+ * An older machine lists it as "completed" as soon as the turn ends.
+ * `t3_thread_wait` with `untilDelegatedWorkSettled` and a 1 ms timeout answers
+ * that without waiting: it times out while subagents, delegated tasks, or
+ * commands and monitors the agent said it waits for are still open (T3's own
+ * "Waiting" rule; a command left running, such as a dev server, doesn't
+ * count). Each finished root is asked once per run, and again every round
+ * while it is held.
+ *
+ * Nothing in the list says a thread waits on the user: T3 keeps the run
+ * "running" while a question is open. `t3_pending_request` (list) names a
+ * thread's open questions, so each running top-level thread is asked every
+ * round. Approvals, secrets and link requests aren't in its answer: a linked
+ * machine's thread that waits on one of those keeps showing as working.
  */
 import { ACTIVE_STATUSES, type ThreadSummary } from "../model.ts";
 import { ToolError } from "./mcp.ts";
@@ -53,6 +61,15 @@ export const HELD_BATCH = 12;
 const HELD_PARALLEL = 4;
 /** A machine that refuses the question isn't asked again for this long. */
 export const HELD_RETRY_MS = 10 * 60_000;
+/** Running roots asked per round whether a question is open (each is a call through the link); the ones asked longest ago go first. */
+export const ASKING_BATCH = 12;
+const ASKING_PARALLEL = 4;
+/**
+ * A machine that refuses that question isn't asked again for this long. Short,
+ * because one thread that went away between the list and the question looks
+ * the same as a machine without the tool.
+ */
+export const ASKING_RETRY_MS = 60_000;
 
 interface RemoteEnv {
 	label: string;
@@ -75,6 +92,12 @@ interface RemoteEnv {
 	backlog: boolean;
 	/** Don't ask about background work before this time (the machine refused). */
 	heldOffUntil: number;
+	/** Running roots with a question open for the user. */
+	asking: Set<string>;
+	/** Running root → when it was last asked about open questions. */
+	askedAt: Map<string, number>;
+	/** Don't ask about open questions before this time (the machine refused). */
+	askingOffUntil: number;
 }
 
 /** What "settled" was recorded for: a new run, or any change to the thread, asks again. */
@@ -133,6 +156,13 @@ export class RemoteEnvironments {
 	held(): Set<string> {
 		const out = new Set<string>();
 		for (const env of this.#envs.values()) for (const id of env.held) out.add(id);
+		return out;
+	}
+
+	/** Remote top-level threads with a question open for the user. */
+	asking(): Set<string> {
+		const out = new Set<string>();
+		for (const env of this.#envs.values()) for (const id of env.asking) out.add(id);
 		return out;
 	}
 
@@ -204,6 +234,9 @@ export class RemoteEnvironments {
 						settledFor: new Map(),
 						backlog: false,
 						heldOffUntil: Number.NEGATIVE_INFINITY,
+						asking: new Set(),
+						askedAt: new Map(),
+						askingOffUntil: Number.NEGATIVE_INFINITY,
 					};
 					this.#envs.set(link.environmentId, env);
 				}
@@ -272,12 +305,16 @@ export class RemoteEnvironments {
 			// The new lists and what holds their finished threads are published together: this machine's
 			// own poll can redraw the keys at any moment, and a held thread mustn't show as done in between.
 			const held = await this.#askHeld(environmentId, env, active, recent, opts.now);
+			const asking = await this.#askQuestions(environmentId, env, active, opts.now);
 			env.active = active;
 			env.recent = recent;
 			env.held = held.held;
 			env.settledFor = held.settledFor;
 			env.backlog = held.backlog;
 			env.heldOffUntil = held.heldOffUntil;
+			env.asking = asking.asking;
+			env.askedAt = asking.askedAt;
+			env.askingOffUntil = asking.askingOffUntil;
 			env.answered = true;
 			env.failingSince = undefined;
 			this.#note(environmentId, "");
@@ -374,6 +411,63 @@ export class RemoteEnvironments {
 		// It answers for others: the ones it refused count as settled for this run.
 		for (const t of refused) next.settledFor.set(t.threadId, runKey(t));
 		if (answered > 0) this.#note(`${environmentId}:held`, "");
+		return next;
+	}
+
+	/**
+	 * Asks which running top-level threads have a question open for the user.
+	 * Subagents aren't asked: their questions go to the agent that started
+	 * them. Never throws: a thread the machine won't answer for counts as not
+	 * asking, and a machine that refuses every question is left alone for
+	 * ASKING_RETRY_MS. Works on copies, like `#askHeld`.
+	 */
+	async #askQuestions(environmentId: string, env: RemoteEnv, active: readonly ThreadSummary[], now: number): Promise<Pick<RemoteEnv, "asking" | "askedAt" | "askingOffUntil">> {
+		const running = active.filter((t) => t.status === "running" && t.relationshipToParent !== "subagent");
+		const runningIds = new Set(running.map((t) => t.threadId));
+		const next = {
+			asking: new Set([...env.asking].filter((id) => runningIds.has(id))),
+			askedAt: new Map([...env.askedAt].filter(([id]) => runningIds.has(id))),
+			askingOffUntil: env.askingOffUntil,
+		};
+		if (now < next.askingOffUntil) return next;
+		const last = (t: ThreadSummary): number => next.askedAt.get(t.threadId) ?? Number.NEGATIVE_INFINITY;
+		const batch = running.toSorted((a, b) => last(a) - last(b)).slice(0, ASKING_BATCH);
+		let refused = 0;
+		let lastRefusal = "";
+		let answered = 0;
+		for (let i = 0; i < batch.length; i += ASKING_PARALLEL) {
+			const results = await Promise.all(
+				batch.slice(i, i + ASKING_PARALLEL).map(async (t) => {
+					try {
+						return { t, result: await this.#call<unknown>("t3_pending_request", { action: "list", environmentId, threadId: t.threadId }) };
+					} catch (error) {
+						return { t, error };
+					}
+				}),
+			);
+			for (const r of results) {
+				if ("error" in r) {
+					// This machine's server stopped answering: what we know stands until the next round.
+					if (!(r.error instanceof ToolError)) return next;
+					refused++;
+					lastRefusal = r.error.message;
+					next.asking.delete(r.t.threadId);
+				} else {
+					answered++;
+					const ids = (r.result as { requestIds?: unknown } | undefined)?.requestIds;
+					if (Array.isArray(ids) && ids.length > 0) next.asking.add(r.t.threadId);
+					else next.asking.delete(r.t.threadId);
+				}
+				next.askedAt.set(r.t.threadId, now);
+			}
+		}
+		if (refused > 0 && answered === 0) {
+			next.asking.clear();
+			next.askingOffUntil = now + ASKING_RETRY_MS;
+			this.#note(`${environmentId}:asking`, `linked environment ${env.label} can't say whether its threads have a question open (${lastRefusal})`);
+			return next;
+		}
+		if (answered > 0) this.#note(`${environmentId}:asking`, "");
 		return next;
 	}
 

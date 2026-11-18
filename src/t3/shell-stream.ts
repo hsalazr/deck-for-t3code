@@ -23,6 +23,14 @@ export interface PendingTask {
 	childThreadId?: string;
 }
 
+/** A question, approval, secret or link request that is open on a thread. */
+export interface PendingRequest {
+	/** "user_input" (a question; also a secret or link request), "auth_refresh", or a kind of approval. */
+	kind: string;
+	/** Only the user can answer it (a secret or link request), never the agent that started a subagent. */
+	userOnly: boolean;
+}
+
 interface PullRequestLink {
 	host: string;
 	repository: string;
@@ -46,8 +54,8 @@ export interface ShellThread {
 	activeRunId?: string | null;
 	usageLimitResetAt?: string | null;
 	limitRecovery?: { resetAt?: string } | null;
-	/** A question, approval, secret or link request waiting on you. */
-	pendingRuntimeRequest?: { kind?: string; blocking?: boolean } | null;
+	/** An open question, approval, secret or link request; see `waitsOnUser`. */
+	pendingRuntimeRequest?: { kind?: string; blocking?: boolean; userOnly?: boolean } | null;
 	updatedAt?: string;
 }
 
@@ -61,8 +69,8 @@ export interface ShellExtras {
 	activeRunId: string | null;
 	/** A usage limit paused the thread until then. */
 	limitResetAt: number | null;
-	/** Something is waiting on you: a question, approval, secret or link request. */
-	pendingInput: boolean;
+	/** The request open on the thread, if any; `waitsOnUser` says whether it waits on you. */
+	pendingRequest: PendingRequest | null;
 	/** The thread's pull request (see `pullRequestOf`); absent without one. */
 	pullRequest?: PullRequestSummary;
 	/** The thread's goal (see `goalOf`); absent without one. */
@@ -157,7 +165,9 @@ export class ShellState {
 			limitResetAt: ms(raw.usageLimitResetAt) ?? ms(limitRecovery?.resetAt),
 			// While a question is open T3 keeps the run "running"; the request itself
 			// lives here. Non-blocking ones (the agent keeps working) still wait on you.
-			pendingInput: isObject(raw.pendingRuntimeRequest),
+			pendingRequest: isObject(raw.pendingRuntimeRequest)
+				? { kind: str(raw.pendingRuntimeRequest.kind) ?? "unknown", userOnly: raw.pendingRuntimeRequest.userOnly === true }
+				: null,
 			...(pullRequest ? { pullRequest } : {}),
 			...(goal ? { goal } : {}),
 			updatedAt: ms(raw.updatedAt) ?? 0,
@@ -342,6 +352,47 @@ export class ShellStream extends EventEmitter<{ change: []; log: [string] }> imp
 }
 
 /**
+ * Does an open request wait on the user? T3's own rule, the one behind its
+ * notifications. A sign-in refresh never does. On a thread of its own, every
+ * other request does. On a subagent, an approval or a request only the user
+ * can answer does; its ordinary question goes to the agent that started it.
+ */
+export function waitsOnUser(request: PendingRequest | null | undefined, subagent: boolean): boolean {
+	if (!request || request.kind === "auth_refresh") return false;
+	return !subagent || request.kind !== "user_input" || request.userOnly;
+}
+
+/** One entry of a `pendingBackgroundTasks` list, or undefined when it isn't one. */
+function taskOf(raw: unknown): PendingTask | undefined {
+	if (!isObject(raw)) return undefined;
+	const taskId = str(raw.taskId);
+	if (!taskId) return undefined;
+	const task: PendingTask = { taskId, kind: str(raw.kind) ?? "background_task" };
+	const description = str(raw.description);
+	if (description) task.description = description;
+	const child = str(raw.childThreadId);
+	if (child) task.childThreadId = child;
+	return task;
+}
+
+/**
+ * From a thread list entry's `pendingBackgroundTasks` (T3 Code 0.1.10 and
+ * later), the tasks that hold a finished thread, by T3's own rule: subagents
+ * and background tasks always, a command or monitor only when its agent said
+ * it waits for it. T3 marks a pull request watch that way while its checks
+ * run. Empty for anything that isn't such a list.
+ */
+export function holdingTasks(raw: unknown): PendingTask[] {
+	if (!Array.isArray(raw)) return [];
+	const out: PendingTask[] = [];
+	for (const entry of raw as unknown[]) {
+		const task = taskOf(entry);
+		if (task && ((entry as { awaited?: unknown }).awaited === true || task.kind === "subagent" || task.kind === "background_task")) out.push(task);
+	}
+	return out;
+}
+
+/**
  * Only background work that is actually running. Subagents, background
  * commands and monitors always are. A pull-request watch only counts while
  * its CI checks are still going: not once they passed (then it waits on
@@ -352,14 +403,9 @@ export function runningTasks(thread: ShellThread): PendingTask[] {
 	const links = Array.isArray(thread.pullRequests) ? (thread.pullRequests as unknown[]).filter(isObject) : [];
 	const out: PendingTask[] = [];
 	for (const raw of tasks) {
-		if (!isObject(raw)) continue;
-		const taskId = str(raw.taskId);
-		if (!taskId) continue;
-		const task: PendingTask = { taskId, kind: str(raw.kind) ?? "background_task" };
-		const description = str(raw.description);
-		if (description) task.description = description;
-		const child = str(raw.childThreadId);
-		if (child) task.childThreadId = child;
+		const task = taskOf(raw);
+		if (!task) continue;
+		const { taskId } = task;
 		if (taskId.startsWith(PR_WATCH_PREFIX)) {
 			const key = taskId.slice(PR_WATCH_PREFIX.length);
 			const link = links.find((pr) => typeof pr.host === "string" && typeof pr.repository === "string" && `${pr.host.toLowerCase()}/${pr.repository.toLowerCase()}#${String(pr.number)}` === key);

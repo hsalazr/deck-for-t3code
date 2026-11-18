@@ -24,7 +24,7 @@ test("PR watches count only while their CI is running", () => {
 
 const card = (extra: Partial<ThreadCard>): ThreadCard => ({
 	threadId: "x", projectId: "p", title: "Review the checkout PR", link: "", state: "working", ownStatus: "completed",
-	subagentsWorking: 0, subagentsWaiting: 0, background: 0, inputFromSubagent: false, ackKey: "", updatedAt: 0, createdAt: 0, ...extra,
+	subagentsWorking: 0, background: 0, inputFromSubagent: false, ackKey: "", updatedAt: 0, createdAt: 0, ...extra,
 });
 const render = (c: ThreadCard, now = 0) => renderThreadKey({ card: c, projectName: "acme-api", connection: { kind: "ok" }, animation: "smooth", now });
 

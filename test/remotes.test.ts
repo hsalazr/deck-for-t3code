@@ -12,7 +12,7 @@ import { TokenStore } from "../src/t3/auth.ts";
 import type { WatchTarget } from "../src/t3/context-watcher.ts";
 import { ToolError, UnreachableError } from "../src/t3/mcp.ts";
 import { linkedBackground, Monitor, type ContextSource } from "../src/t3/monitor.ts";
-import { HELD_BATCH, HELD_RETRY_MS, linksOf, REMOTE_ACTIVE_MIN_MS, REMOTE_BUSY_MIN_MS, REMOTE_DROP_AFTER_MS } from "../src/t3/remotes.ts";
+import { ASKING_BATCH, ASKING_RETRY_MS, HELD_BATCH, HELD_RETRY_MS, linksOf, REMOTE_ACTIVE_MIN_MS, REMOTE_BUSY_MIN_MS, REMOTE_DROP_AFTER_MS } from "../src/t3/remotes.ts";
 
 const T0 = Date.parse("2026-11-03T12:00:00Z");
 const LOCAL = "env-local";
@@ -53,6 +53,10 @@ interface Env {
 	held?: Set<string>;
 	/** `t3_thread_wait` refuses. */
 	waitFail?: Error;
+	/** Threads with a question open for the user: `t3_pending_request` (list) names it. */
+	questions?: Set<string>;
+	/** `t3_pending_request` refuses. */
+	askFail?: Error;
 }
 
 const monitors: Monitor[] = [];
@@ -96,6 +100,10 @@ async function setup() {
 				await server.onWait?.();
 				return { threadId: args.threadId, runId: null, status: "completed", timedOut: env?.held?.has(String(args.threadId)) ?? false };
 			}
+			if (name === "t3_pending_request") {
+				if (env?.askFail) throw env.askFail;
+				return { requestIds: env?.questions?.has(String(args.threadId)) ? ["q1"] : [] };
+			}
 			if (name === "t3_project_list") return { projects: [{ id: env ? `p-${String(args.environmentId)}` : "p", name: env ? env.label : "proj" }], nextCursor: null };
 			const source = env ?? server.local;
 			const list = args.statuses ? source.active : source.recent.slice(0, Number(args.limit));
@@ -109,6 +117,8 @@ async function setup() {
 }
 
 const remoteCalls = (calls: { name: string; args: Record<string, unknown> }[]) => calls.filter((c) => c.args.environmentId !== undefined);
+/** The "does this running thread have a question open?" calls, by thread id. */
+const asks = (calls: { name: string; args: Record<string, unknown> }[]) => calls.filter((c) => c.name === "t3_pending_request").map((c) => String(c.args.threadId));
 /** The "does background work still hold this finished thread?" questions, by thread id. */
 const waits = (calls: { name: string; args: Record<string, unknown> }[]) => calls.filter((c) => c.name === "t3_thread_wait").map((c) => String(c.args.threadId));
 
@@ -321,7 +331,7 @@ test("a remote subagent that finishes doesn't send for the recent roots", async 
 	await m.refreshRemotes();
 	assert.equal(server.calls.some((c) => c.name === "t3_environment_links"), false, "an active round, not a full one");
 	assert.deepEqual(
-		remoteCalls(server.calls).map((c) => Boolean(c.args.statuses)),
+		remoteCalls(server.calls).filter((c) => c.name === "t3_thread_list").map((c) => Boolean(c.args.statuses)),
 		[true],
 		"only the active list",
 	);
@@ -464,6 +474,94 @@ test("more finished remote roots than one round's worth are asked about over the
 	setClock(T0 + 2 * REMOTE_BUSY_MIN_MS);
 	await m.refresh();
 	assert.deepEqual(remoteCalls(server.calls), [], "all asked: back to the idle pace");
+	m.stop();
+});
+
+test("a remote thread T3 lists as 'waiting' is held by background work: working, with what it waits on, never 'needs you'", async () => {
+	const { m, server } = await setup();
+	const watch = { taskId: "pull-request-watch:git.example/acme/web#42", kind: "monitor", description: "Watching pull request #42", awaited: true };
+	const env: Env = {
+		label: "Linux box",
+		status: "reachable",
+		active: [summary("r", "env-linux", { status: "waiting", pendingBackgroundTasks: [watch] }), summary("old", "env-linux", { status: "waiting" })],
+		recent: [],
+	};
+	server.envs.set("env-linux", env);
+	await m.refresh();
+	await m.refreshRemotes();
+	const card = m.snapshot.cards.get("r");
+	assert.deepEqual([card?.state, card?.background, card?.waitingOn], ["working", 1, "PR #42 CI"]);
+	// The machine's own server sent no task list (it dropped a field it doesn't know): still held.
+	const old = m.snapshot.cards.get("old");
+	assert.deepEqual([old?.state, old?.background, old?.waitingOn], ["working", 1, "background"]);
+	assert.deepEqual(waits(server.calls), [], "the list already says it is held");
+	assert.deepEqual(asks(server.calls), [], "its turn has ended: no question can be open");
+	m.stop();
+});
+
+test("a running remote thread with a question open needs you; its subagents aren't asked, and a machine that refuses is left alone", async () => {
+	const { m, server, setClock } = await setup();
+	const env: Env = {
+		label: "Linux box",
+		status: "reachable",
+		active: [
+			summary("r", "env-linux", { status: "running" }),
+			summary("r-child", "env-linux", { status: "running", parentThreadId: "r", relationshipToParent: "subagent" }),
+			summary("quiet", "env-linux", { status: "running" }),
+		],
+		recent: [],
+		questions: new Set(["r"]),
+	};
+	server.envs.set("env-linux", env);
+	await m.refresh();
+	await m.refreshRemotes();
+	assert.deepEqual(asks(server.calls).sort(), ["quiet", "r"], "top-level running threads only");
+	assert.deepEqual(server.calls.find((c) => c.name === "t3_pending_request" && c.args.threadId === "r")?.args, { action: "list", environmentId: "env-linux", threadId: "r" });
+	assert.equal(m.snapshot.cards.get("r")?.state, "input");
+	assert.equal(m.snapshot.cards.get("r")?.inputFromSubagent, false);
+	assert.equal(m.snapshot.cards.get("quiet")?.state, "working");
+
+	// Answered: asked again at the next round, and back to working.
+	env.questions = new Set();
+	setClock(T0 + REMOTE_BUSY_MIN_MS);
+	await m.refresh();
+	await m.refreshRemotes();
+	assert.equal(m.snapshot.cards.get("r")?.state, "working");
+
+	// The machine refuses (an older T3 Code): nothing blinks, and it isn't asked again for a while.
+	env.questions = new Set(["r"]);
+	env.askFail = new ToolError("t3_pending_request: unknown tool");
+	setClock(T0 + 2 * REMOTE_BUSY_MIN_MS);
+	await m.refresh();
+	await m.refreshRemotes();
+	assert.equal(m.snapshot.cards.get("r")?.state, "working");
+	assert.equal(m.linkedEnvironments.get("env-linux")?.failing, false, "the machine itself is fine");
+	server.calls.length = 0;
+	setClock(T0 + 3 * REMOTE_BUSY_MIN_MS);
+	await m.refresh();
+	await m.refreshRemotes();
+	assert.deepEqual(asks(server.calls), [], "not asked again yet");
+	env.askFail = undefined;
+	setClock(T0 + 2 * REMOTE_BUSY_MIN_MS + ASKING_RETRY_MS);
+	await m.refresh();
+	await m.refreshRemotes();
+	assert.equal(m.snapshot.cards.get("r")?.state, "input");
+
+	// More running threads than one round's worth: the ones asked longest ago go first, so every one gets its turn.
+	env.active = Array.from({ length: ASKING_BATCH + 3 }, (_, i) => summary(`n${i}`, "env-linux", { status: "running" }));
+	server.calls.length = 0;
+	setClock(T0 + 3 * REMOTE_BUSY_MIN_MS + ASKING_RETRY_MS);
+	await m.refresh();
+	await m.refreshRemotes();
+	const first = asks(server.calls);
+	assert.equal(first.length, ASKING_BATCH);
+	server.calls.length = 0;
+	setClock(T0 + 4 * REMOTE_BUSY_MIN_MS + ASKING_RETRY_MS);
+	await m.refresh();
+	await m.refreshRemotes();
+	const second = asks(server.calls);
+	assert.equal(second.length, ASKING_BATCH);
+	assert.equal(new Set([...first, ...second]).size, ASKING_BATCH + 3, "the three left out went first the second time");
 	m.stop();
 });
 

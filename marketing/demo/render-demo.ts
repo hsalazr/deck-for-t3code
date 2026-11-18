@@ -369,7 +369,7 @@ const SLOT_FLAKY = 1 + THREADS.findIndex((s) => s.id === "flaky");
 function cardOf(id: string, title: string, project: string, s: ThreadState, extra: Partial<ThreadCard> = {}): ThreadCard {
 	return {
 		threadId: id, projectId: project, title, link: "", state: s.state, ownStatus: s.own,
-		subagentsWorking: s.subagents, subagentsWaiting: 0, background: s.background, inputFromSubagent: false,
+		subagentsWorking: s.subagents, background: s.background, inputFromSubagent: false,
 		waitingOn: s.waitingOn, activeRunId: s.run ? `run-${id}` : undefined,
 		context: s.ctx === undefined ? undefined : { used: s.ctx * 2000, max: 200_000 },
 		ackKey: "", updatedAt: 0, createdAt: 0,

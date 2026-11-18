@@ -76,7 +76,7 @@ type Slot = string | { action: string; index: number };
 function actionRows(profile: Profile): string[][] {
 	const card: ThreadCard = {
 		threadId: "t", projectId: "acme-web", title: "Add retry to checkout flow", link: "", state: "working", ownStatus: "running",
-		subagentsWorking: 0, subagentsWaiting: 0, background: 0, inputFromSubagent: false, activeRunId: "run-1", context: { used: 74_000, max: 200_000 },
+		subagentsWorking: 0, background: 0, inputFromSubagent: false, activeRunId: "run-1", context: { used: 74_000, max: 200_000 },
 		ackKey: "", updatedAt: 0, createdAt: 0,
 	};
 	return (profile.actions as Slot[][]).map((row) =>

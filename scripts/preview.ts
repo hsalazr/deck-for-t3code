@@ -19,7 +19,7 @@ const px = sizeAt >= 0 ? Number(args[sizeAt + 1]) : 144;
 
 const ok = { kind: "ok" } as const;
 const card = (state: ThreadCard["state"], title: string, extra: Partial<ThreadCard> = {}): ThreadCard => ({
-	threadId: title, projectId: "p", title, link: "", state, ownStatus: state === "working" ? "running" : "completed", subagentsWorking: 0, subagentsWaiting: 0, background: 0,
+	threadId: title, projectId: "p", title, link: "", state, ownStatus: state === "working" ? "running" : "completed", subagentsWorking: 0, background: 0,
 	inputFromSubagent: false, ackKey: "", updatedAt: 0, createdAt: 0, ...extra });
 const thread = (c: ThreadCard | undefined, projectName: string, now = 0, extra: Partial<Parameters<typeof renderThreadKey>[0]> = {}) =>
 	renderThreadKey({ card: c, projectName, connection: ok, animation: "smooth", now, showLabel, ...extra });
@@ -58,7 +58,7 @@ const sections: [string, [string, string][]][] = [
 		["working + 2 subagents", thread(card("working", "Cache build artifacts in CI", { subagentsWorking: 2 }), "acme-api", 1500)],
 		["needs you (lit)", thread(card("input", "Upgrade to Node 24"), "acme-docs", 0)],
 		["needs you (dark)", thread(card("input", "Upgrade to Node 24"), "acme-docs", 600)],
-		["subagent asks + working", thread(card("input", "Fix flaky login test", { inputFromSubagent: true, subagentsWaiting: 1, subagentsWorking: 1 }), "acme-api", 600)],
+		["subagent asks + working", thread(card("input", "Fix flaky login test", { inputFromSubagent: true, subagentsWorking: 2 }), "acme-api", 600)],
 		["done", thread(card("done", "Migrate docs to new wiki", { context: { used: 76, max: 100 } }), "acme-web")],
 		["failed (lit)", thread(card("failed", "Deploy staging stack", { context: { used: 100, max: 100 } }), "acme-infra", 0)],
 		["failed (dark)", thread(card("failed", "Deploy staging stack"), "acme-infra", 900)],

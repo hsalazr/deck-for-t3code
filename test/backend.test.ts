@@ -8,6 +8,7 @@ import path from "node:path";
 import { after, test } from "node:test";
 
 import type { ThreadSummary } from "../src/model.ts";
+import { isBackgroundOnly } from "../src/render.ts";
 import {
 	ActionsDisabledError,
 	checkCli,
@@ -608,7 +609,7 @@ test("ShellState tolerates malformed items and fields", () => {
 		},
 	});
 	assert.equal(state.size, 2);
-	assert.deepEqual(state.extras("a"), { lastVisitedAt: Date.parse("2026-11-03T10:05:00Z"), latestRunId: "run-1", latestRunCompletedAt: null, activeRunId: null, limitResetAt: null, pendingInput: false, updatedAt: Date.parse("2026-11-03T10:00:00Z") });
+	assert.deepEqual(state.extras("a"), { lastVisitedAt: Date.parse("2026-11-03T10:05:00Z"), latestRunId: "run-1", latestRunCompletedAt: null, activeRunId: null, limitResetAt: null, pendingRequest: null, updatedAt: Date.parse("2026-11-03T10:00:00Z") });
 	assert.equal(state.rootOf("child"), "a");
 	assert.deepEqual(
 		state.pendingByRoot().get("a")?.map((t: PendingTask) => t.taskId),
@@ -1382,6 +1383,55 @@ test("monitor: an open question or approval blinks amber even though T3 keeps th
 	await m.refresh();
 	assert.equal(stateOf(m, "root"), "input");
 	assert.equal(m.snapshot.cards.get("root")?.inputFromSubagent, true);
+	// T3's own rule: a subagent's ordinary question goes to the agent that started it, not to you...
+	shell.put({ id: "kid", lineage: { parentThreadId: "root", rootThreadId: "root" }, pendingRuntimeRequest: { kind: "user_input", blocking: true } });
+	await m.refresh();
+	assert.equal(stateOf(m, "root"), "working");
+	// ...unless only you can answer it (a secret or link request).
+	shell.put({ id: "kid", lineage: { parentThreadId: "root", rootThreadId: "root" }, pendingRuntimeRequest: { kind: "user_input", blocking: true, userOnly: true } });
+	await m.refresh();
+	assert.equal(stateOf(m, "root"), "input");
+	// A sign-in refresh never waits on you.
+	shell.put({ id: "kid", lineage: { parentThreadId: "root", rootThreadId: "root" }, pendingRuntimeRequest: null });
+	shell.put({ id: "root", pendingRuntimeRequest: { kind: "auth_refresh", blocking: true } });
+	await m.refresh();
+	assert.equal(stateOf(m, "root"), "working");
+	m.stop();
+});
+
+test("monitor: a thread T3 lists as 'waiting' is held by background work: white spinner and a chip, never 'needs you'", async () => {
+	const shell = new FakeShell();
+	const { m, server, setClock } = await monitor({ shell });
+	const tasks = [
+		{ taskId: "cmd-1", kind: "command", description: "Web UI tests", awaited: true },
+		{ taskId: "cmd-2", kind: "command", description: "dev server" },
+	];
+	server.active = [summary("held", { status: "waiting", pendingBackgroundTasks: tasks }), summary("bare", { status: "waiting" })];
+	// The shell stream says what it waits on, by the plugin's own rule (every running task counts).
+	shell.put({ id: "held", latestRunId: "held-run", pendingBackgroundTasks: tasks });
+	await m.refresh();
+	let card = m.snapshot.cards.get("held")!;
+	assert.equal(card.state, "working");
+	assert.equal(card.background, 2);
+	assert.equal(isBackgroundOnly(card), true, "its own turn has ended");
+	// Without the stream, T3's list of what holds it: the command its agent waits for, not the one left running.
+	shell.connected = false;
+	await m.refresh();
+	card = m.snapshot.cards.get("held")!;
+	assert.equal(card.state, "working");
+	assert.equal(card.background, 1);
+	assert.equal(card.waitingOn, "Web UI tests");
+	// Held, and nothing says by what (an older server sends no list).
+	const bare = m.snapshot.cards.get("bare")!;
+	assert.deepEqual([bare.state, bare.background, bare.waitingOn], ["working", 1, "background"]);
+	// Done comes when T3 lists it as completed (after the short grace for a follow-up turn).
+	server.active = [];
+	server.recent = [summary("held", { status: "completed" })];
+	await m.refresh();
+	assert.equal(stateOf(m, "held"), "working");
+	setClock(T0 + 31_000);
+	await m.refresh();
+	assert.equal(stateOf(m, "held"), "done");
 	m.stop();
 });
 
